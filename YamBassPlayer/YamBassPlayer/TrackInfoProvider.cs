@@ -1,0 +1,109 @@
+﻿using Microsoft.Data.Sqlite;
+
+using YamBassPlayer.Models;
+using Yandex.Music.Api;
+using Yandex.Music.Api.Common;
+using Yandex.Music.Api.Models.Common;
+using Yandex.Music.Api.Models.Track;
+
+namespace YamBassPlayer
+{
+    public class TrackInfoProvider
+    {
+        private readonly YandexMusicApi _api;
+        private readonly AuthStorage _storage;
+
+
+        public TrackInfoProvider(YandexMusicApi api, AuthStorage storage)
+        {
+            _api = api;
+            _storage = storage;
+        
+            SQLitePCL.Batteries_V2.Init();
+
+            string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+            using var connection = new SqliteConnection($"Data Source={dbPath}");
+            connection.Open();
+
+            using SqliteCommand cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Tracks (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                TrackId TEXT UNIQUE,
+                Artist TEXT,
+                Title TEXT,
+                Album TEXT,
+                UpdatedAt INTEGER
+            );";
+            cmd.ExecuteNonQuery();
+        }
+
+
+        public async Task<Track?> GetTrackInfoById(string id)
+        {
+            string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+            await using var connection = new SqliteConnection($"Data Source={dbPath}");
+            await connection.OpenAsync();
+
+            await using SqliteCommand cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT TrackId, Artist, Title, Album, UpdatedAt FROM Tracks WHERE TrackId = @id";
+            cmd.Parameters.AddWithValue("@id", id);
+
+            await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var trackId = reader.GetString(0);
+                var artist = reader.GetString(1);
+                var title = reader.GetString(2);
+                var album = reader.GetString(3);
+
+                return new Track(title, artist, album, id);
+            }
+
+            return await TryGetFromApi(id);
+        }
+
+        private async Task<Track?> TryGetFromApi(string id)
+        {
+            YResponse<List<YTrack>>? trackResponse = await _api.Track.GetAsync(_storage, id);
+            YTrack? track = trackResponse?.Result?.FirstOrDefault();
+
+            if (track == null)
+            {
+                return null;
+            }
+
+            string artists = track.Artists != null
+                ? string.Join(", ", track.Artists.Select(a => a.Name))
+                : "Неизвестный исполнитель";
+
+            string album = track.Albums != null && track.Albums.Any()
+                ? track.Albums.First().Title
+                : "";
+
+            var trackVm = new Track(track.Title, artists, album, track.Id);
+            await SaveAsync(trackVm);
+
+            return trackVm;
+        }
+
+        public async Task SaveAsync(Track track)
+        {
+            string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+            await using var connection = new SqliteConnection($"Data Source={dbPath}");
+            await connection.OpenAsync();
+
+            await using SqliteCommand cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+            INSERT OR REPLACE INTO Tracks (TrackId, Artist, Title, Album, UpdatedAt)
+            VALUES (@TrackId, @artist, @title, @album, @updatedAt)";
+            cmd.Parameters.AddWithValue("@TrackId", track.Id ?? "");
+            cmd.Parameters.AddWithValue("@artist", track.Artist ?? "");
+            cmd.Parameters.AddWithValue("@title", track.Title ?? "");
+            cmd.Parameters.AddWithValue("@album", track.Album ?? "");
+            cmd.Parameters.AddWithValue("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+}
