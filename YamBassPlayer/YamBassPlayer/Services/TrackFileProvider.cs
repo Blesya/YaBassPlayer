@@ -1,3 +1,4 @@
+using YamBassPlayer.Extensions;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
 
@@ -33,24 +34,32 @@ namespace YamBassPlayer.Services
 
 		public async Task<string> DownloadTrackAsync(string trackId)
 		{
-			string filePath = GetTrackPath(trackId);
-
-			if (File.Exists(filePath))
+			try
 			{
+				string filePath = GetTrackPath(trackId);
+
+				if (File.Exists(filePath))
+				{
+					return filePath;
+				}
+
+				var trackResponse = await _api.Track.GetAsync(_storage, trackId);
+				var track = trackResponse?.Result?.FirstOrDefault();
+
+				if (track == null)
+				{
+					throw new Exception("Не удалось получить информацию о треке");
+				}
+
+				await _api.Track.ExtractToFileAsync(_storage, track, filePath);
+
 				return filePath;
 			}
-
-			var trackResponse = await _api.Track.GetAsync(_storage, trackId);
-			var track = trackResponse?.Result?.FirstOrDefault();
-
-			if (track == null)
+			catch (Exception e)
 			{
-				throw new Exception("Не удалось получить информацию о треке");
+				e.Handle();
+				return string.Empty;
 			}
-
-			await _api.Track.ExtractToFileAsync(_storage, track, filePath);
-
-			return filePath;
 		}
 	}
 }

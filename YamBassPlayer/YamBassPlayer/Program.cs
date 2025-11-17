@@ -1,21 +1,33 @@
 using Terminal.Gui;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Views;
 
 namespace YamBassPlayer
 {
 	internal class Program
 	{
-		private static async Task Main(string[] args)
+		private static Task Main(string[] args)
 		{
-			AudioPlayer.Init();
+			try
+			{
+				AudioPlayer.Init();
 
-			Application.Init();
+                Application.Init();
 
-			var mainWindow = new MainWindow();
+				Themes.InitializeDefaults();
 
-			Application.Top.Add(mainWindow);
+                var mainWindow = new MainWindow();
 
-			Application.Run();
+				Application.Top.Add(mainWindow);
+
+                Application.Run();
+            }
+			catch (Exception exception)
+			{
+				exception.Handle();
+			}
+
+			return Task.CompletedTask;
 		}
 	}
 }

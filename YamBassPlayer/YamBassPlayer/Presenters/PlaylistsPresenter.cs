@@ -7,15 +7,15 @@ namespace YamBassPlayer.Presenters
 	public class PlaylistsPresenter
 	{
 		private readonly PlaylistsView _view;
-		private readonly IPlaylistsService _playlistsService;
+		private readonly ITrackRepository _trackRepository;
 
 		private List<Playlist> _playlists = new();
 		public event Action<Playlist>? PlaylistChosen;
 
-		public PlaylistsPresenter(PlaylistsView view, IPlaylistsService playlistsService)
+		public PlaylistsPresenter(PlaylistsView view, ITrackRepository trackRepository)
 		{
 			_view = view;
-			_playlistsService = playlistsService;
+			_trackRepository = trackRepository;
 
 			_view.PlaylistSelected += OnPlaylistSelected;
 
@@ -24,8 +24,8 @@ namespace YamBassPlayer.Presenters
 
 		private async void LoadPlaylists()
 		{
-			var asd = await _playlistsService.GetPlaylists();
-			_playlists = asd.ToList();
+			var playlists = await _trackRepository.GetPlaylists();
+			_playlists = playlists.ToList();
 			_view.SetPlaylists(_playlists);
 		}
 

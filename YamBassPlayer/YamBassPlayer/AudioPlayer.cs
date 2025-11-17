@@ -1,13 +1,13 @@
 using ManagedBass;
 
 using Terminal.Gui;
+using YamBassPlayer.Extensions;
 
 namespace YamBassPlayer
 {
 	internal static class AudioPlayer
 	{
 		private static int _currentStream;
-		public static string CurrentTrackName { get; private set; } = "Нет воспроизведения";
 
 		public static event EventHandler? OnTrackEnded;
 
@@ -19,11 +19,15 @@ namespace YamBassPlayer
 			}
 		}
 
+		public static bool IsPlayed => Bass.ChannelIsActive(_currentStream) == PlaybackState.Playing;
+
 		public static void Play(string filePath, string trackName = "")
 		{
 			try
 			{
-				// Останавливаем предыдущий поток, если есть
+				if (string.IsNullOrWhiteSpace(filePath))
+					return;
+
 				if (_currentStream != 0)
 				{
 					Bass.ChannelStop(_currentStream);
@@ -35,8 +39,7 @@ namespace YamBassPlayer
 
 				if (_currentStream == 0)
 				{
-					MessageBox.ErrorQuery("Ошибка", $"Не удалось создать поток для: {trackName}", "OK");
-					return;
+					throw new ArgumentNullException(nameof(_currentStream), "Ошибка при попытке воспроизведения, библиотека не инициализирована");
 				}
 
 				Bass.ChannelSetSync(
@@ -47,17 +50,90 @@ namespace YamBassPlayer
 				);
 
 				Bass.ChannelPlay(_currentStream);
-				CurrentTrackName = string.IsNullOrEmpty(trackName) ? "Неизвестный трек" : trackName;
 			}
-			catch (Exception ex)
+			catch (Exception exception)
 			{
-				MessageBox.ErrorQuery("Ошибка", $"Не удалось воспроизвести трек:\n{ex.Message}", "OK");
+				exception.Handle();
+			}
+		}
+
+		public static int GetProgressInPercent()
+		{
+			if (_currentStream == 0)
+				return 0;
+
+			long pos = Bass.ChannelGetPosition(_currentStream);
+			if (pos <= 0)
+				return 0;
+
+			long len = Bass.ChannelGetLength(_currentStream);
+			if (len <= 0)
+				return 0;
+
+			double percent = (double)pos / len * 100.0;
+
+			if (percent < 0)
+			{
+				percent = 0;
+			}
+
+			if (percent > 100)
+			{
+				percent = 100;
+			}
+
+			return (int)percent;
+		}
+
+		public static float[] ChannelGetData()
+		{
+            float[] fft = new float[128];
+
+            if ( _currentStream == 0)
+			{
+				return fft;
+            }
+
+            Bass.ChannelGetData(_currentStream, fft, (int)DataFlags.FFT256);
+			return fft;
+        }
+
+
+        public static void SeekToPercent(int percent)
+		{
+			if (_currentStream == 0)
+				return;
+
+			if (percent < 0) percent = 0;
+			if (percent > 100) percent = 100;
+
+			long length = Bass.ChannelGetLength(_currentStream);
+			if (length <= 0)
+				return;
+
+			long newPos = (long)(length * (percent / 100.0));
+
+			Bass.ChannelSetPosition(_currentStream, newPos);
+		}
+
+		public static void Pause()
+		{
+			if (_currentStream != 0)
+			{
+				Bass.ChannelPause(_currentStream);
+			}
+		}
+
+		public static void Resume()
+		{
+			if (_currentStream != 0)
+			{
+				Bass.ChannelPlay(_currentStream);
 			}
 		}
 
 		private static void OnBassTrackEnded(int handle, int channel, int data, IntPtr user)
 		{
-			// Вызываем .NET-событие
 			OnTrackEnded?.Invoke(null, EventArgs.Empty);
 		}
 
@@ -68,7 +144,6 @@ namespace YamBassPlayer
 				Bass.ChannelStop(_currentStream);
 				Bass.StreamFree(_currentStream);
 				_currentStream = 0;
-				CurrentTrackName = "Нет воспроизведения";
 			}
 		}
 

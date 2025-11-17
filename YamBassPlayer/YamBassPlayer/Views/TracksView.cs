@@ -6,8 +6,9 @@ namespace YamBassPlayer.Views;
 
 public sealed class TracksView : View
 {
-	private readonly TableView _table;
+	private readonly ScrollableTableView _table;
 	private readonly DataTable _dataTable;
+	private bool _isLoadingMore;
 
 	public event Action<int>? OnTrackSelected;
 	public event Action<int>? OnCellActivated;
@@ -24,29 +25,23 @@ public sealed class TracksView : View
 		_dataTable.Columns.Add("Название", typeof(string));
 		_dataTable.Columns.Add("Альбом", typeof(string));
 
-		_table = new TableView
+		_table = new ScrollableTableView
 		{
 			Width = Dim.Fill(),
 			Height = Dim.Fill(),
 			Table = _dataTable,
 			FullRowSelect = true
 		};
+		
+		_table.OnScroll += CheckNeedMoreTracks;
 
 		_table.SelectedCellChanged += args =>
 		{
 			OnTrackSelected?.Invoke(args.NewRow);
+			CheckNeedMoreTracks();
 		};
 
 		_table.CellActivated += CellActivated;
-
-		_table.KeyPress += args =>
-		{
-			if (args.KeyEvent.Key == Key.CursorDown &&
-			    _table.SelectedRow >= _dataTable.Rows.Count - 2)
-			{
-				NeedMoreTracks?.Invoke();
-			}
-		};
 
 		Add(_table);
 	}
@@ -54,6 +49,16 @@ public sealed class TracksView : View
 	private void CellActivated(TableView.CellActivatedEventArgs cell)
 	{
 		OnCellActivated?.Invoke(cell.Row);
+	}
+
+	private void CheckNeedMoreTracks()
+	{
+		if (!_isLoadingMore && _table.RowOffset >= _dataTable.Rows.Count - 30)
+		{
+			_isLoadingMore = true;
+			_table.SetSelection(0, _dataTable.Rows.Count - 1, false);
+			NeedMoreTracks?.Invoke();
+		}
 	}
 
 	public void SetTracks(IEnumerable<Track> tracks)
@@ -68,6 +73,7 @@ public sealed class TracksView : View
 			}
 
 			_table.Update();
+			_isLoadingMore = false;
 		});
 	}
 
@@ -81,6 +87,7 @@ public sealed class TracksView : View
 			}
 
 			_table.Update();
+			_isLoadingMore = false;
 		});
 	}
 

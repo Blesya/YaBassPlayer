@@ -7,30 +7,51 @@ namespace YamBassPlayer.Presenters
 	public class TracksPresenter
 	{
 		private readonly TracksView _view;
-		private readonly ITracksService _tracksService;
+		private readonly TrackFileProvider _trackFileProvider;
+		private readonly ITrackRepository _trackRepository;
 
 		private List<Track> _tracks = new();
 
-		private const int TracksPerBatch = 30;
+		private const int TracksPerBatch = 50;
+
+		private int _currentPlayedIndex = 0;
 
 		public event Action<Track>? OnTrackChosen;
 		public event Action<Track> OnTrackForPlaySelected;
 
-		public TracksPresenter(TracksView view, ITracksService tracksService)
+		public TracksPresenter(TracksView view, TrackFileProvider trackFileProvider, ITrackRepository trackRepository)
 		{
 			_view = view;
-			_tracksService = tracksService;
+			_trackFileProvider = trackFileProvider;
+			_trackRepository = trackRepository;
 
 			_view.OnTrackSelected += OnTrackSelected;
 			_view.NeedMoreTracks += OnNeedMoreTracks;
-			_view.OnCellActivated += ViewOnOnTrackSelected;
+			_view.OnCellActivated += ViewOnTrackSelected;
+
+			AudioPlayer.OnTrackEnded += OnTrackEnded;
 		}
 
-		public async void LoadTracksFor(Playlist playlist)
+		private async void OnTrackEnded(object? sender, EventArgs e)
 		{
-			await _tracksService.SetPlaylist(playlist);
+			await Task.Run(() =>
+			{
+				int trackNumber = ++_currentPlayedIndex;
+				if (trackNumber == _tracks.Count - 1)
+				{
+					trackNumber = 0;
+					_currentPlayedIndex = 0;
+				}
 
-			IEnumerable<Track> trackBatch = await _tracksService.GetNextTracks(TracksPerBatch);
+				ViewOnTrackSelected(trackNumber);
+			});
+		}
+
+		public async Task LoadTracksFor(Playlist playlist)
+		{
+			await _trackRepository.SetPlaylist(playlist);
+
+			IEnumerable<Track> trackBatch = await _trackRepository.GetNextTracks(TracksPerBatch);
 			_tracks = trackBatch.ToList();
 				
 			if (_tracks.Count == 0)
@@ -43,9 +64,15 @@ namespace YamBassPlayer.Presenters
 			}
 		}
 
-		private void ViewOnOnTrackSelected(int trackNumber)
+		private async void ViewOnTrackSelected(int trackNumber)
 		{
-			OnTrackForPlaySelected?.Invoke(_tracks[trackNumber]);
+			_currentPlayedIndex = trackNumber;
+			Track track = _tracks[trackNumber];
+
+			string filePath = await _trackFileProvider.DownloadTrackAsync(track.Id);
+			AudioPlayer.Play(filePath);
+
+			OnTrackForPlaySelected?.Invoke(track);
 		}
 
 		private void OnTrackSelected(int index)
@@ -60,7 +87,7 @@ namespace YamBassPlayer.Presenters
 
 		private async void OnNeedMoreTracks()
 		{
-			IEnumerable<Track> result = await _tracksService.GetNextTracks(TracksPerBatch);
+			IEnumerable<Track> result = await _trackRepository.GetNextTracks(TracksPerBatch);
 			var more = result.ToList();
 			if (more.Count == 0)
 			{

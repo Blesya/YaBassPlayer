@@ -38,6 +38,64 @@ namespace YamBassPlayer
             cmd.ExecuteNonQuery();
         }
 
+        public async Task<IEnumerable<Track>> GetTracksInfoByIds(IEnumerable<string> ids)
+        {
+            var idsList = ids.ToList();
+            var tracksResult = new List<Track>();
+            var missingIds = new List<string>();
+
+            string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+            await using var connection = new SqliteConnection($"Data Source={dbPath}");
+            await connection.OpenAsync();
+
+            foreach (string id in idsList)
+            {
+                await using SqliteCommand cmd = connection.CreateCommand();
+                cmd.CommandText = "SELECT TrackId, Artist, Title, Album FROM Tracks WHERE TrackId = @id";
+                cmd.Parameters.AddWithValue("@id", id);
+
+                await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var trackId = reader.GetString(0);
+                    var artist = reader.GetString(1);
+                    var title = reader.GetString(2);
+                    var album = reader.GetString(3);
+
+                    tracksResult.Add(new Track(title, artist, album, trackId));
+                }
+                else
+                {
+                    missingIds.Add(id);
+                }
+            }
+
+            if (missingIds.Any())
+            {
+                YResponse<List<YTrack>>? yResponse = await _api.Track.GetAsync(_storage, missingIds);
+                List<YTrack>? yTracks = yResponse.Result;
+
+                foreach (YTrack yTrack in yTracks)
+                {
+                    string artists = yTrack.Artists != null
+                        ? string.Join(", ", yTrack.Artists.Select(a => a.Name))
+                        : "Неизвестный исполнитель";
+
+                    string album = yTrack.Albums != null && yTrack.Albums.Any()
+                        ? yTrack.Albums.First().Title
+                        : "";
+
+                    var track = new Track(yTrack.Title, artists, album, yTrack.Id);
+                    
+                    await SaveAsync(track);
+                    
+                    tracksResult.Add(track);
+                }
+            }
+
+            // Шаг 4: Возвращаем итоговую коллекцию
+            return tracksResult;
+        }
 
         public async Task<Track?> GetTrackInfoById(string id)
         {
