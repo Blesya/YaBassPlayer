@@ -66,7 +66,7 @@ namespace YamBassPlayer.Views
 
                     rawValue /= fftStep;
 
-                    float k = ((float)Math.Log2(i + 1.2d)) * 10f;
+                    float k = ((float)Math.Log2(i + 1.3d)) * 10f;
 
                     rawValue *= k;
                 }

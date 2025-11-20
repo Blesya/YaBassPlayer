@@ -30,7 +30,7 @@ public sealed class TracksView : View
 			Width = Dim.Fill(),
 			Height = Dim.Fill(),
 			Table = _dataTable,
-			FullRowSelect = true
+			FullRowSelect = true,
 		};
 		
 		_table.OnScroll += CheckNeedMoreTracks;

@@ -87,7 +87,7 @@ namespace YamBassPlayer.Views
             };
 
             _playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
-            Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(33), _ =>
+            Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
             {
                 float[] fft = AudioPlayer.ChannelGetData();
                 spectrum.SetFftData(fft);
