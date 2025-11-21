@@ -9,6 +9,7 @@ using YamBassPlayer.Services;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
 using Attribute = Terminal.Gui.Attribute;
+using Timer = System.Timers.Timer;
 
 namespace YamBassPlayer.Views
 {
@@ -100,12 +101,14 @@ namespace YamBassPlayer.Views
         {
             try
             {
+                _playStatusPresenter.SetTilte($"Загружается трек: {track.Artist} - {track.Title}");
                 string filePath = await _trackFileProvider.DownloadTrackAsync(track.Id);
                 if (string.IsNullOrWhiteSpace(filePath))
                     return;
 
                 _playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
                 AudioPlayer.Play(filePath);
+                _playStatusPresenter.SetTilte("Управление воспроизведением");
             }
             catch (Exception e)
             {

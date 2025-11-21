@@ -64,13 +64,10 @@ namespace YamBassPlayer.Presenters
 			}
 		}
 
-		private async void ViewOnTrackSelected(int trackNumber)
+		private void ViewOnTrackSelected(int trackNumber)
 		{
 			_currentPlayedIndex = trackNumber;
 			Track track = _tracks[trackNumber];
-
-			string filePath = await _trackFileProvider.DownloadTrackAsync(track.Id);
-			AudioPlayer.Play(filePath);
 
 			OnTrackForPlaySelected?.Invoke(track);
 		}
