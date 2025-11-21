@@ -108,11 +108,14 @@ namespace YamBassPlayer.Views
 
                 _playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
                 AudioPlayer.Play(filePath);
-                _playStatusPresenter.SetTilte("Управление воспроизведением");
             }
             catch (Exception e)
             {
                 e.Handle();
+            }
+            finally
+            {
+                _playStatusPresenter.SetTilte("Управление воспроизведением");
             }
         }
 
