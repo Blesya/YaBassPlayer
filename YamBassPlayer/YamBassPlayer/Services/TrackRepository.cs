@@ -32,11 +32,15 @@ public class TrackRepository : ITrackRepository
 		{
 			var yResponses = await _api.Playlist.GetPersonalPlaylistsAsync(_storage);
 
+			var liked = await _api.Library.GetLikedTracksAsync(_storage);
+			int likedTracksCount = liked.Result.Library.Tracks.Count;
+
 			List<Playlist> playlists =
 			[
 				new Playlist("Мои треки", PlaylistType.Favorite)
 				{
-					Description = "Треки, которые вам понравились"
+					Description = "Треки, которые вам понравились",
+					TrackCount = likedTracksCount
 				}
 
 			];
@@ -45,7 +49,8 @@ public class TrackRepository : ITrackRepository
 			{
 				playlists.Add((new Playlist(yResponse.Result.Title, PlaylistType.Custom)
 				{
-					Description = yResponse.Result.Description
+					Description = yResponse.Result.Description,
+					TrackCount = yResponse.Result.TrackCount
 				}));
 			}
 

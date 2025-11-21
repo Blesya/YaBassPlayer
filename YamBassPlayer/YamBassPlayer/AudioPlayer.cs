@@ -59,61 +59,84 @@ namespace YamBassPlayer
 
 		public static int GetProgressInPercent()
 		{
-			if (_currentStream == 0)
-				return 0;
+            try
+            {
+                if (_currentStream == 0)
+                    return 0;
 
-			long pos = Bass.ChannelGetPosition(_currentStream);
-			if (pos <= 0)
-				return 0;
+                long pos = Bass.ChannelGetPosition(_currentStream);
+                if (pos <= 0)
+                    return 0;
 
-			long len = Bass.ChannelGetLength(_currentStream);
-			if (len <= 0)
-				return 0;
+                long len = Bass.ChannelGetLength(_currentStream);
+                if (len <= 0)
+                    return 0;
 
-			double percent = (double)pos / len * 100.0;
+                double percent = (double)pos / len * 100.0;
 
-			if (percent < 0)
-			{
-				percent = 0;
-			}
+                if (percent < 0)
+                {
+                    percent = 0;
+                }
 
-			if (percent > 100)
-			{
-				percent = 100;
-			}
+                if (percent > 100)
+                {
+                    percent = 100;
+                }
 
-			return (int)percent;
+                return (int)percent;
+            }
+            catch (Exception e)
+            {
+                e.Handle();
+                return 0;
+            }
 		}
 
 		public static float[] ChannelGetData()
 		{
-            float[] fft = new float[128];
+            try
+            {
+                float[] fft = new float[128];
 
-            if ( _currentStream == 0)
-			{
-				return fft;
+                if (_currentStream == 0)
+                {
+                    return fft;
+                }
+
+                Bass.ChannelGetData(_currentStream, fft, (int)DataFlags.FFT256);
+                return fft;
             }
-
-            Bass.ChannelGetData(_currentStream, fft, (int)DataFlags.FFT256);
-			return fft;
+            catch (Exception exception)
+            {
+                exception.Handle();
+                return [];
+            }
         }
 
 
         public static void SeekToPercent(int percent)
 		{
-			if (_currentStream == 0)
-				return;
+            try
+            {
+                if (_currentStream == 0)
+                    return;
 
-			if (percent < 0) percent = 0;
-			if (percent > 100) percent = 100;
+                if (percent < 0) percent = 0;
+                if (percent > 100) percent = 100;
 
-			long length = Bass.ChannelGetLength(_currentStream);
-			if (length <= 0)
-				return;
+                long length = Bass.ChannelGetLength(_currentStream);
+                if (length <= 0)
+                    return;
 
-			long newPos = (long)(length * (percent / 100.0));
+                long newPos = (long)(length * (percent / 100.0));
 
-			Bass.ChannelSetPosition(_currentStream, newPos);
+                Bass.ChannelSetPosition(_currentStream, newPos);
+            }
+            catch (Exception exception)
+            {
+                exception.Handle();
+            }
 		}
 
 		public static void Pause()

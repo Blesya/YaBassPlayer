@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Terminal.Gui;
+﻿using Terminal.Gui;
 
 namespace YamBassPlayer.Views
 {
-    public class SpectrumView : View
+    public sealed class SpectrumView : View
     {
         public int Bars { get; set; } = 25;
         public bool TestMode { get; set; } = true;
@@ -16,7 +11,7 @@ namespace YamBassPlayer.Views
         private readonly float[] _smoothed;
         private readonly float[] _peaks;
         private readonly float[] _peakFallSpeed;
-        private readonly Random _rnd = new Random();
+        private readonly Random _rnd = new();
 
         public SpectrumView()
         {
@@ -32,6 +27,9 @@ namespace YamBassPlayer.Views
 
         public void SetFftData(float[] fft)
         {
+            if (fft.Length == 0)
+                return;
+
             _fft = fft;
             TestMode = false;
             SetNeedsDisplay();

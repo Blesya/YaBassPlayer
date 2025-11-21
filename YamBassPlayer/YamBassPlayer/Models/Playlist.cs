@@ -16,9 +16,11 @@ namespace YamBassPlayer.Models
 
 		public string Description { get; init; }
 
+		public int TrackCount { get; init; }
+
 		public override string ToString()
 		{
-			return PlaylistName;
+			return $"{PlaylistName} ({TrackCount})";
 		}
 	}
 }

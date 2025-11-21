@@ -1,6 +1,4 @@
-﻿using System.Security.Authentication;
-using ManagedBass;
-using Terminal.Gui;
+﻿using Terminal.Gui;
 using YamBassPlayer.Constants;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
@@ -8,8 +6,6 @@ using YamBassPlayer.Presenters;
 using YamBassPlayer.Services;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
-using Attribute = Terminal.Gui.Attribute;
-using Timer = System.Timers.Timer;
 
 namespace YamBassPlayer.Views
 {
@@ -107,6 +103,7 @@ namespace YamBassPlayer.Views
                     return;
 
                 _playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
+                Console.Title = $"{track.Artist} - {track.Title}";
                 AudioPlayer.Play(filePath);
             }
             catch (Exception e)
