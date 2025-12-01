@@ -12,7 +12,7 @@ namespace YamBassPlayer.Extensions
 				return;
 			}
 
-			MessageBox.ErrorQuery(exception?.Message, exception?.StackTrace, "OK");
+			MessageBox.ErrorQuery(exception?.Message, exception?.StackTrace ?? "", "OK");
 		}
 	}
 }
