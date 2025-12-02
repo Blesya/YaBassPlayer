@@ -13,16 +13,18 @@ public class TrackRepository : ITrackRepository
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly TrackInfoProvider _trackInfoProvider;
+	private readonly string _tracksFolder;
 
 	private List<string> _tracksIds = new();
 	private Playlist _currentPlaylist;
 	private int _currentOffset = 0;
 	private readonly Dictionary<string, List<string>> _customPlaylistCache = new();
 
-	public TrackRepository(YandexMusicApi api, AuthStorage storage)
+	public TrackRepository(YandexMusicApi api, AuthStorage storage, string tracksFolder)
 	{
 		_api = api;
 		_storage = storage;
+		_tracksFolder = tracksFolder;
 		_trackInfoProvider = new TrackInfoProvider(api, storage);
 	}
 
@@ -41,8 +43,12 @@ public class TrackRepository : ITrackRepository
 				{
 					Description = "Треки, которые вам понравились",
 					TrackCount = likedTracksCount
+				},
+				new Playlist("Загруженные", PlaylistType.Cached)
+				{
+					Description = "Треки из локального кеша",
+					TrackCount = GetCachedTracksCount()
 				}
-
 			];
 
 			foreach (YResponse<YPlaylist> yResponse in yResponses)
@@ -78,6 +84,9 @@ public class TrackRepository : ITrackRepository
 				case PlaylistType.Custom:
 					await SetCustomPlaylist(playlist);
 					break;
+				case PlaylistType.Cached:
+					await SetCachedPlaylist(playlist);
+					break;
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
@@ -92,6 +101,9 @@ public class TrackRepository : ITrackRepository
 
 	private Task SetCustomPlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, () => LoadCustomPlaylistAsync(playlist.PlaylistName));
+
+	private Task SetCachedPlaylist(Playlist playlist)
+		=> SetPlaylistAsync(playlist, LoadCachedTracksAsync);
 
 	private Task SetFavorite(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadFavoritesAsync);
@@ -149,6 +161,30 @@ public class TrackRepository : ITrackRepository
 			var day = await _api.Playlist.OfTheDayAsync(_storage);
 			return day.Result.Tracks.Select(t => t.Id).ToList();
 		});
+
+	private Task<List<string>> LoadCachedTracksAsync()
+		=> Task.Run(() =>
+		{
+			if (!Directory.Exists(_tracksFolder))
+			{
+				return new List<string>();
+			}
+
+			return Directory.GetFiles(_tracksFolder, "*.mp3")
+				.Select(Path.GetFileNameWithoutExtension)
+				.Where(id => !string.IsNullOrEmpty(id))
+				.ToList()!;
+		});
+
+	public int GetCachedTracksCount()
+	{
+		if (!Directory.Exists(_tracksFolder))
+		{
+			return 0;
+		}
+
+		return Directory.GetFiles(_tracksFolder, "*.mp3").Length;
+	}
 
 	public async Task<IEnumerable<Track>> GetNextTracks(int tracksPerBatch)
 	{

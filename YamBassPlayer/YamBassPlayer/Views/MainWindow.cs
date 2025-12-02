@@ -64,7 +64,7 @@ namespace YamBassPlayer.Views
 
             _trackFileProvider = new TrackFileProvider(api, storage, TracksFolder);
 
-            ITrackRepository trackRepository = new TrackRepository(api, storage);
+            ITrackRepository trackRepository = new TrackRepository(api, storage, TracksFolder);
             _playlistsPresenter = new PlaylistsPresenter(playlistsView, trackRepository);
             _tracksPresenter = new TracksPresenter(tracksView, _trackFileProvider, trackRepository);
             _tracksPresenter.OnTrackForPlaySelected += OnTrackForPlaySelected;

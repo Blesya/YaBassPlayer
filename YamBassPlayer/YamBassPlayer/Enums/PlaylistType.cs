@@ -4,6 +4,7 @@
 	{
 		Favorite,
 		PlaylistOfTheDaily,
-		Custom
+		Custom,
+		Cached
 	}
 }
