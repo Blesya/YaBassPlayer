@@ -106,7 +106,7 @@ namespace YamBassPlayer.Views
                     return;
 
                 _playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
-                Console.Title = trackId;
+                Console.Title = $"{track.Artist} - {track.Title}";
                 AudioPlayer.Play(filePath);
             }
             catch (Exception exception)
