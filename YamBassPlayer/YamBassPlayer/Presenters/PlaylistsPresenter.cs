@@ -28,7 +28,11 @@ namespace YamBassPlayer.Presenters
 			var playlists = await _trackRepository.GetPlaylists();
 			_playlists = playlists.ToList();
 			_view.SetPlaylists(_playlists);
-            PlaylistChosen?.Invoke(_playlists[0]);
+
+            if (_playlists.Any())
+            {
+                PlaylistChosen?.Invoke(_playlists.First());
+            }
         }
 
 		private void OnPlaylistSelected(int index)
