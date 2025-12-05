@@ -5,8 +5,6 @@ namespace YamBassPlayer.Views
     public sealed class SpectrumView : View
     {
         public int Bars { get; set; } = 25;
-        public bool TestMode { get; set; } = true;
-
         private float[] _fft = new float[128];
         private readonly float[] _smoothed;
         private readonly float[] _peaks;
@@ -31,7 +29,6 @@ namespace YamBassPlayer.Views
                 return;
 
             _fft = fft;
-            TestMode = false;
             SetNeedsDisplay();
         }
 
@@ -47,27 +44,18 @@ namespace YamBassPlayer.Views
 
             for (int i = 0; i < width; i++)
             {
-                float rawValue;
+                var rawValue = 0f;
+                int start = i * fftStep;
+                int end = start + fftStep;
 
-                if (TestMode)
-                {
-                    rawValue = 1f;
-                }
-                else
-                {
-                    rawValue = 0f;
-                    int start = i * fftStep;
-                    int end = start + fftStep;
+                for (int j = start; j < end; j++)
+                    rawValue += _fft[j];
 
-                    for (int j = start; j < end; j++)
-                        rawValue += _fft[j];
+                rawValue /= fftStep;
 
-                    rawValue /= fftStep;
+                float k = ((float)Math.Log2(i + 1.3d)) * 10f;
 
-                    float k = ((float)Math.Log2(i + 1.3d)) * 10f;
-
-                    rawValue *= k;
-                }
+                rawValue *= k;
 
                 rawValue = Math.Clamp(rawValue, 0f, 1f);
 

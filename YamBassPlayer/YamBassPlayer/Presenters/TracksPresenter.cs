@@ -9,49 +9,33 @@ namespace YamBassPlayer.Presenters
 		private readonly TracksView _view;
 		private readonly TrackFileProvider _trackFileProvider;
 		private readonly ITrackRepository _trackRepository;
+		private readonly PlaybackQueue _playbackQueue;
 
 		private List<Track> _tracks = new();
 
 		private const int TracksPerBatch = 50;
 
-		private int _currentPlayedIndex = 0;
-
 		public event Action<Track>? OnTrackChosen;
-		public event Action<Track> OnTrackForPlaySelected;
 
-		public TracksPresenter(TracksView view, TrackFileProvider trackFileProvider, ITrackRepository trackRepository)
+		public PlaybackQueue PlaybackQueue => _playbackQueue;
+
+		public TracksPresenter(TracksView view, TrackFileProvider trackFileProvider, ITrackRepository trackRepository, PlaybackQueue playbackQueue)
 		{
 			_view = view;
 			_trackFileProvider = trackFileProvider;
 			_trackRepository = trackRepository;
+			_playbackQueue = playbackQueue;
 
 			_view.OnTrackSelected += OnTrackSelected;
 			_view.NeedMoreTracks += OnNeedMoreTracks;
 			_view.OnCellActivated += ViewOnTrackSelected;
-
-			AudioPlayer.OnTrackEnded += OnTrackEnded;
-		}
-
-		private async void OnTrackEnded(object? sender, EventArgs e)
-		{
-			await Task.Run(() =>
-			{
-				int trackNumber = ++_currentPlayedIndex;
-				if (trackNumber == _tracks.Count - 1)
-				{
-					trackNumber = 0;
-					_currentPlayedIndex = 0;
-				}
-
-				ViewOnTrackSelected(trackNumber);
-			});
 		}
 
 		public async Task LoadTracksFor(Playlist playlist)
 		{
 			await _trackRepository.SetPlaylist(playlist);
 
-			IEnumerable<Track> trackBatch = await _trackRepository.GetNextTracks(TracksPerBatch);
+			IEnumerable<Track> trackBatch = await _trackRepository.GetCachedTracksOrMinimum(TracksPerBatch);
 			_tracks = trackBatch.ToList();
 				
 			if (_tracks.Count == 0)
@@ -66,10 +50,11 @@ namespace YamBassPlayer.Presenters
 
 		private void ViewOnTrackSelected(int trackNumber)
 		{
-			_currentPlayedIndex = trackNumber;
-			Track track = _tracks[trackNumber];
+			var allTrackIds = _trackRepository.GetAllTrackIds();
+			if (trackNumber < 0 || trackNumber >= allTrackIds.Count)
+				return;
 
-			OnTrackForPlaySelected?.Invoke(track);
+			_playbackQueue.SetQueue(allTrackIds, trackNumber);
 		}
 
 		private void OnTrackSelected(int index)

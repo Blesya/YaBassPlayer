@@ -1,5 +1,5 @@
 ﻿using Microsoft.Data.Sqlite;
-
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
@@ -93,11 +93,10 @@ namespace YamBassPlayer
                 }
             }
 
-            // Шаг 4: Возвращаем итоговую коллекцию
             return tracksResult;
         }
 
-        public async Task<Track?> GetTrackInfoById(string id)
+        public async Task<Track> GetTrackInfoById(string id)
         {
             string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
             await using var connection = new SqliteConnection($"Data Source={dbPath}");
@@ -118,7 +117,11 @@ namespace YamBassPlayer
                 return new Track(title, artist, album, id);
             }
 
-            return await TryGetFromApi(id);
+            Track? track = await TryGetFromApi(id);
+            if (track == null)
+                throw new ArgumentNullException(nameof(track), $"Не удалось получить информацию о треке: {id}");
+
+            return track;
         }
 
         private async Task<Track?> TryGetFromApi(string id)
@@ -131,15 +134,7 @@ namespace YamBassPlayer
                 return null;
             }
 
-            string artists = track.Artists != null
-                ? string.Join(", ", track.Artists.Select(a => a.Name))
-                : "Неизвестный исполнитель";
-
-            string album = track.Albums != null && track.Albums.Any()
-                ? track.Albums.First().Title
-                : "";
-
-            var trackVm = new Track(track.Title, artists, album, track.Id);
+            Track trackVm = track.ToTrack();
             await SaveAsync(trackVm);
 
             return trackVm;
@@ -162,6 +157,33 @@ namespace YamBassPlayer
             cmd.Parameters.AddWithValue("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
             await cmd.ExecuteNonQueryAsync();
+        }
+
+
+        public async Task<bool> IsTrackCached(string trackId)
+        {
+            string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+            await using var connection = new SqliteConnection($"Data Source={dbPath}");
+            await connection.OpenAsync();
+
+            await using SqliteCommand cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM Tracks WHERE TrackId = @id LIMIT 1";
+            cmd.Parameters.AddWithValue("@id", trackId);
+
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null;
+        }
+
+        public async Task<int> CountCachedTracks(IEnumerable<string> trackIds)
+        {
+            int count = 0;
+            foreach (string trackId in trackIds)
+            {
+                if (!await IsTrackCached(trackId))
+                    break;
+                count++;
+            }
+            return count;
         }
     }
 }

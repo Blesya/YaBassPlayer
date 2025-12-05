@@ -7,5 +7,9 @@ namespace YamBassPlayer.Services
 		Task<IEnumerable<Playlist>> GetPlaylists();
 		Task SetPlaylist(Playlist playlist);
 		Task<IEnumerable<Track>> GetNextTracks(int tracksPerBatch);
+        
+		IReadOnlyList<string> GetAllTrackIds();
+
+		Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount);
 	}
 }

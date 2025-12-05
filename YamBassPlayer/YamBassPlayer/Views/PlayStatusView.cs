@@ -9,9 +9,13 @@ public sealed class PlayStatusView : View
     private readonly Button _playButton;
     private readonly Button _stopButton;
     private readonly ProgressBar _progressBar;
+    private readonly Button _prevButton;
+    private readonly Button _nextButton;
 
     public event Action? OnPlayClicked;
     public event Action? OnStopClicked;
+    public event Action? OnPrevClicked;
+    public event Action? OnNextClicked;
     public event Action<int>? OnSeekRequested;
 
     public PlayStatusView()
@@ -42,6 +46,22 @@ public sealed class PlayStatusView : View
             Text = "Stop"
         };
         _stopButton.Clicked += () => OnStopClicked?.Invoke();
+
+        _prevButton = new Button
+        {
+            X = Pos.Right(_stopButton) + 1,
+            Y = 0,
+            Text = "Prev"
+        };
+        _prevButton.Clicked += () => OnPrevClicked?.Invoke();
+
+        _nextButton = new Button
+        {
+            X = Pos.Right(_prevButton) + 1,
+            Y = 0,
+            Text = "Next"
+        };
+        _nextButton.Clicked += () => OnNextClicked?.Invoke();
 
         _progressBar = new ProgressBar
         {
@@ -79,7 +99,7 @@ public sealed class PlayStatusView : View
             Text = "Готов к работе"
         };
 
-        _panel.Add(_playButton, _stopButton, _progressBar, _statusLabel);
+        _panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _progressBar, _statusLabel);
         Add(_panel);
     }
 
