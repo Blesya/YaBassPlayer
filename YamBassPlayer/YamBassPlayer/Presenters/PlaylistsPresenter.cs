@@ -1,4 +1,5 @@
-﻿using YamBassPlayer.Models;
+﻿using System;
+using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 
@@ -27,7 +28,8 @@ namespace YamBassPlayer.Presenters
 			var playlists = await _trackRepository.GetPlaylists();
 			_playlists = playlists.ToList();
 			_view.SetPlaylists(_playlists);
-		}
+            PlaylistChosen?.Invoke(_playlists[0]);
+        }
 
 		private void OnPlaylistSelected(int index)
 		{

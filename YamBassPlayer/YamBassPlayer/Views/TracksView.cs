@@ -6,97 +6,101 @@ namespace YamBassPlayer.Views;
 
 public sealed class TracksView : View
 {
-	private readonly ScrollableTableView _table;
-	private readonly DataTable _dataTable;
-	private bool _isLoadingMore;
+    private readonly ScrollableTableView _table;
+    private readonly DataTable _dataTable;
+    private bool _isLoadingMore;
 
-	public event Action<int>? OnTrackSelected;
-	public event Action<int>? OnCellActivated;
-	public event Action? NeedMoreTracks;
+    public event Action<int>? OnTrackSelected;
+    public event Action<int>? OnCellActivated;
+    public event Action? NeedMoreTracks;
 
-	public TracksView()
-	{
-		Width = Dim.Fill();
-		Height = Dim.Fill();
+    public TracksView()
+    {
+        Width = Dim.Fill();
+        Height = Dim.Fill();
 
-		_dataTable = new DataTable();
-		_dataTable.Columns.Add("№", typeof(int));
-		_dataTable.Columns.Add("Исполнитель", typeof(string));
-		_dataTable.Columns.Add("Название", typeof(string));
-		_dataTable.Columns.Add("Альбом", typeof(string));
+        _dataTable = new DataTable();
+        _dataTable.Columns.Add("№", typeof(string));
+        _dataTable.Columns.Add("Исполнитель", typeof(string));
+        _dataTable.Columns.Add("Название", typeof(string));
+        _dataTable.Columns.Add("Альбом", typeof(string));
 
-		_table = new ScrollableTableView
-		{
-			Width = Dim.Fill(),
-			Height = Dim.Fill(),
-			Table = _dataTable,
-			FullRowSelect = true,
-		};
-		
-		_table.OnScroll += CheckNeedMoreTracks;
+        _table = new ScrollableTableView
+        {
+            Width = Dim.Fill(),
+            Height = Dim.Fill(),
+            Table = _dataTable,
+            FullRowSelect = true,
+        };
 
-		_table.SelectedCellChanged += args =>
-		{
-			OnTrackSelected?.Invoke(args.NewRow);
-			CheckNeedMoreTracks();
-		};
+        _table.OnScroll += CheckNeedMoreTracks;
 
-		_table.CellActivated += CellActivated;
+        _table.SelectedCellChanged += args =>
+        {
+            OnTrackSelected?.Invoke(args.NewRow);
+            CheckNeedMoreTracks();
+        };
 
-		Add(_table);
-	}
+        _table.CellActivated += CellActivated;
 
-	private void CellActivated(TableView.CellActivatedEventArgs cell)
-	{
-		OnCellActivated?.Invoke(cell.Row);
-	}
+        Add(_table);
+    }
 
-	private void CheckNeedMoreTracks()
-	{
-		if (!_isLoadingMore && _table.RowOffset >= _dataTable.Rows.Count - 30)
-		{
-			_isLoadingMore = true;
-			_table.SetSelection(0, _dataTable.Rows.Count - 1, false);
-			NeedMoreTracks?.Invoke();
-		}
-	}
+    private void CellActivated(TableView.CellActivatedEventArgs cell)
+    {
+        OnCellActivated?.Invoke(cell.Row);
+    }
 
-	public void SetTracks(IEnumerable<Track> tracks)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_dataTable.Rows.Clear();
+    private void CheckNeedMoreTracks()
+    {
+        if (!_isLoadingMore && _table.RowOffset >= _dataTable.Rows.Count - 30)
+        {
+            _isLoadingMore = true;
+            _table.SetSelection(0, _dataTable.Rows.Count - 1, false);
+            NeedMoreTracks?.Invoke();
+        }
+    }
 
-			foreach (Track track in tracks)
-			{
-				_dataTable.Rows.Add(_dataTable.Rows.Count + 1, track.Artist, track.Title, track.Album);
-			}
+    public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+    {
+        Application.MainLoop.Invoke(() =>
+        {
+            _dataTable.Rows.Clear();
 
-			_table.Update();
-			_isLoadingMore = false;
-		});
-	}
+            foreach (Track track in tracks)
+            {
+                int number = _dataTable.Rows.Count + 1;
+                string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
+                _dataTable.Rows.Add(displayNumber, track.Artist, track.Title, track.Album);
+            }
 
-	public void AddTracks(IEnumerable<Track> tracks)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			foreach (Track track in tracks)
-			{
-				_dataTable.Rows.Add(_dataTable.Rows.Count + 1, track.Artist, track.Title, track.Album);
-			}
+            _table.Update();
+            _isLoadingMore = false;
+        });
+    }
 
-			_table.Update();
-			_isLoadingMore = false;
-		});
-	}
+    public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+    {
+        Application.MainLoop.Invoke(() =>
+        {
+            foreach (Track track in tracks)
+            {
+                int number = _dataTable.Rows.Count + 1;
+                string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
+                _dataTable.Rows.Add(displayNumber, track.Artist, track.Title, track.Album);
+            }
 
-	public void ClearTracks()
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_dataTable.Rows.Clear();
-			_table.Update();
-		});
-	}
+            _table.Update();
+            _isLoadingMore = false;
+        });
+    }
+
+    public void ClearTracks()
+    {
+        Application.MainLoop.Invoke(() =>
+        {
+            _dataTable.Rows.Clear();
+            _table.Update();
+        });
+    }
 }
