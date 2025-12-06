@@ -31,11 +31,17 @@
               SkipUnchangedFiles="true" />
         <Copy SourceFiles="libs\libbass.dylib"
               DestinationFolder="$(OutputPath)"
+              SkipUnchangedFiles="true" />        
+        <Copy SourceFiles="libs\libbass.so"
+              DestinationFolder="$(OutputPath)"
               SkipUnchangedFiles="true" />
         <Copy SourceFiles="libs\bass.dll"
               DestinationFolder="$(PublishDir)"
               SkipUnchangedFiles="true" />
         <Copy SourceFiles="libs\libbass.dylib"
+              DestinationFolder="$(PublishDir)"
+              SkipUnchangedFiles="true" />        
+        <Copy SourceFiles="libs\libbass.so"
               DestinationFolder="$(PublishDir)"
               SkipUnchangedFiles="true" />
     </Target>
