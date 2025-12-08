@@ -10,7 +10,7 @@ namespace YamBassPlayer;
 
 internal class Program
 {
-    private static async Task Main(string[] args)
+    private static Task Main(string[] args)
     {
         try
         {
@@ -25,7 +25,7 @@ internal class Program
                 if (tokenDialog.Cancelled || string.IsNullOrWhiteSpace(tokenDialog.Token))
                 {
                     Application.Shutdown();
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 AppConfiguration.SaveToken(tokenDialog.Token);
@@ -41,18 +41,18 @@ internal class Program
                 MessageBox.ErrorQuery("Ошибка авторизации", 
                     "Не удалось авторизоваться. Проверьте токен.", "OK");
                 Application.Shutdown();
-                return;
+                return Task.CompletedTask;
             }
 
             ServicesProvider.Initialise(authService);
 
-            var audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
+            IAudioPlayer audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
             audioPlayer.Init();
 
             Application.Init();
             Themes.InitializeDefaults();
 				
-            var mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
+            View mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
             Application.Top.Add(mainWindow);
             Application.Run();
         }
@@ -60,5 +60,7 @@ internal class Program
         {
             exception.Handle();
         }
+
+        return Task.CompletedTask;
     }
 }
