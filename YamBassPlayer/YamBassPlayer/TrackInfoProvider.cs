@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.Sqlite;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
 using Yandex.Music.Api.Models.Common;
@@ -14,16 +15,10 @@ namespace YamBassPlayer
         private readonly AuthStorage _storage;
 
 
-        public TrackInfoProvider(YandexMusicApi api, AuthStorage storage)
+        public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection)
         {
             _api = api;
             _storage = storage;
-        
-            SQLitePCL.Batteries_V2.Init();
-
-            string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-            using var connection = new SqliteConnection($"Data Source={dbPath}");
-            connection.Open();
 
             using SqliteCommand cmd = connection.CreateCommand();
             cmd.CommandText = @"

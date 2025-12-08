@@ -19,6 +19,9 @@ namespace YamBassPlayer.Views
         private readonly PlaybackQueue _playbackQueue;
         private readonly TrackInfoProvider _trackInfoProvider;
         private SplashScreenView? _splashScreen;
+        private readonly ListenTimer _listenTimer;
+        private readonly DatabaseProvider _databaseProvider;
+        private readonly HistoryService _historyService;
 
         public MainWindow(AuthService authService)
             : base(YamBassPlayerTitle)
@@ -51,9 +54,9 @@ namespace YamBassPlayer.Views
             SpectrumView spectrum = new SpectrumView()
             {
                 X = 0,
-                Y = Pos.Top(playStatusView) - 15,
+                Y = Pos.Top(playStatusView) - 25,
                 Width = 25,
-                Height = 15,
+                Height = 25,
                 Bars = 25
             };
 
@@ -63,9 +66,14 @@ namespace YamBassPlayer.Views
             _playbackQueue = new PlaybackQueue();
             _playbackQueue.OnTrackChanged += OnTrackForPlaySelected;
 
-            _trackInfoProvider = new TrackInfoProvider(authService.Api, authService.Storage);
+            _databaseProvider = new DatabaseProvider();
 
-            ITrackRepository trackRepository = new TrackRepository(authService.Api, authService.Storage, TracksFolder);
+            _trackInfoProvider = new TrackInfoProvider(authService.Api, authService.Storage, _databaseProvider.Connection);
+
+            _historyService = new HistoryService(_databaseProvider.Connection);
+            _listenTimer = new ListenTimer(_historyService);
+
+            ITrackRepository trackRepository = new TrackRepository(authService.Api, authService.Storage, _trackInfoProvider, TracksFolder, _historyService);
             _playlistsPresenter = new PlaylistsPresenter(playlistsView, trackRepository);
             _tracksPresenter = new TracksPresenter(tracksView, _trackFileProvider, trackRepository, _playbackQueue);
 
@@ -97,6 +105,8 @@ namespace YamBassPlayer.Views
             _splashScreen = new SplashScreenView();
             Application.Top.Add(_splashScreen);
             _playlistsPresenter.PlaylistChosen += PlaylistsPresenterOnPlaylistChosen;
+
+            _playStatusPresenter.OnStopClicked += () => _listenTimer?.OnTrackStopOrChange();
         }
 
         private async void OnTrackForPlaySelected(string trackId)
@@ -113,6 +123,7 @@ namespace YamBassPlayer.Views
                 _playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
                 Console.Title = $"{track.Artist} - {track.Title}";
                 AudioPlayer.Play(filePath);
+                _listenTimer.OnTrackStart(trackId);
             }
             catch (Exception exception)
             {

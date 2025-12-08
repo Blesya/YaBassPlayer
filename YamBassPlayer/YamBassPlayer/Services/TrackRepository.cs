@@ -16,6 +16,7 @@ public class TrackRepository : ITrackRepository
     private readonly AuthStorage _storage;
     private readonly TrackInfoProvider _trackInfoProvider;
     private readonly string _tracksFolder;
+    private readonly HistoryService _historyService;
 
     private List<string> _tracksIds = new();
     private Playlist _currentPlaylist;
@@ -23,12 +24,18 @@ public class TrackRepository : ITrackRepository
     private readonly Dictionary<string, List<string>> _customPlaylistCache = new();
     private readonly List<string> _favoritePlaylistCache = new();
 
-    public TrackRepository(YandexMusicApi api, AuthStorage storage, string tracksFolder)
+    public TrackRepository(
+        YandexMusicApi api,
+        AuthStorage storage,
+        TrackInfoProvider trackInfoProvider,
+        string tracksFolder,
+        HistoryService historyService)
     {
         _api = api;
         _storage = storage;
         _tracksFolder = tracksFolder;
-        _trackInfoProvider = new TrackInfoProvider(api, storage);
+        _historyService = historyService;
+        _trackInfoProvider = trackInfoProvider;
     }
 
     public async Task<IEnumerable<Playlist>> GetPlaylists()
@@ -53,6 +60,11 @@ public class TrackRepository : ITrackRepository
                 {
                     Description = "Треки из локального кеша",
                     TrackCount = GetCachedTracksCount()
+                },
+                new Playlist("Топ 10", PlaylistType.Top10)
+                {
+                    Description = "Топ 10 треков!",
+                    TrackCount = 10
                 }
             ];
 
@@ -105,6 +117,9 @@ public class TrackRepository : ITrackRepository
                 case PlaylistType.Cached:
                     await SetCachedPlaylist(playlist);
                     break;
+                case PlaylistType.Top10:
+                    await SetTop10Playlist(playlist);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -116,6 +131,18 @@ public class TrackRepository : ITrackRepository
             exception.Handle();
         }
     }
+
+    private Task SetTop10Playlist(Playlist playlist)
+        => SetPlaylistAsync(playlist, LoadTop10Playlist);
+
+    private Task<List<string>> LoadTop10Playlist()
+        => Task.Run(() =>
+        {
+            List<string> day = _historyService.GetTopTracks(10)
+                .Select(x => x.trackId)
+                .ToList();
+            return Task.FromResult(day);
+        });
 
     private Task SetCustomPlaylist(Playlist playlist)
         => SetPlaylistAsync(playlist, () => LoadCustomPlaylistAsync(playlist.PlaylistName));

@@ -5,6 +5,7 @@
 		Favorite,
 		PlaylistOfTheDaily,
 		Custom,
-		Cached
+		Cached,
+		Top10
 	}
 }
