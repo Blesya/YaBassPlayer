@@ -1,8 +1,8 @@
 using Terminal.Gui;
 
-namespace YamBassPlayer.Views;
+namespace YamBassPlayer.Views.Impl;
 
-public sealed class PlayStatusView : View
+public sealed class PlayStatusView : View, IPlayStatusView
 {
     private readonly Label _statusLabel;
     private readonly FrameView _panel;

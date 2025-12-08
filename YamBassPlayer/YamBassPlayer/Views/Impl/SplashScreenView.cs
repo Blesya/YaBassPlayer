@@ -1,12 +1,12 @@
 ﻿using Terminal.Gui;
 
-namespace YamBassPlayer.Views
+namespace YamBassPlayer.Views.Impl;
+
+internal class SplashScreenView : Window
 {
-    internal class SplashScreenView : Window
+    public SplashScreenView()
     {
-        public SplashScreenView()
-        {
-            var art = @"
+        var art = @"
                                                                           .-~~~-.                                       
                    .-~~~-.                                        .- ~ ~-(       )_ _                                   
            .- ~ ~-(       )_ _                                   /                     ~ -.                             
@@ -33,37 +33,36 @@ namespace YamBassPlayer.Views
                                                                                                                         
                         ";
 
-            View artView = CreateCenteredAsciiArt(art);
-            Add(artView);
+        View artView = CreateCenteredAsciiArt(art);
+        Add(artView);
 
-        }
+    }
 
-        public sealed override void Add(View view)
+    public sealed override void Add(View view)
+    {
+        base.Add(view);
+    }
+
+
+    public static View CreateCenteredAsciiArt(string art)
+    {
+        var trimmed = art.Trim('\r', '\n');
+
+        var lines = trimmed.Split('\n');
+        int artWidth = lines.Max(l => l.Replace("\r", "").Length);
+        int artHeight = lines.Length;
+
+        var label = new Label(trimmed)
         {
-            base.Add(view);
-        }
+            X = Pos.Center(),
+            Y = Pos.Center(),
+            Width = artWidth,
+            Height = artHeight,
+            TextAlignment = TextAlignment.Left,
+            VerticalTextAlignment = VerticalTextAlignment.Top,
+            AutoSize = false,
+        };
 
-
-        public static View CreateCenteredAsciiArt(string art)
-        {
-            var trimmed = art.Trim('\r', '\n');
-
-            var lines = trimmed.Split('\n');
-            int artWidth = lines.Max(l => l.Replace("\r", "").Length);
-            int artHeight = lines.Length;
-
-            var label = new Label(trimmed)
-            {
-                X = Pos.Center(),
-                Y = Pos.Center(),
-                Width = artWidth,
-                Height = artHeight,
-                TextAlignment = TextAlignment.Left,
-                VerticalTextAlignment = VerticalTextAlignment.Top,
-                AutoSize = false,
-            };
-
-            return label;
-        }
+        return label;
     }
 }

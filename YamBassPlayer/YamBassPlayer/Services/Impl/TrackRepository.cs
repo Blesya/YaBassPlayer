@@ -8,15 +8,15 @@ using Yandex.Music.Api.Models.Library;
 using Yandex.Music.Api.Models.Playlist;
 using Yandex.Music.Api.Models.Track;
 
-namespace YamBassPlayer.Services;
+namespace YamBassPlayer.Services.Impl;
 
 public class TrackRepository : ITrackRepository
 {
     private readonly YandexMusicApi _api;
     private readonly AuthStorage _storage;
-    private readonly TrackInfoProvider _trackInfoProvider;
+    private readonly ITrackInfoProvider _trackInfoProvider;
     private readonly string _tracksFolder;
-    private readonly HistoryService _historyService;
+    private readonly IHistoryService _historyService;
 
     private List<string> _tracksIds = new();
     private Playlist _currentPlaylist;
@@ -27,9 +27,9 @@ public class TrackRepository : ITrackRepository
     public TrackRepository(
         YandexMusicApi api,
         AuthStorage storage,
-        TrackInfoProvider trackInfoProvider,
+        ITrackInfoProvider trackInfoProvider,
         string tracksFolder,
-        HistoryService historyService)
+        IHistoryService historyService)
     {
         _api = api;
         _storage = storage;

@@ -2,9 +2,9 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
 
-namespace YamBassPlayer.Views;
+namespace YamBassPlayer.Views.Impl;
 
-public sealed class TracksView : View
+public sealed class TracksView : View, ITracksView
 {
     private readonly ScrollableTableView _table;
     private readonly DataTable _dataTable;

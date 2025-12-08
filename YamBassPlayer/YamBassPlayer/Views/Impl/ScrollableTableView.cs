@@ -1,6 +1,6 @@
 ﻿using Terminal.Gui;
 
-namespace YamBassPlayer.Views;
+namespace YamBassPlayer.Views.Impl;
 
 internal sealed class ScrollableTableView : TableView
 {

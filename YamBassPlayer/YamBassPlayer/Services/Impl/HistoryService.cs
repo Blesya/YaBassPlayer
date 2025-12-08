@@ -1,8 +1,8 @@
 ﻿using Microsoft.Data.Sqlite;
 
-namespace YamBassPlayer.Services;
+namespace YamBassPlayer.Services.Impl;
 
-public sealed class HistoryService
+public sealed class HistoryService : IHistoryService
 {
     private readonly SqliteConnection _connection;
 

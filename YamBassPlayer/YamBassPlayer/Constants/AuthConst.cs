@@ -1,9 +1,8 @@
 ﻿using YamBassPlayer.Configuration;
 
-namespace YamBassPlayer.Constants
+namespace YamBassPlayer.Constants;
+
+public class AuthConst
 {
-	public class AuthConst
-	{
-		public static string TOKEN => AppConfiguration.YandexMusicToken;
-	}
+    public static string TOKEN => AppConfiguration.YandexMusicToken;
 }
