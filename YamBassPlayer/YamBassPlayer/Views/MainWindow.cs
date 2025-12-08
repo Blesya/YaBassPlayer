@@ -54,9 +54,9 @@ namespace YamBassPlayer.Views
             SpectrumView spectrum = new SpectrumView()
             {
                 X = 0,
-                Y = Pos.Top(playStatusView) - 25,
+                Y = Pos.Top(playStatusView) - 15,
                 Width = 25,
-                Height = 25,
+                Height = 15,
                 Bars = 25
             };
 
