@@ -14,10 +14,10 @@ private readonly Timer _timer;
 
 public event Action? OnPlayClicked;
 public event Action? OnStopClicked;
-    public event Action? OnPrevClicked;
-    public event Action? OnNextClicked;
+	public event Action? OnPrevClicked;
+	public event Action? OnNextClicked;
 
-    public PlayStatusPresenter(IPlayStatusView view, IAudioPlayer audioPlayer)
+	public PlayStatusPresenter(IPlayStatusView view, IAudioPlayer audioPlayer)
 {
 _view = view;
 _audioPlayer = audioPlayer;

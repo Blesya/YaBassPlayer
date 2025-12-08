@@ -2,9 +2,9 @@
 
 public enum PlaylistType
 {
-    Favorite,
-    PlaylistOfTheDaily,
-    Custom,
-    Cached,
-    Top10
+	Favorite,
+	PlaylistOfTheDaily,
+	Custom,
+	Cached,
+	Top10
 }

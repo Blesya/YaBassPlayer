@@ -5,9 +5,9 @@ namespace YamBassPlayer.Services;
 
 public interface IAuthService
 {
-    bool IsAuthorized { get; }
-    AuthStorage Storage { get; }
-    YandexMusicApi Api { get; }
-    Task<bool> AuthorizeAsync(string token);
-    Task<bool> AuthorizeFromConfigAsync();
+	bool IsAuthorized { get; }
+	AuthStorage Storage { get; }
+	YandexMusicApi Api { get; }
+	Task<bool> AuthorizeAsync(string token);
+	Task<bool> AuthorizeFromConfigAsync();
 }

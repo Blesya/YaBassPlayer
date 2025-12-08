@@ -5,7 +5,7 @@ namespace YamBassPlayer.Presenters;
 
 public interface ITracksPresenter
 {
-    event Action<Track>? OnTrackChosen;
-    IPlaybackQueue PlaybackQueue { get; }
-    Task LoadTracksFor(Playlist playlist);
+	event Action<Track>? OnTrackChosen;
+	IPlaybackQueue PlaybackQueue { get; }
+	Task LoadTracksFor(Playlist playlist);
 }
