@@ -18,9 +18,10 @@ public sealed class HistoryService
         cmd.CommandText =
             """
             CREATE TABLE IF NOT EXISTS listensHistory (
-                id       INTEGER PRIMARY KEY AUTOINCREMENT,
-                trackId  TEXT    NOT NULL,
-                utcTime  TEXT    NOT NULL
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                trackId          TEXT    NOT NULL,
+                utcTime          TEXT    NOT NULL,
+                utcOffsetMinutes INTEGER NOT NULL
             );
             """;
         cmd.ExecuteNonQuery();
@@ -28,15 +29,19 @@ public sealed class HistoryService
 
     public void LogListen(string trackId)
     {
+        var utcNow = DateTime.UtcNow;
+        var offset = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes;
+
         using var cmd = _connection.CreateCommand();
         cmd.CommandText =
             """
-            INSERT INTO listensHistory (trackId, utcTime)
-            VALUES ($t, $u);
+            INSERT INTO listensHistory (trackId, utcTime, utcOffsetMinutes)
+            VALUES ($t, $u, $o);
             """;
 
         cmd.Parameters.AddWithValue("$t", trackId);
-        cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$u", utcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$o", offset);
 
         cmd.ExecuteNonQuery();
     }
@@ -60,9 +65,7 @@ public sealed class HistoryService
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            string id = reader.GetString(0);
-            int count = reader.GetInt32(1);
-            result.Add((id, count));
+            result.Add((reader.GetString(0), reader.GetInt32(1)));
         }
 
         return result;
