@@ -4,7 +4,6 @@ using YamBassPlayer.Configuration;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
-using YamBassPlayer.Views;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer;
