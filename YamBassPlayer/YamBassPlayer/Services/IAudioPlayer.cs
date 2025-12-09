@@ -7,6 +7,8 @@ public interface IAudioPlayer
     void Init();
     void Play(string filePath, string trackName = "");
     int GetProgressInPercent();
+    TimeSpan GetCurrentPosition();
+    TimeSpan GetDuration();
     float[] ChannelGetData();
     void SeekToPercent(int percent);
     void Pause();

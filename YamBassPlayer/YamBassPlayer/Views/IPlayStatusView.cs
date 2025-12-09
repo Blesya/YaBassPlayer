@@ -9,5 +9,6 @@ public interface IPlayStatusView
     event Action<int>? OnSeekRequested;
     void SetPlayStatus(string status);
     void SetProgress(int percent);
+    void SetTime(TimeSpan current, TimeSpan duration);
     void SetTitle(string title);
 }

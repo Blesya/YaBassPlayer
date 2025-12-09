@@ -11,6 +11,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
     private readonly ProgressBar _progressBar;
     private readonly Button _prevButton;
     private readonly Button _nextButton;
+    private readonly Label _timeLabel;
 
     public event Action? OnPlayClicked;
     public event Action? OnStopClicked;
@@ -90,6 +91,15 @@ public sealed class PlayStatusView : View, IPlayStatusView
             OnSeekRequested?.Invoke(percent);
         };
 
+        _timeLabel = new Label
+        {
+            X = Pos.Right(_nextButton) + 2,
+            Y = 0,
+            Width = 20,
+            Height = 1,
+            Text = "00:00 / 00:00"
+        };
+
         _statusLabel = new Label
         {
             X = 1,
@@ -99,7 +109,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
             Text = "Готов к работе"
         };
 
-        _panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _progressBar, _statusLabel);
+        _panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _progressBar, _statusLabel);
         Add(_panel);
     }
 
@@ -124,6 +134,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
         Application.MainLoop.Invoke(() =>
         {
             _panel.Title = title;
+        });
+    }
+
+    public void SetTime(TimeSpan current, TimeSpan duration)
+    {
+        Application.MainLoop.Invoke(() =>
+        {
+            _timeLabel.Text = $"{current:mm\\:ss} / {duration:mm\\:ss}";
         });
     }
 }

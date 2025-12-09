@@ -37,10 +37,13 @@ _timer.Start();
 private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
 {
 int percent = _audioPlayer.GetProgressInPercent();
+TimeSpan current = _audioPlayer.GetCurrentPosition();
+TimeSpan duration = _audioPlayer.GetDuration();
 
 Application.MainLoop?.Invoke(() =>
 {
 _view.SetProgress(percent);
+_view.SetTime(current, duration);
 });
 }
 

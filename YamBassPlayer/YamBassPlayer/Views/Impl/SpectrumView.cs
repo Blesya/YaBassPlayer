@@ -1,4 +1,5 @@
 ﻿using Terminal.Gui;
+using Attribute = Terminal.Gui.Attribute;
 
 namespace YamBassPlayer.Views.Impl;
 
@@ -54,9 +55,7 @@ public sealed class SpectrumView : View
             rawValue /= fftStep;
 
             float k = ((float)Math.Log2(i + 1.3d)) * 10f;
-
             rawValue *= k;
-
             rawValue = Math.Clamp(rawValue, 0f, 1f);
 
             _smoothed[i] = _smoothed[i] * 0.7f + rawValue * 0.3f;
@@ -75,15 +74,27 @@ public sealed class SpectrumView : View
                     _peaks[i] = 0;
             }
 
+            float t = _smoothed[i];
+
+            Color peakColor = t switch
+            {
+                < 0.33f => Color.Green,
+                < 0.66f => Color.BrightYellow,
+                _ => Color.BrightRed
+            };
+
+            driver.SetAttribute(new Attribute(peakColor, Color.Black));
+
             for (int y = 0; y < barPixels; y++)
             {
                 Move(i, height - 1 - y);
                 driver.AddRune('█');
             }
-            int peakY = height - 1 - (int)_peaks[i];
 
+            int peakY = height - 1 - (int)_peaks[i];
             if (peakY >= 0 && peakY < height)
             {
+                driver.SetAttribute(new Attribute(Color.White, Color.Black));
                 Move(i, peakY);
                 driver.AddRune('░');
             }

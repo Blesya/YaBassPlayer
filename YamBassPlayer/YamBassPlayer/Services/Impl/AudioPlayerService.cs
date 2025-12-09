@@ -91,6 +91,48 @@ public class AudioPlayerService : IAudioPlayer
             return 0;
         }
     }
+    public TimeSpan GetCurrentPosition()
+    {
+        try
+        {
+            if (_currentStream == 0)
+                return TimeSpan.Zero;
+
+            long pos = Bass.ChannelGetPosition(_currentStream);
+            if (pos < 0)
+                return TimeSpan.Zero;
+
+            double seconds = Bass.ChannelBytes2Seconds(_currentStream, pos);
+            return TimeSpan.FromSeconds(Math.Max(0, seconds));
+        }
+        catch (Exception e)
+        {
+            e.Handle();
+            return TimeSpan.Zero;
+        }
+    }
+
+    public TimeSpan GetDuration()
+    {
+        try
+        {
+            if (_currentStream == 0)
+                return TimeSpan.Zero;
+
+            long len = Bass.ChannelGetLength(_currentStream);
+            if (len < 0)
+                return TimeSpan.Zero;
+
+            double seconds = Bass.ChannelBytes2Seconds(_currentStream, len);
+            return TimeSpan.FromSeconds(Math.Max(0, seconds));
+        }
+        catch (Exception e)
+        {
+            e.Handle();
+            return TimeSpan.Zero;
+        }
+    }
+
 
     public float[] ChannelGetData()
     {
