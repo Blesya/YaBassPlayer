@@ -28,6 +28,7 @@ public static class ServicesProvider
 
 		// Регистрация сервисов
 		builder.RegisterType<AudioPlayerService>().As<IAudioPlayer>().SingleInstance();
+		builder.RegisterType<BassEqualizer>().As<IBassEqualizer>().SingleInstance();
 		builder.RegisterType<DatabaseProvider>().As<IDatabaseProvider>().SingleInstance();
 			
 		builder.Register(c => c.Resolve<IDatabaseProvider>().Connection)
@@ -63,6 +64,7 @@ public static class ServicesProvider
 		builder.RegisterType<PlayStatusPresenter>().As<IPlayStatusPresenter>().SingleInstance();
 		builder.RegisterType<PlaylistsPresenter>().As<IPlaylistsPresenter>().SingleInstance();
 		builder.RegisterType<TracksPresenter>().As<ITracksPresenter>().SingleInstance();
+		builder.RegisterType<EqualizerPresenter>().As<IEqualizerPresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();

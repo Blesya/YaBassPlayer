@@ -9,6 +9,7 @@
     <ItemGroup>
         <PackageReference Include="KM.Yandex.Music.Api" Version="2.0.4" />
         <PackageReference Include="ManagedBass" Version="4.0.2" />
+        <PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
         <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
@@ -28,10 +29,14 @@
 
     <Target Name="CopyBass" AfterTargets="Build;Publish">
         <Copy SourceFiles="libs\bass.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="libs\bass_fx.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
         <Copy SourceFiles="libs\libbass.dylib" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />        
+        <Copy SourceFiles="libs\libbass_fx.dylib" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />        
         <Copy SourceFiles="libs\libbass.so" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
         <Copy SourceFiles="libs\bass.dll" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="libs\bass_fx.dll" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
         <Copy SourceFiles="libs\libbass.dylib" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />        
+        <Copy SourceFiles="libs\libbass_fx.dylib" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />        
         <Copy SourceFiles="libs\libbass.so" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
     </Target>
 </Project>

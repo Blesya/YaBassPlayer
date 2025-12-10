@@ -1,4 +1,4 @@
-namespace YamBassPlayer.Services;
+﻿namespace YamBassPlayer.Services;
 
 public interface IAudioPlayer
 {
@@ -15,4 +15,5 @@ public interface IAudioPlayer
     void Resume();
     void Stop();
     void Free();
+    void SetEqualizerBand(int bandIndex, float gain);
 }
