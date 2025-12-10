@@ -89,6 +89,26 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	public static string? GetTheme()
+	{
+		try
+		{
+			var root = LoadJsonNode();
+			return root["Theme"]?.GetValue<string>();
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	public static void SaveTheme(string themeName)
+	{
+		var root = LoadJsonNode();
+		root["Theme"] = themeName;
+		SaveJsonNode(root);
+	}
+
 	private static JsonObject LoadJsonNode()
 	{
 		if (File.Exists(ConfigFilePath))
