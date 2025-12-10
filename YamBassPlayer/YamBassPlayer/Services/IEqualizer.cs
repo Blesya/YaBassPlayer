@@ -4,5 +4,6 @@
     {
         void AttachToStream(int streamHandle);
         void SetBand(int index, float gain);
+        float[] GetBands();
     }
 }
