@@ -6,14 +6,17 @@ namespace YamBassPlayer.Services.Impl;
 
 public class AudioPlayerService : IAudioPlayer
 {
-    private readonly IBassEqualizer _bassEqualizer;
-    private int _currentStream;
+	private readonly IBassEqualizer _bassEqualizer;
+	private int _currentStream;
+	private const double PreloadSecondsBeforeEnd = 30.0;
+	
 	public event EventHandler? OnTrackEnded;
+	public event EventHandler? OnPreloadRequested;
 
-    public AudioPlayerService(IBassEqualizer bassEqualizer)
-    {
-        _bassEqualizer = bassEqualizer;
-    }
+	public AudioPlayerService(IBassEqualizer bassEqualizer)
+	{
+		_bassEqualizer = bassEqualizer;
+	}
 
 	public bool IsPlayed =>
 		Bass.ChannelIsActive(_currentStream) == PlaybackState.Playing;
@@ -23,7 +26,7 @@ public class AudioPlayerService : IAudioPlayer
 		if (!Bass.Init())
 		{
 			MessageBox.ErrorQuery("Ошибка", "Не удалось инициализировать BASS", "OK");
-        }
+		}
 	}
 
 	public void Play(string filePath, string trackName = "")
@@ -40,9 +43,10 @@ public class AudioPlayerService : IAudioPlayer
 				throw new Exception("Не удалось создать аудиопоток");
 
 			Bass.ChannelSetSync(_currentStream, SyncFlags.End, 0, OnBassTrackEnded);
+			SetupPreloadSync();
 			_bassEqualizer.AttachToStream(_currentStream);
 			Bass.ChannelPlay(_currentStream);
-        }
+		}
 		catch (Exception ex)
 		{
 			ex.Handle();
@@ -82,6 +86,35 @@ public class AudioPlayerService : IAudioPlayer
 	private void OnBassTrackEnded(int handle, int channel, int data, IntPtr user)
 	{
 		OnTrackEnded?.Invoke(this, EventArgs.Empty);
+	}
+
+	private void SetupPreloadSync()
+	{
+		try
+		{
+			long len = Bass.ChannelGetLength(_currentStream);
+			if (len <= 0) return;
+
+			double duration = Bass.ChannelBytes2Seconds(_currentStream, len);
+			if (duration <= PreloadSecondsBeforeEnd)
+			{
+				return;
+			}
+
+			double preloadTime = duration - PreloadSecondsBeforeEnd;
+			long preloadPos = Bass.ChannelSeconds2Bytes(_currentStream, preloadTime);
+
+			Bass.ChannelSetSync(_currentStream, SyncFlags.Position, preloadPos, OnPreloadSync);
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
+	}
+
+	private void OnPreloadSync(int handle, int channel, int data, IntPtr user)
+	{
+		OnPreloadRequested?.Invoke(this, EventArgs.Empty);
 	}
 
 	public int GetProgressInPercent()
@@ -180,5 +213,5 @@ public class AudioPlayerService : IAudioPlayer
 	}
 
 	public void SetEqualizerBand(int bandIndex, float gain)
-        => _bassEqualizer.SetBand(bandIndex, gain);
+		=> _bassEqualizer.SetBand(bandIndex, gain);
 }

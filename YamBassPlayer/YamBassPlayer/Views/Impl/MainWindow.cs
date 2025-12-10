@@ -103,6 +103,8 @@ public sealed class MainWindow : Window
 		_playlistsPresenter.PlaylistChosen += PlaylistsPresenterOnPlaylistChosen;
 
 		_playStatusPresenter.OnStopClicked += () => _listenTimer.OnTrackStopOrChange();
+		
+		_audioPlayer.OnPreloadRequested += OnPreloadNextTrack;
 	}
 
 	private async void OnTrackForPlaySelected(string trackId)
@@ -135,6 +137,31 @@ public sealed class MainWindow : Window
 	{
 		await _tracksPresenter.LoadTracksFor(playlist);
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
+	}
+
+	private async void OnPreloadNextTrack(object? sender, EventArgs e)
+	{
+        try
+        {
+            var nextTrackId = _playbackQueue.PeekNextTrackId;
+            if (nextTrackId == null)
+                return;
+
+            if (!_trackFileProvider.IsTrackDownloaded(nextTrackId))
+            {
+                Track nextTrack = await _trackInfoProvider.GetTrackInfoById(nextTrackId);
+                _playStatusPresenter.SetTitle($"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}");
+                await _trackFileProvider.DownloadTrackAsync(nextTrackId);
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Handle();
+        }
+        finally
+        {
+            _playStatusPresenter.SetTitle("Управление воспроизведением");
+        }
 	}
 
 	private MenuBar CreateMenuBar()
