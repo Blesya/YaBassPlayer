@@ -17,6 +17,7 @@ public class TrackRepository : ITrackRepository
     private readonly ITrackInfoProvider _trackInfoProvider;
     private readonly string _tracksFolder;
     private readonly IHistoryService _historyService;
+    private readonly ILocalFavoriteService _localFavoriteService;
 
     private List<string> _tracksIds = new();
     private Playlist _currentPlaylist;
@@ -29,13 +30,15 @@ public class TrackRepository : ITrackRepository
         AuthStorage storage,
         ITrackInfoProvider trackInfoProvider,
         string tracksFolder,
-        IHistoryService historyService)
+        IHistoryService historyService,
+        ILocalFavoriteService localFavoriteService)
     {
         _api = api;
         _storage = storage;
         _tracksFolder = tracksFolder;
         _historyService = historyService;
         _trackInfoProvider = trackInfoProvider;
+        _localFavoriteService = localFavoriteService;
     }
 
     public async Task<IEnumerable<Playlist>> GetPlaylists()
@@ -49,12 +52,19 @@ public class TrackRepository : ITrackRepository
             _favoritePlaylistCache.AddRange(favoriteTrackIds);
             int likedTracksCount = favoriteTrackIds.Length;
 
+            var localFavoriteIds = await _localFavoriteService.GetAllFavoriteTrackIds();
+
             List<Playlist> playlists =
             [
                 new Playlist("Мои треки", PlaylistType.Favorite)
                 {
                     Description = "Треки, которые вам понравились",
                     TrackCount = likedTracksCount
+                },
+                new Playlist("Локальное Избранное", PlaylistType.LocalFavorite)
+                {
+                    Description = "Избранные треки (локально)",
+                    TrackCount = localFavoriteIds.Count
                 },
                 new Playlist("Загруженные", PlaylistType.Cached)
                 {
@@ -120,6 +130,9 @@ public class TrackRepository : ITrackRepository
                 case PlaylistType.Top10:
                     await SetTop10Playlist(playlist);
                     break;
+                case PlaylistType.LocalFavorite:
+                    await SetLocalFavoritePlaylist(playlist);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
@@ -152,6 +165,9 @@ public class TrackRepository : ITrackRepository
 
     private Task SetFavorite(Playlist playlist)
         => SetPlaylistAsync(playlist, LoadFavoritesAsync);
+
+    private Task SetLocalFavoritePlaylist(Playlist playlist)
+        => SetPlaylistAsync(playlist, LoadLocalFavoritesAsync);
 
     private Task SetPlaylistOfTheDay(Playlist playlist)
         => SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
@@ -200,6 +216,11 @@ public class TrackRepository : ITrackRepository
             //return liked.Result.Library.Tracks.Select(t => t.Id).ToList();
             return _favoritePlaylistCache;
         });
+
+    private async Task<List<string>> LoadLocalFavoritesAsync()
+    {
+        return await _localFavoriteService.GetAllFavoriteTrackIds();
+    }
 
     private Task<List<string>> LoadPlaylistOfTheDayAsync()
         => Task.Run(async () =>

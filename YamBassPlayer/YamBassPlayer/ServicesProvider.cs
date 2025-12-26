@@ -36,6 +36,7 @@ public static class ServicesProvider
 			.SingleInstance();
 			
 		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
+		builder.RegisterType<LocalFavoriteService>().As<ILocalFavoriteService>().SingleInstance();
 		builder.RegisterType<ListenTimer>().As<IListenTimer>().SingleInstance();
 		builder.RegisterType<PlaybackQueue>().As<IPlaybackQueue>().SingleInstance();
 			
@@ -52,7 +53,8 @@ public static class ServicesProvider
 			c.Resolve<AuthStorage>(),
 			c.Resolve<ITrackInfoProvider>(),
 			TracksFolder,
-			c.Resolve<IHistoryService>()
+			c.Resolve<IHistoryService>(),
+			c.Resolve<ILocalFavoriteService>()
 		)).As<ITrackRepository>().SingleInstance();
 
 		// Регистрация Views

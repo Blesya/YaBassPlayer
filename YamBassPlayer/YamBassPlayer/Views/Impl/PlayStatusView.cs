@@ -12,12 +12,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
     private readonly Button _prevButton;
     private readonly Button _nextButton;
     private readonly Label _timeLabel;
+    private readonly Button _favoriteButton;
 
     public event Action? OnPlayClicked;
     public event Action? OnStopClicked;
     public event Action? OnPrevClicked;
     public event Action? OnNextClicked;
     public event Action<int>? OnSeekRequested;
+    public event Action? OnFavoriteToggleClicked;
 
     public PlayStatusView()
     {
@@ -100,6 +102,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
             Text = "00:00 / 00:00"
         };
 
+        _favoriteButton = new Button
+        {
+            X = Pos.Right(_timeLabel) + 2,
+            Y = 0,
+            Text = "+"
+        };
+        _favoriteButton.Clicked += () => OnFavoriteToggleClicked?.Invoke();
+
         _statusLabel = new Label
         {
             X = 1,
@@ -109,7 +119,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
             Text = "Готов к работе"
         };
 
-        _panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _progressBar, _statusLabel);
+        _panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _progressBar, _statusLabel);
         Add(_panel);
     }
 
@@ -142,6 +152,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
         Application.MainLoop.Invoke(() =>
         {
             _timeLabel.Text = $"{current:mm\\:ss} / {duration:mm\\:ss}";
+        });
+    }
+
+    public void SetFavoriteState(bool isFavorite)
+    {
+        Application.MainLoop.Invoke(() =>
+        {
+            _favoriteButton.Text = isFavorite ? "-" : "+";
         });
     }
 }

@@ -6,5 +6,6 @@ public enum PlaylistType
     PlaylistOfTheDaily,
     Custom,
     Cached,
-    Top10
+    Top10,
+    LocalFavorite
 }

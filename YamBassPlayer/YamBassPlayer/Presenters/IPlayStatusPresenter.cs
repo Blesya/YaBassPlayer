@@ -8,4 +8,5 @@ public interface IPlayStatusPresenter
     event Action? OnNextClicked;
     void SetPlayStatus(string status);
     void SetTitle(string title);
+    void SetCurrentTrackId(string? trackId);
 }

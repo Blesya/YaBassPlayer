@@ -55,7 +55,7 @@ public sealed class MainWindow : Window
 		playStatusView.Height = 5;
 
 		playlistsView.X = 0;
-		playlistsView.Width = 25;
+		playlistsView.Width = 30;
 		playlistsView.Height = 25;
 
 		tracksView.X = Pos.Right(playlistsView);
@@ -122,6 +122,7 @@ public sealed class MainWindow : Window
 			Console.Title = $"{track.Artist} - {track.Title}";
 			_audioPlayer.Play(filePath);
 			_listenTimer.OnTrackStart(trackId);
+			_playStatusPresenter.SetCurrentTrackId(trackId);
 		}
 		catch (Exception exception)
 		{
