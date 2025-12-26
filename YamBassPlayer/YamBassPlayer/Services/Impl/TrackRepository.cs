@@ -10,49 +10,33 @@ using Yandex.Music.Api.Models.Track;
 
 namespace YamBassPlayer.Services.Impl;
 
-public class TrackRepository : ITrackRepository
+public class TrackRepository(
+    YandexMusicApi api,
+    AuthStorage storage,
+    ITrackInfoProvider trackInfoProvider,
+    string tracksFolder,
+    IHistoryService historyService,
+    ILocalFavoriteService localFavoriteService)
+    : ITrackRepository
 {
-    private readonly YandexMusicApi _api;
-    private readonly AuthStorage _storage;
-    private readonly ITrackInfoProvider _trackInfoProvider;
-    private readonly string _tracksFolder;
-    private readonly IHistoryService _historyService;
-    private readonly ILocalFavoriteService _localFavoriteService;
-
     private List<string> _tracksIds = new();
     private Playlist _currentPlaylist;
     private int _currentOffset = 0;
     private readonly Dictionary<string, List<string>> _customPlaylistCache = new();
     private readonly List<string> _favoritePlaylistCache = new();
 
-    public TrackRepository(
-        YandexMusicApi api,
-        AuthStorage storage,
-        ITrackInfoProvider trackInfoProvider,
-        string tracksFolder,
-        IHistoryService historyService,
-        ILocalFavoriteService localFavoriteService)
-    {
-        _api = api;
-        _storage = storage;
-        _tracksFolder = tracksFolder;
-        _historyService = historyService;
-        _trackInfoProvider = trackInfoProvider;
-        _localFavoriteService = localFavoriteService;
-    }
-
     public async Task<IEnumerable<Playlist>> GetPlaylists()
     {
         try
         {
-            IEnumerable<YResponse<YPlaylist>>? yResponses = await _api.Playlist.GetPersonalPlaylistsAsync(_storage);
+            IEnumerable<YResponse<YPlaylist>>? yResponses = await api.Playlist.GetPersonalPlaylistsAsync(storage);
 
-            YResponse<YLibraryTracks>? liked = await _api.Library.GetLikedTracksAsync(_storage);
+            YResponse<YLibraryTracks>? liked = await api.Library.GetLikedTracksAsync(storage);
             string[] favoriteTrackIds = liked.Result.Library.Tracks.Select(x => x.Id).ToArray();
             _favoritePlaylistCache.AddRange(favoriteTrackIds);
             int likedTracksCount = favoriteTrackIds.Length;
 
-            var localFavoriteIds = await _localFavoriteService.GetAllFavoriteTrackIds();
+            var localFavoriteIds = await localFavoriteService.GetAllFavoriteTrackIds();
 
             List<Playlist> playlists =
             [
@@ -84,7 +68,7 @@ public class TrackRepository : ITrackRepository
                 IEnumerable<Track> tracks = yTrackContainers.Select(yTrackContainer => yTrackContainer.Track.ToTrack());
                 foreach (Track track in tracks)
                 {
-                    await _trackInfoProvider.SaveAsync(track);
+                    await trackInfoProvider.SaveAsync(track);
                 }
 
                 List<string> trackIds = yTrackContainers.Select(t => t.Id).ToList();
@@ -151,7 +135,7 @@ public class TrackRepository : ITrackRepository
     private Task<List<string>> LoadTop10Playlist()
         => Task.Run(() =>
         {
-            List<string> day = _historyService.GetTopTracks(10)
+            List<string> day = historyService.GetTopTracks(10)
                 .Select(x => x.trackId)
                 .ToList();
             return Task.FromResult(day);
@@ -192,7 +176,7 @@ public class TrackRepository : ITrackRepository
                     return cachedIds;
                 }
 
-                var playlists = await _api.Playlist.GetPersonalPlaylistsAsync(_storage);
+                var playlists = await api.Playlist.GetPersonalPlaylistsAsync(storage);
                 var found = playlists.FirstOrDefault(x => x.Result.Title == playlistName)
                             ?? throw new InvalidOperationException($"Playlist '{playlistName}' not found");
 
@@ -219,25 +203,25 @@ public class TrackRepository : ITrackRepository
 
     private async Task<List<string>> LoadLocalFavoritesAsync()
     {
-        return await _localFavoriteService.GetAllFavoriteTrackIds();
+        return await localFavoriteService.GetAllFavoriteTrackIds();
     }
 
     private Task<List<string>> LoadPlaylistOfTheDayAsync()
         => Task.Run(async () =>
         {
-            var day = await _api.Playlist.OfTheDayAsync(_storage);
+            var day = await api.Playlist.OfTheDayAsync(storage);
             return day.Result.Tracks.Select(t => t.Id).ToList();
         });
 
     private Task<List<string>> LoadCachedTracksAsync()
         => Task.Run(() =>
         {
-            if (!Directory.Exists(_tracksFolder))
+            if (!Directory.Exists(tracksFolder))
             {
                 return new List<string>();
             }
 
-            return Directory.GetFiles(_tracksFolder, "*.mp3")
+            return Directory.GetFiles(tracksFolder, "*.mp3")
                 .Select(Path.GetFileNameWithoutExtension)
                 .Where(id => !string.IsNullOrEmpty(id))
                 .ToList()!;
@@ -245,12 +229,12 @@ public class TrackRepository : ITrackRepository
 
     public int GetCachedTracksCount()
     {
-        if (!Directory.Exists(_tracksFolder))
+        if (!Directory.Exists(tracksFolder))
         {
             return 0;
         }
 
-        return Directory.GetFiles(_tracksFolder, "*.mp3").Length;
+        return Directory.GetFiles(tracksFolder, "*.mp3").Length;
     }
 
     public async Task<IEnumerable<Track>> GetNextTracks(int tracksPerBatch)
@@ -266,7 +250,7 @@ public class TrackRepository : ITrackRepository
 
             List<Track> tracksResult = new List<Track>();
 
-            IEnumerable<Track> tracks = await _trackInfoProvider.GetTracksInfoByIds(slice);
+            IEnumerable<Track> tracks = await trackInfoProvider.GetTracksInfoByIds(slice);
 
             tracksResult.AddRange(tracks);
 
@@ -285,7 +269,7 @@ public class TrackRepository : ITrackRepository
     {
         try
         {
-            int cachedCount = await _trackInfoProvider.CountCachedTracks(_tracksIds);
+            int cachedCount = await trackInfoProvider.CountCachedTracks(_tracksIds);
 
             int countToLoad = Math.Max(cachedCount, minCount);
             countToLoad = Math.Min(countToLoad, _tracksIds.Count);
@@ -293,7 +277,7 @@ public class TrackRepository : ITrackRepository
             var idsToLoad = _tracksIds.Take(countToLoad).ToList();
             _currentOffset = countToLoad;
 
-            return await _trackInfoProvider.GetTracksInfoByIds(idsToLoad);
+            return await trackInfoProvider.GetTracksInfoByIds(idsToLoad);
         }
         catch (Exception exception)
         {

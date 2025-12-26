@@ -4,21 +4,15 @@ using YamBassPlayer.Extensions;
 
 namespace YamBassPlayer.Services.Impl;
 
-public class AudioPlayerService : IAudioPlayer
+public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 {
-	private readonly IBassEqualizer _bassEqualizer;
-	private int _currentStream;
+    private int _currentStream;
 	private const double PreloadSecondsBeforeEnd = 30.0;
 	
 	public event EventHandler? OnTrackEnded;
 	public event EventHandler? OnPreloadRequested;
 
-	public AudioPlayerService(IBassEqualizer bassEqualizer)
-	{
-		_bassEqualizer = bassEqualizer;
-	}
-
-	public bool IsPlayed =>
+    public bool IsPlayed =>
 		Bass.ChannelIsActive(_currentStream) == PlaybackState.Playing;
 
 	public void Init()
@@ -46,7 +40,7 @@ public class AudioPlayerService : IAudioPlayer
 
 			Bass.ChannelSetSync(_currentStream, SyncFlags.End, 0, OnBassTrackEnded);
 			SetupPreloadSync();
-			_bassEqualizer.AttachToStream(_currentStream);
+			bassEqualizer.AttachToStream(_currentStream);
 			Bass.ChannelPlay(_currentStream);
 		}
 		catch (Exception ex)
@@ -243,5 +237,5 @@ public class AudioPlayerService : IAudioPlayer
 	}
 
 	public void SetEqualizerBand(int bandIndex, float gain)
-		=> _bassEqualizer.SetBand(bandIndex, gain);
+		=> bassEqualizer.SetBand(bandIndex, gain);
 }

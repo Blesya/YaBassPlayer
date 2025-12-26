@@ -1,19 +1,11 @@
 ﻿namespace YamBassPlayer.Models;
 
-public class Track
+public class Track(string title, string artist, string album, string id)
 {
-    public Track(string title, string artist, string album, string id)
-    {
-        Title = title;
-        Artist = artist;
-        Album = album;
-        Id = id;
-    }
-
-    public string Title { get; }
-    public string Artist { get; }
-    public string Album { get; }
-    public string Id { get; }
+    public string Title { get; } = title;
+    public string Artist { get; } = artist;
+    public string Album { get; } = album;
+    public string Id { get; } = id;
 
     public override string ToString() => $"{Artist} — {Title}";
 }

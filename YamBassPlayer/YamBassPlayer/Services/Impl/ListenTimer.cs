@@ -1,19 +1,13 @@
 ﻿namespace YamBassPlayer.Services.Impl;
 
-public sealed class ListenTimer : IListenTimer
+public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 {
-	private readonly IHistoryService _historyService;
-	private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _cts;
 	private TimeSpan _remaining = TimeSpan.FromSeconds(30);
 	private DateTime _lastPlayUtc;
 	private string? _trackId;
 
-	public ListenTimer(IHistoryService historyService)
-	{
-		_historyService = historyService;
-	}
-
-	public void OnTrackStart(string trackId)
+    public void OnTrackStart(string trackId)
 	{
 		ResetInternal();
 		_trackId = trackId;
@@ -78,6 +72,6 @@ public sealed class ListenTimer : IListenTimer
 
 	private void LogListen(string trackId)
 	{
-		_historyService.LogListen(trackId);
+		historyService.LogListen(trackId);
 	}
 }

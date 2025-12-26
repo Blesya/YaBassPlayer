@@ -2,19 +2,13 @@
 
 namespace YamBassPlayer.Models;
 
-public class Playlist
+public class Playlist(string name, PlaylistType type)
 {
-	public Playlist(string name, PlaylistType type)
-	{
-		PlaylistName = name;
-		Type = type;
-	}
+    public string PlaylistName { get; } = name;
 
-	public string PlaylistName { get; }
+    public PlaylistType Type { get; } = type;
 
-	public PlaylistType Type { get; }
-
-	public string Description { get; init; }
+    public string Description { get; init; }
 
 	public int TrackCount { get; init; }
 
