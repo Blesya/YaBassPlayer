@@ -222,7 +222,9 @@ public class TrackRepository(
             }
 
             return Directory.GetFiles(tracksFolder, "*.mp3")
-                .Select(Path.GetFileNameWithoutExtension)
+                .Select(filePath => new FileInfo(filePath))
+                .OrderByDescending(fileInfo => fileInfo.CreationTime)
+                .Select(fileInfo => Path.GetFileNameWithoutExtension(fileInfo.Name))
                 .Where(id => !string.IsNullOrEmpty(id))
                 .ToList()!;
         });
