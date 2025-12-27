@@ -184,6 +184,7 @@ public sealed class MainWindow : Window
 			{
 				new MenuItem("Тёмная", "", () => Themes.ApplyDarkTheme()),
 				new MenuItem("Светлая", "", () => Themes.ApplyLightTheme()),
+				new MenuItem("Белая", "", () => Themes.ApplyWhiteTheme()),
 				new MenuItem("Матрица", "", () => Themes.ApplyMatrixTheme()),
 				new MenuItem("Киберпанк", "", () => Themes.ApplyCyberpunkTheme()),
 				new MenuItem("Спокойная", "", () => Themes.ApplyNordTheme()),

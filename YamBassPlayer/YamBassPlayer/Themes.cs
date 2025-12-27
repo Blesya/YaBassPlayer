@@ -8,6 +8,7 @@ public static class Themes
 {
     private const string DarkThemeName = "Dark";
     private const string LightThemeName = "Light";
+    private const string WhiteThemeName = "White";
     private const string MatrixThemeName = "Matrix";
     private const string CyberpunkThemeName = "Cyberpunk";
     private const string NordThemeName = "Nord";
@@ -37,6 +38,9 @@ public static class Themes
 				break;
 			case LightThemeName:
 				ApplyLightTheme(false);
+				break;
+			case WhiteThemeName:
+				ApplyWhiteTheme(false);
 				break;
 			case MatrixThemeName:
 				ApplyMatrixTheme(false);
@@ -92,6 +96,28 @@ public static class Themes
 		if (save)
         {
             AppConfiguration.SaveTheme(LightThemeName);
+        }
+
+		Application.Refresh();
+	}
+
+	public static void ApplyWhiteTheme(bool save = true)
+	{
+		var b = Colors.Base;
+		b.Normal = new Attribute(Color.Black, Color.White);
+		b.Focus = new Attribute(Color.White, Color.DarkGray);
+		b.HotNormal = new Attribute(Color.Blue, Color.White);
+		b.HotFocus = new Attribute(Color.White, Color.Blue);
+
+		var d = Colors.Dialog;
+		d.Normal = new Attribute(Color.Black, Color.Gray);
+		d.Focus = new Attribute(Color.White, Color.Black);
+		d.HotNormal = new Attribute(Color.Blue, Color.Gray);
+		d.HotFocus = new Attribute(Color.White, Color.Blue);
+
+		if (save)
+        {
+            AppConfiguration.SaveTheme(WhiteThemeName);
         }
 
 		Application.Refresh();
