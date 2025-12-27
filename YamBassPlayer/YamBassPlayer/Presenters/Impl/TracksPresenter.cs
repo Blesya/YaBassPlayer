@@ -13,7 +13,7 @@ public class TracksPresenter : ITracksPresenter
 
     private List<Track> _tracks = new();
 
-    private const int TracksPerBatch = 50;
+    private const int TracksPerBatch = 100;
 
     public event Action<Track>? OnTrackChosen;
 

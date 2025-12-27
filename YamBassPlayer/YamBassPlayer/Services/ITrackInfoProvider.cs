@@ -9,4 +9,5 @@ public interface ITrackInfoProvider
     Task SaveAsync(Track track);
     Task<bool> IsTrackCached(string trackId);
     Task<int> CountCachedTracks(IEnumerable<string> trackIds);
+    Task<IEnumerable<Track>> SearchTracks(string searchQuery, int maxResults = 50);
 }

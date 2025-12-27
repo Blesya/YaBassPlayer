@@ -16,9 +16,11 @@ public sealed class MainWindow : Window
 	private readonly ITrackFileProvider _trackFileProvider;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
+	private readonly ITrackRepository _trackRepository;
 	private readonly IListenTimer _listenTimer;
 	private readonly IAudioPlayer _audioPlayer;
 	private readonly IEqualizerPresenter _equalizerPresenter;
+	private readonly ILocalSearchPresenter _localSearchPresenter;
 	private readonly SplashScreenView? _splashScreen;
 
 	public MainWindow(
@@ -26,9 +28,11 @@ public sealed class MainWindow : Window
 		ITracksPresenter tracksPresenter,
 		IPlayStatusPresenter playStatusPresenter,
 		IEqualizerPresenter equalizerPresenter,
+		ILocalSearchPresenter localSearchPresenter,
 		ITrackFileProvider trackFileProvider,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
+		ITrackRepository trackRepository,
 		IListenTimer listenTimer,
 		IAudioPlayer audioPlayer,
 		PlayStatusView playStatusView,
@@ -40,9 +44,11 @@ public sealed class MainWindow : Window
 		_tracksPresenter = tracksPresenter;
 		_playStatusPresenter = playStatusPresenter;
 		_equalizerPresenter = equalizerPresenter;
+		_localSearchPresenter = localSearchPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
+		_trackRepository = trackRepository;
 		_listenTimer = listenTimer;
 		_audioPlayer = audioPlayer;
 
@@ -186,6 +192,10 @@ public sealed class MainWindow : Window
 			new MenuBarItem("Аудио", new[]
 			{
 				new MenuItem("Эквалайзер", "", () => _equalizerPresenter.ShowEqualizerDialog())
+			}),
+			new MenuBarItem("Инструменты", new[]
+			{
+				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog)
 			})
 		});
 
@@ -207,5 +217,36 @@ public sealed class MainWindow : Window
 	{
 		Application.Top.Remove(_splashScreen);
 		_playlistsPresenter.PlaylistChosen -= PlaylistsPresenterOnPlaylistChosen;
+	}
+
+	private async void ShowLocalSearchDialog()
+	{
+		try
+		{
+			_localSearchPresenter.ShowLocalSearchDialog();
+
+			if (!_localSearchPresenter.WasCancelled())
+			{
+				var selectedTracks = _localSearchPresenter.GetSelectedTracks();
+				if (selectedTracks.Count > 0)
+				{
+					_trackRepository.UpdateLocalSearchCache(selectedTracks);
+
+					var localSearchPlaylist = new Playlist("Локальный поиск", Enums.PlaylistType.LocalSearch)
+					{
+						Description = "Результаты локального поиска",
+						TrackCount = selectedTracks.Count
+					};
+
+					await _trackRepository.SetPlaylist(localSearchPlaylist);
+					await _tracksPresenter.LoadTracksFor(localSearchPlaylist);
+					Title = $"{localSearchPlaylist.PlaylistName} : {localSearchPlaylist.Description}";
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
 	}
 }

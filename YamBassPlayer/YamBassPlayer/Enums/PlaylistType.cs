@@ -1,4 +1,4 @@
-﻿namespace YamBassPlayer.Enums;
+namespace YamBassPlayer.Enums;
 
 public enum PlaylistType
 {
@@ -7,5 +7,7 @@ public enum PlaylistType
     Custom,
     Cached,
     Top10,
-    LocalFavorite
+    TopEvenings,
+    LocalFavorite,
+    LocalSearch
 }

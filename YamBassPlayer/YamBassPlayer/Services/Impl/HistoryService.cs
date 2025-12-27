@@ -70,4 +70,31 @@ public sealed class HistoryService : IHistoryService
 
         return result;
     }
+
+    public IReadOnlyList<(string trackId, int count)> GetTopEveningTracks(int limit = 10)
+    {
+        var result = new List<(string trackId, int count)>();
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            """
+            SELECT trackId, COUNT(*) as cnt
+            FROM listensHistory
+            WHERE CAST(strftime('%H', datetime(utcTime, '+' || utcOffsetMinutes || ' minutes')) AS INTEGER) >= 16
+              AND CAST(strftime('%H', datetime(utcTime, '+' || utcOffsetMinutes || ' minutes')) AS INTEGER) < 24
+            GROUP BY trackId
+            ORDER BY cnt DESC
+            LIMIT $limit;
+            """;
+
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add((reader.GetString(0), reader.GetInt32(1)));
+        }
+
+        return result;
+    }
 }

@@ -1,4 +1,4 @@
-using YamBassPlayer.Enums;
+﻿using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using Yandex.Music.Api;
@@ -24,6 +24,7 @@ public class TrackRepository(
     private int _currentOffset = 0;
     private readonly Dictionary<string, List<string>> _customPlaylistCache = new();
     private readonly List<string> _favoritePlaylistCache = new();
+    private readonly List<string> _localSearchCache = new();
 
     public async Task<IEnumerable<Playlist>> GetPlaylists()
     {
@@ -59,7 +60,12 @@ public class TrackRepository(
                 {
                     Description = "Топ 10 треков!",
                     TrackCount = 10
-                }
+                },
+                new Playlist("Топ вечеров", PlaylistType.TopEvenings)
+                {
+                    Description = "Топ треков с 16:00 до 24:00",
+                    TrackCount = 20
+                },
             ];
 
             foreach (YResponse<YPlaylist> yResponse in yResponses)
@@ -114,8 +120,14 @@ public class TrackRepository(
                 case PlaylistType.Top10:
                     await SetTop10Playlist(playlist);
                     break;
+                case PlaylistType.TopEvenings:
+                    await SetTopEveningsPlaylist(playlist);
+                    break;
                 case PlaylistType.LocalFavorite:
                     await SetLocalFavoritePlaylist(playlist);
+                    break;
+                case PlaylistType.LocalSearch:
+                    await SetLocalSearchPlaylist(playlist);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -141,6 +153,18 @@ public class TrackRepository(
             return Task.FromResult(day);
         });
 
+    private Task SetTopEveningsPlaylist(Playlist playlist)
+        => SetPlaylistAsync(playlist, LoadTopEveningsPlaylist);
+
+    private Task<List<string>> LoadTopEveningsPlaylist()
+        => Task.Run(() =>
+        {
+            List<string> evenings = historyService.GetTopEveningTracks(20)
+                .Select(x => x.trackId)
+                .ToList();
+            return Task.FromResult(evenings);
+        });
+
     private Task SetCustomPlaylist(Playlist playlist)
         => SetPlaylistAsync(playlist, () => LoadCustomPlaylistAsync(playlist.PlaylistName));
 
@@ -152,6 +176,9 @@ public class TrackRepository(
 
     private Task SetLocalFavoritePlaylist(Playlist playlist)
         => SetPlaylistAsync(playlist, LoadLocalFavoritesAsync);
+
+    private Task SetLocalSearchPlaylist(Playlist playlist)
+        => SetPlaylistAsync(playlist, LoadLocalSearchAsync);
 
     private Task SetPlaylistOfTheDay(Playlist playlist)
         => SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
@@ -204,6 +231,11 @@ public class TrackRepository(
     private async Task<List<string>> LoadLocalFavoritesAsync()
     {
         return await localFavoriteService.GetAllFavoriteTrackIds();
+    }
+
+    private Task<List<string>> LoadLocalSearchAsync()
+    {
+        return Task.FromResult(_localSearchCache.ToList());
     }
 
     private Task<List<string>> LoadPlaylistOfTheDayAsync()
@@ -266,6 +298,12 @@ public class TrackRepository(
     }
 
     public IReadOnlyList<string> GetAllTrackIds() => _tracksIds.AsReadOnly();
+
+    public void UpdateLocalSearchCache(IEnumerable<Track> tracks)
+    {
+        _localSearchCache.Clear();
+        _localSearchCache.AddRange(tracks.Select(t => t.Id));
+    }
 
     public async Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount)
     {

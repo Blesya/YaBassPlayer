@@ -179,4 +179,41 @@ public class TrackInfoProvider : ITrackInfoProvider
         }
         return count;
     }
+
+    public async Task<IEnumerable<Track>> SearchTracks(string searchQuery, int maxResults = 50)
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return [];
+
+        string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+        await using var connection = new SqliteConnection($"Data Source={dbPath}");
+        await connection.OpenAsync();
+
+        await using SqliteCommand cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT TrackId, Artist, Title, Album 
+            FROM Tracks 
+            WHERE Title LIKE @query 
+               OR Artist LIKE @query 
+               OR Album LIKE @query
+            LIMIT @maxResults";
+        
+        string likeQuery = $"%{searchQuery}%";
+        cmd.Parameters.AddWithValue("@query", likeQuery);
+        cmd.Parameters.AddWithValue("@maxResults", maxResults);
+
+        var tracks = new List<Track>();
+        await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var trackId = reader.GetString(0);
+            var artist = reader.GetString(1);
+            var title = reader.GetString(2);
+            var album = reader.GetString(3);
+
+            tracks.Add(new Track(title, artist, album, trackId));
+        }
+
+        return tracks;
+    }
 }

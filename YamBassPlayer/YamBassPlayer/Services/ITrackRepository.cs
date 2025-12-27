@@ -11,4 +11,6 @@ public interface ITrackRepository
     IReadOnlyList<string> GetAllTrackIds();
 
     Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount);
+
+    void UpdateLocalSearchCache(IEnumerable<Track> tracks);
 }
