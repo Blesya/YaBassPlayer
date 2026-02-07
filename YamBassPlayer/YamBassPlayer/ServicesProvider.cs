@@ -37,6 +37,7 @@ public static class ServicesProvider
 			
 		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
 		builder.RegisterType<LocalFavoriteService>().As<ILocalFavoriteService>().SingleInstance();
+		builder.RegisterType<YandexFavoriteService>().As<IYandexFavoriteService>().SingleInstance();
 		builder.RegisterType<ListenTimer>().As<IListenTimer>().SingleInstance();
 		builder.RegisterType<PlaybackQueue>().As<IPlaybackQueue>().SingleInstance();
 			
@@ -54,7 +55,8 @@ public static class ServicesProvider
 			c.Resolve<ITrackInfoProvider>(),
 			TracksFolder,
 			c.Resolve<IHistoryService>(),
-			c.Resolve<ILocalFavoriteService>()
+			c.Resolve<ILocalFavoriteService>(),
+			c.Resolve<IYandexFavoriteService>()
 		)).As<ITrackRepository>().SingleInstance();
 
 		// Регистрация Views

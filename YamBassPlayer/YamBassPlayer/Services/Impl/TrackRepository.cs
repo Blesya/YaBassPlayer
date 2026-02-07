@@ -16,7 +16,8 @@ public class TrackRepository(
 	ITrackInfoProvider trackInfoProvider,
 	string tracksFolder,
 	IHistoryService historyService,
-	ILocalFavoriteService localFavoriteService)
+	ILocalFavoriteService localFavoriteService,
+	IYandexFavoriteService yandexFavoriteService)
 	: ITrackRepository
 {
 	private List<string> _tracksIds = new();
@@ -35,6 +36,9 @@ public class TrackRepository(
 			YResponse<YLibraryTracks>? liked = await api.Library.GetLikedTracksAsync(storage);
 			string[] favoriteTrackIds = liked.Result.Library.Tracks.Select(x => x.Id).ToArray();
 			_favoritePlaylistCache.AddRange(favoriteTrackIds);
+			yandexFavoriteService.Initialize(favoriteTrackIds);
+			yandexFavoriteService.OnFavoriteAdded += id => { if (!_favoritePlaylistCache.Contains(id)) _favoritePlaylistCache.Insert(0, id); };
+			yandexFavoriteService.OnFavoriteRemoved += id => _favoritePlaylistCache.Remove(id);
 			int likedTracksCount = favoriteTrackIds.Length;
 
 			var localFavoriteIds = await localFavoriteService.GetAllFavoriteTrackIds();

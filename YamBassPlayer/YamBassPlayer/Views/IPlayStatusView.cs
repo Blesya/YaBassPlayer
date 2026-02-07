@@ -13,4 +13,6 @@ public interface IPlayStatusView
 	void SetTime(TimeSpan current, TimeSpan duration);
 	void SetTitle(string title);
 	void SetFavoriteState(bool isFavorite);
+	event Action? OnYandexFavoriteToggleClicked;
+	void SetYandexFavoriteState(bool isFavorite);
 }

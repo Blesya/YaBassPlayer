@@ -13,6 +13,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly Button _nextButton;
 	private readonly Label _timeLabel;
 	private readonly Button _favoriteButton;
+	private readonly Button _yandexFavoriteButton;
 
 	public event Action? OnPlayClicked;
 	public event Action? OnStopClicked;
@@ -20,6 +21,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action? OnNextClicked;
 	public event Action<int>? OnSeekRequested;
 	public event Action? OnFavoriteToggleClicked;
+	public event Action? OnYandexFavoriteToggleClicked;
 
 	public PlayStatusView()
 	{
@@ -110,6 +112,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_favoriteButton.Clicked += () => OnFavoriteToggleClicked?.Invoke();
 
+		_yandexFavoriteButton = new Button
+		{
+			X = Pos.Right(_favoriteButton) + 1,
+			Y = 0,
+			Text = "\u2661"
+		};
+		_yandexFavoriteButton.Clicked += () => OnYandexFavoriteToggleClicked?.Invoke();
+
 		_statusLabel = new Label
 		{
 			X = 1,
@@ -119,7 +129,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
-		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _progressBar, _statusLabel);
+		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _progressBar, _statusLabel);
 		Add(_panel);
 	}
 
@@ -160,6 +170,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		Application.MainLoop.Invoke(() =>
 		{
 			_favoriteButton.Text = isFavorite ? "-" : "+";
+		});
+	}
+
+	public void SetYandexFavoriteState(bool isFavorite)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_yandexFavoriteButton.Text = isFavorite ? "\u2665" : "\u2661";
 		});
 	}
 }
