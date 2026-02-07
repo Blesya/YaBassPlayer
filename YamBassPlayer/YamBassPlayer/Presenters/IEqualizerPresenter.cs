@@ -2,5 +2,5 @@ namespace YamBassPlayer.Presenters;
 
 public interface IEqualizerPresenter
 {
-    void ShowEqualizerDialog();
+	void ShowEqualizerDialog();
 }

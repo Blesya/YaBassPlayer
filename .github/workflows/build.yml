@@ -2,39 +2,39 @@ name: Build
 
 on:
   push:
-    branches: [ "master" ]
+	branches: [ "master" ]
   pull_request:
-    branches: [ "master" ]
+	branches: [ "master" ]
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+	runs-on: ${{ matrix.os }}
+	strategy:
+	  matrix:
+		os: [ubuntu-latest, windows-latest, macos-latest]
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+	steps:
+	  - name: Checkout
+		uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
+	  - name: Setup .NET
+		uses: actions/setup-dotnet@v4
+		with:
+		  dotnet-version: "8.0.x"
 
-      - name: Build
-        working-directory: ./YamBassPlayer
-        run: dotnet build --configuration Release
+	  - name: Build
+		working-directory: ./YamBassPlayer
+		run: dotnet build --configuration Release
 
-      - name: Create ZIP artifact
-        shell: bash
-        run: |
-          mkdir output
-          cp -r src/bin/Release/* output/
-          zip -r build-${{ matrix.os }}.zip output
+	  - name: Create ZIP artifact
+		shell: bash
+		run: |
+		  mkdir output
+		  cp -r src/bin/Release/* output/
+		  zip -r build-${{ matrix.os }}.zip output
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.os }}
-          path: build-${{ matrix.os }}.zip
+	  - name: Upload artifact
+		uses: actions/upload-artifact@v4
+		with:
+		  name: build-${{ matrix.os }}
+		  path: build-${{ matrix.os }}.zip

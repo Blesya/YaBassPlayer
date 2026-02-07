@@ -2,12 +2,12 @@
 
 public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 {
-    private CancellationTokenSource? _cts;
+	private CancellationTokenSource? _cts;
 	private TimeSpan _remaining = TimeSpan.FromSeconds(30);
 	private DateTime _lastPlayUtc;
 	private string? _trackId;
 
-    public void OnTrackStart(string trackId)
+	public void OnTrackStart(string trackId)
 	{
 		ResetInternal();
 		_trackId = trackId;

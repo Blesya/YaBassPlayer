@@ -148,27 +148,27 @@ public sealed class MainWindow : Window
 
 	private async void OnPreloadNextTrack(object? sender, EventArgs e)
 	{
-        try
-        {
-            var nextTrackId = _playbackQueue.PeekNextTrackId;
-            if (nextTrackId == null)
-                return;
+		try
+		{
+			var nextTrackId = _playbackQueue.PeekNextTrackId;
+			if (nextTrackId == null)
+				return;
 
-            if (!_trackFileProvider.IsTrackDownloaded(nextTrackId))
-            {
-                Track nextTrack = await _trackInfoProvider.GetTrackInfoById(nextTrackId);
-                _playStatusPresenter.SetTitle($"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}");
-                await _trackFileProvider.DownloadTrackAsync(nextTrackId);
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Handle();
-        }
-        finally
-        {
-            _playStatusPresenter.SetTitle("Управление воспроизведением");
-        }
+			if (!_trackFileProvider.IsTrackDownloaded(nextTrackId))
+			{
+				Track nextTrack = await _trackInfoProvider.GetTrackInfoById(nextTrackId);
+				_playStatusPresenter.SetTitle($"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}");
+				await _trackFileProvider.DownloadTrackAsync(nextTrackId);
+			}
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
+		finally
+		{
+			_playStatusPresenter.SetTitle("Управление воспроизведением");
+		}
 	}
 
 	private MenuBar CreateMenuBar()

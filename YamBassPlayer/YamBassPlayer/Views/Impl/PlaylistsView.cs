@@ -1,52 +1,44 @@
 ﻿using Terminal.Gui;
+using Terminal.Gui.Trees;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
 
 public sealed class PlaylistsView : View, IPlaylistsView
 {
-    private readonly ListView _list;
+	private readonly TreeView _tree;
 
-    public event Action<int>? PlaylistSelected;
+	public event Action<Playlist>? PlaylistSelected;
 
-    public PlaylistsView()
-    {
-        Width = Dim.Fill();
-        Height = Dim.Fill();
+	public PlaylistsView()
+	{
+		Width = Dim.Fill();
+		Height = Dim.Fill();
 
-        _list = new ListView
-        {
-            Width = Dim.Fill(),
-            Height = Dim.Fill(),
-            AllowsMarking = false
-        };
+		_tree = new TreeView
+		{
+			Width = Dim.Fill(),
+			Height = Dim.Fill(),
+			MultiSelect = false
+		};
 
-        _list.SelectedItemChanged += args =>
-        {
-            PlaylistSelected?.Invoke(args.Item);
-        };
+		_tree.SelectionChanged += (_, args) =>
+		{
+			if (args.NewValue is PlaylistTreeItem { Playlist: not null } item)
+			{
+				PlaylistSelected?.Invoke(item.Playlist);
+			}
+		};
 
-        _list.OpenSelectedItem += args =>
-        {
-            PlaylistSelected?.Invoke(args.Item);
-        };
+		Add(_tree);
+	}
 
-        Add(_list);
-    }
-
-    public void SetPlaylists(IEnumerable<Playlist> playlists)
-    {
-        Application.MainLoop.Invoke(() =>
-        {
-            _list.SetSource(playlists.ToList());
-        });
-    }
-
-    public void HighlightPlaylist(int index)
-    {
-        Application.MainLoop.Invoke(() =>
-        {
-            _list.SelectedItem = index;
-        });
-    }
+	public void SetPlaylistTree(IEnumerable<PlaylistTreeItem> roots)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_tree.ClearObjects();
+			_tree.AddObjects(roots.Cast<ITreeNode>().ToList());
+		});
+	}
 }

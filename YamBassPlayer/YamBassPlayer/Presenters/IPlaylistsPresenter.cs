@@ -4,5 +4,5 @@ namespace YamBassPlayer.Presenters;
 
 public interface IPlaylistsPresenter
 {
-    event Action<Playlist>? PlaylistChosen;
+	event Action<Playlist>? PlaylistChosen;
 }

@@ -6,15 +6,15 @@ namespace YamBassPlayer;
 
 public static class Themes
 {
-    private const string DarkThemeName = "Dark";
-    private const string LightThemeName = "Light";
-    private const string WhiteThemeName = "White";
-    private const string MatrixThemeName = "Matrix";
-    private const string CyberpunkThemeName = "Cyberpunk";
-    private const string NordThemeName = "Nord";
-    private const string DefaultThemeName = "Default";
+	private const string DarkThemeName = "Dark";
+	private const string LightThemeName = "Light";
+	private const string WhiteThemeName = "White";
+	private const string MatrixThemeName = "Matrix";
+	private const string CyberpunkThemeName = "Cyberpunk";
+	private const string NordThemeName = "Nord";
+	private const string DefaultThemeName = "Default";
 
-    private static ColorScheme? _defaultBase;
+	private static ColorScheme? _defaultBase;
 	private static ColorScheme? _defaultDialog;
 
 	public static void InitializeDefaults()
@@ -27,9 +27,9 @@ public static class Themes
 	{
 		var themeName = AppConfiguration.GetTheme();
 		if (string.IsNullOrEmpty(themeName))
-        {
-            return;
-        }
+		{
+			return;
+		}
 
 		switch (themeName)
 		{
@@ -72,9 +72,9 @@ public static class Themes
 		d.HotFocus = new Attribute(Color.Black, Color.BrightBlue);
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(DarkThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(DarkThemeName);
+		}
 
 		Application.Refresh();
 	}
@@ -94,9 +94,9 @@ public static class Themes
 		d.HotFocus = new Attribute(Color.White, Color.Blue);
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(LightThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(LightThemeName);
+		}
 
 		Application.Refresh();
 	}
@@ -116,9 +116,9 @@ public static class Themes
 		d.HotFocus = new Attribute(Color.White, Color.Blue);
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(WhiteThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(WhiteThemeName);
+		}
 
 		Application.Refresh();
 	}
@@ -138,9 +138,9 @@ public static class Themes
 		d.HotFocus = new Attribute(Color.Black, Color.Green);
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(MatrixThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(MatrixThemeName);
+		}
 
 		Application.Refresh();
 	}
@@ -160,9 +160,9 @@ public static class Themes
 		d.HotFocus = new Attribute(Color.Black, Color.BrightYellow);
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(CyberpunkThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(CyberpunkThemeName);
+		}
 
 		Application.Refresh();
 	}
@@ -198,9 +198,9 @@ public static class Themes
 		};
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(NordThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(NordThemeName);
+		}
 
 		Application.Refresh();
 	}
@@ -224,9 +224,9 @@ public static class Themes
 		}
 
 		if (save)
-        {
-            AppConfiguration.SaveTheme(DefaultThemeName);
-        }
+		{
+			AppConfiguration.SaveTheme(DefaultThemeName);
+		}
 
 		Application.Refresh();
 	}

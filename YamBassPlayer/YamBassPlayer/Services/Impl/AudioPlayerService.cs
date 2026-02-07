@@ -6,13 +6,13 @@ namespace YamBassPlayer.Services.Impl;
 
 public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 {
-    private int _currentStream;
+	private int _currentStream;
 	private const double PreloadSecondsBeforeEnd = 30.0;
 	
 	public event EventHandler? OnTrackEnded;
 	public event EventHandler? OnPreloadRequested;
 
-    public bool IsPlayed =>
+	public bool IsPlayed =>
 		Bass.ChannelIsActive(_currentStream) == PlaybackState.Playing;
 
 	public void Init()
@@ -34,9 +34,9 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 
 			_currentStream = Bass.CreateStream(filePath, 0, 0, BassFlags.Default);
 			if (_currentStream == 0)
-            {
-                throw new Exception("Не удалось создать аудиопоток");
-            }
+			{
+				throw new Exception("Не удалось создать аудиопоток");
+			}
 
 			Bass.ChannelSetSync(_currentStream, SyncFlags.End, 0, OnBassTrackEnded);
 			SetupPreloadSync();
@@ -52,25 +52,25 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 	public void Pause()
 	{
 		if (IsStreamActive)
-        {
-            Bass.ChannelPause(_currentStream);
-        }
+		{
+			Bass.ChannelPause(_currentStream);
+		}
 	}
 
 	public void Resume()
 	{
 		if (IsStreamActive)
-        {
-            Bass.ChannelPlay(_currentStream);
-        }
+		{
+			Bass.ChannelPlay(_currentStream);
+		}
 	}
 
 	public void Stop()
 	{
 		if (!IsStreamActive)
-        {
-            return;
-        }
+		{
+			return;
+		}
 
 		Bass.ChannelStop(_currentStream);
 		Bass.StreamFree(_currentStream);
@@ -96,9 +96,9 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		{
 			long len = Bass.ChannelGetLength(_currentStream);
 			if (len <= 0)
-            {
-                return;
-            }
+			{
+				return;
+			}
 
 			double duration = Bass.ChannelBytes2Seconds(_currentStream, len);
 			if (duration <= PreloadSecondsBeforeEnd)
@@ -127,17 +127,17 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		try
 		{
 			if (!IsStreamActive)
-            {
-                return 0;
-            }
+			{
+				return 0;
+			}
 
 			long pos = Bass.ChannelGetPosition(_currentStream);
 			long len = Bass.ChannelGetLength(_currentStream);
 
 			if (pos <= 0 || len <= 0)
-            {
-                return 0;
-            }
+			{
+				return 0;
+			}
 
 			return (int)Math.Clamp((double)pos / len * 100.0, 0, 100);
 		}
@@ -153,9 +153,9 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		try
 		{
 			if (!IsStreamActive)
-            {
-                return TimeSpan.Zero;
-            }
+			{
+				return TimeSpan.Zero;
+			}
 
 			long pos = Bass.ChannelGetPosition(_currentStream);
 			return pos < 0
@@ -174,9 +174,9 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		try
 		{
 			if (!IsStreamActive)
-            {
-                return TimeSpan.Zero;
-            }
+			{
+				return TimeSpan.Zero;
+			}
 
 			long len = Bass.ChannelGetLength(_currentStream);
 			return len < 0
@@ -195,17 +195,17 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		try
 		{
 			if (!IsStreamActive)
-            {
-                return;
-            }
+			{
+				return;
+			}
 
 			percent = Math.Clamp(percent, 0, 100);
 
 			long len = Bass.ChannelGetLength(_currentStream);
 			if (len <= 0)
-            {
-                return;
-            }
+			{
+				return;
+			}
 
 			long newPos = (long)(len * (percent / 100.0));
 			Bass.ChannelSetPosition(_currentStream, newPos);
@@ -222,9 +222,9 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		{
 			float[] fft = new float[128];
 			if (!IsStreamActive)
-            {
-                return fft;
-            }
+			{
+				return fft;
+			}
 
 			Bass.ChannelGetData(_currentStream, fft, (int)DataFlags.FFT256);
 			return fft;

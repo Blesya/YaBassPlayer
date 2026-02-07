@@ -55,9 +55,9 @@ internal class Program
 			View mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
 			Application.Top.Add(mainWindow);
 
-            Themes.ApplySavedTheme();
+			Themes.ApplySavedTheme();
 
-            Application.Run();
+			Application.Run();
 		}
 		catch (Exception exception)
 		{

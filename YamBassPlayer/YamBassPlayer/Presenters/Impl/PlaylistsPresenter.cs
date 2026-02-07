@@ -6,39 +6,37 @@ namespace YamBassPlayer.Presenters.Impl;
 
 public class PlaylistsPresenter : IPlaylistsPresenter
 {
-    private readonly IPlaylistsView _view;
-    private readonly ITrackRepository _trackRepository;
+	private readonly IPlaylistsView _view;
+	private readonly ITrackRepository _trackRepository;
 
-    private List<Playlist> _playlists = new();
-    public event Action<Playlist>? PlaylistChosen;
+	private List<PlaylistTreeItem> _roots = new();
+	public event Action<Playlist>? PlaylistChosen;
 
-    public PlaylistsPresenter(IPlaylistsView view, ITrackRepository trackRepository)
-    {
-        _view = view;
-        _trackRepository = trackRepository;
+	public PlaylistsPresenter(IPlaylistsView view, ITrackRepository trackRepository)
+	{
+		_view = view;
+		_trackRepository = trackRepository;
 
-        _view.PlaylistSelected += OnPlaylistSelected;
+		_view.PlaylistSelected += OnPlaylistSelected;
 
-        LoadPlaylists();
-    }
+		LoadPlaylists();
+	}
 
-    private async void LoadPlaylists()
-    {
-        var playlists = await _trackRepository.GetPlaylists();
-        _playlists = playlists.ToList();
-        _view.SetPlaylists(_playlists);
+	private async void LoadPlaylists()
+	{
+		var roots = await _trackRepository.GetPlaylistTree();
+		_roots = roots.ToList();
+		_view.SetPlaylistTree(_roots);
 
-        if (_playlists.Any())
-        {
-            PlaylistChosen?.Invoke(_playlists.First());
-        }
-    }
+		var firstPlaylist = _roots.FirstOrDefault(r => r.Playlist != null)?.Playlist;
+		if (firstPlaylist != null)
+		{
+			PlaylistChosen?.Invoke(firstPlaylist);
+		}
+	}
 
-    private void OnPlaylistSelected(int index)
-    {
-        if (index < 0 || index >= _playlists.Count)
-            return;
-
-        PlaylistChosen?.Invoke(_playlists[index]);
-    }
+	private void OnPlaylistSelected(Playlist playlist)
+	{
+		PlaylistChosen?.Invoke(playlist);
+	}
 }

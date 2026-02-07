@@ -4,10 +4,10 @@ namespace YamBassPlayer.Services;
 
 public interface ITrackInfoProvider
 {
-    Task<IEnumerable<Track>> GetTracksInfoByIds(IEnumerable<string> ids);
-    Task<Track> GetTrackInfoById(string id);
-    Task SaveAsync(Track track);
-    Task<bool> IsTrackCached(string trackId);
-    Task<int> CountCachedTracks(IEnumerable<string> trackIds);
-    Task<IEnumerable<Track>> SearchTracks(string searchQuery, int maxResults = 50);
+	Task<IEnumerable<Track>> GetTracksInfoByIds(IEnumerable<string> ids);
+	Task<Track> GetTrackInfoById(string id);
+	Task SaveAsync(Track track);
+	Task<bool> IsTrackCached(string trackId);
+	Task<int> CountCachedTracks(IEnumerable<string> trackIds);
+	Task<IEnumerable<Track>> SearchTracks(string searchQuery, int maxResults = 50);
 }
