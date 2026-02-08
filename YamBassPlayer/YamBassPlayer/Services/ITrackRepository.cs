@@ -14,4 +14,5 @@ public interface ITrackRepository
 	Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount);
 
 	void UpdateLocalSearchCache(IEnumerable<Track> tracks);
+	void UpdateYandexSearchCache(IEnumerable<Track> tracks);
 }

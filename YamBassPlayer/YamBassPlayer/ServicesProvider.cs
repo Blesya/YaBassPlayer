@@ -64,6 +64,7 @@ public static class ServicesProvider
 		builder.RegisterType<PlaylistsView>().As<IPlaylistsView>().AsSelf().SingleInstance();
 		builder.RegisterType<TracksView>().As<ITracksView>().AsSelf().SingleInstance();
 		builder.RegisterType<LocalSearchView>().As<ILocalSearchView>();
+		builder.RegisterType<YandexSearchView>().As<IYandexSearchView>();
 
 		// Регистрация Presenters
 		builder.RegisterType<PlayStatusPresenter>().As<IPlayStatusPresenter>().SingleInstance();
@@ -71,6 +72,7 @@ public static class ServicesProvider
 		builder.RegisterType<TracksPresenter>().As<ITracksPresenter>().SingleInstance();
 		builder.RegisterType<EqualizerPresenter>().As<IEqualizerPresenter>().SingleInstance();
 		builder.RegisterType<LocalSearchPresenter>().As<ILocalSearchPresenter>().SingleInstance();
+		builder.RegisterType<YandexSearchPresenter>().As<IYandexSearchPresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();

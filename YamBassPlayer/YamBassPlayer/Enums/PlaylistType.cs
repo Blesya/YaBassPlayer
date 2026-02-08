@@ -10,5 +10,6 @@ public enum PlaylistType
 	TopEvenings,
 	LocalFavorite,
 	LocalSearch,
-	TopByDay
+	TopByDay,
+	YandexSearch
 }

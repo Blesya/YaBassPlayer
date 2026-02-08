@@ -21,6 +21,7 @@ public sealed class MainWindow : Window
 	private readonly IAudioPlayer _audioPlayer;
 	private readonly IEqualizerPresenter _equalizerPresenter;
 	private readonly ILocalSearchPresenter _localSearchPresenter;
+	private readonly IYandexSearchPresenter _yandexSearchPresenter;
 	private readonly SplashScreenView? _splashScreen;
 
 	public MainWindow(
@@ -29,6 +30,7 @@ public sealed class MainWindow : Window
 		IPlayStatusPresenter playStatusPresenter,
 		IEqualizerPresenter equalizerPresenter,
 		ILocalSearchPresenter localSearchPresenter,
+		IYandexSearchPresenter yandexSearchPresenter,
 		ITrackFileProvider trackFileProvider,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
@@ -45,6 +47,7 @@ public sealed class MainWindow : Window
 		_playStatusPresenter = playStatusPresenter;
 		_equalizerPresenter = equalizerPresenter;
 		_localSearchPresenter = localSearchPresenter;
+		_yandexSearchPresenter = yandexSearchPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
@@ -196,7 +199,8 @@ public sealed class MainWindow : Window
 			}),
 			new MenuBarItem("Инструменты", new[]
 			{
-				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog)
+				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog),
+				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog)
 			})
 		});
 
@@ -218,6 +222,42 @@ public sealed class MainWindow : Window
 	{
 		Application.Top.Remove(_splashScreen);
 		_playlistsPresenter.PlaylistChosen -= PlaylistsPresenterOnPlaylistChosen;
+	}
+
+	private async void ShowYandexSearchDialog()
+	{
+		try
+		{
+			_yandexSearchPresenter.ShowYandexSearchDialog();
+
+			if (!_yandexSearchPresenter.WasCancelled())
+			{
+				var selectedTracks = _yandexSearchPresenter.GetSelectedTracks();
+				if (selectedTracks.Count > 0)
+				{
+					foreach (var track in selectedTracks)
+					{
+						await _trackInfoProvider.SaveAsync(track);
+					}
+
+					_trackRepository.UpdateYandexSearchCache(selectedTracks);
+
+					var yandexSearchPlaylist = new Playlist("Поиск по ЯМ", Enums.PlaylistType.YandexSearch)
+					{
+						Description = "Результаты поиска по Яндекс.Музыке",
+						TrackCount = selectedTracks.Count
+					};
+
+					await _trackRepository.SetPlaylist(yandexSearchPlaylist);
+					await _tracksPresenter.LoadTracksFor(yandexSearchPlaylist);
+					Title = $"{yandexSearchPlaylist.PlaylistName} : {yandexSearchPlaylist.Description}";
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
 	}
 
 	private async void ShowLocalSearchDialog()

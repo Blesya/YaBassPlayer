@@ -26,6 +26,7 @@ public class TrackRepository(
 	private readonly Dictionary<string, List<string>> _customPlaylistCache = new();
 	private readonly List<string> _favoritePlaylistCache = new();
 	private readonly List<string> _localSearchCache = new();
+	private readonly List<string> _yandexSearchCache = new();
 
 	public async Task<IEnumerable<Playlist>> GetPlaylists()
 	{
@@ -176,6 +177,9 @@ public class TrackRepository(
 				case PlaylistType.TopByDay:
 					await SetTopByDayPlaylist(playlist);
 					break;
+				case PlaylistType.YandexSearch:
+					await SetYandexSearchPlaylist(playlist);
+					break;
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
@@ -239,6 +243,9 @@ public class TrackRepository(
 	private Task SetLocalSearchPlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadLocalSearchAsync);
 
+	private Task SetYandexSearchPlaylist(Playlist playlist)
+		=> SetPlaylistAsync(playlist, LoadYandexSearchAsync);
+
 	private Task SetPlaylistOfTheDay(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
 
@@ -295,6 +302,11 @@ public class TrackRepository(
 	private Task<List<string>> LoadLocalSearchAsync()
 	{
 		return Task.FromResult(_localSearchCache.ToList());
+	}
+
+	private Task<List<string>> LoadYandexSearchAsync()
+	{
+		return Task.FromResult(_yandexSearchCache.ToList());
 	}
 
 	private Task<List<string>> LoadPlaylistOfTheDayAsync()
@@ -362,6 +374,12 @@ public class TrackRepository(
 	{
 		_localSearchCache.Clear();
 		_localSearchCache.AddRange(tracks.Select(t => t.Id));
+	}
+
+	public void UpdateYandexSearchCache(IEnumerable<Track> tracks)
+	{
+		_yandexSearchCache.Clear();
+		_yandexSearchCache.AddRange(tracks.Select(t => t.Id));
 	}
 
 	public async Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount)
