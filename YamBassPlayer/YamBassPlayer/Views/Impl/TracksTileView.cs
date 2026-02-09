@@ -19,6 +19,17 @@ public sealed class TracksTileView : View, ITracksView
 	private int _revealedCount;
 	private object? _animationToken;
 
+	private const int MarqueeIntervalMs = 250;
+	private const int MarqueePauseTicks = 4;
+
+	private int _marqueeArtistOffset;
+	private int _marqueeTitleOffset;
+	private int _marqueeAlbumOffset;
+	private int _marqueePauseArtist;
+	private int _marqueePauseTitle;
+	private int _marqueePauseAlbum;
+	private object? _marqueeToken;
+
 	public event Action<int>? OnTrackSelected;
 	public event Action<int>? OnCellActivated;
 	public event Action? NeedMoreTracks;
@@ -35,6 +46,7 @@ public sealed class TracksTileView : View, ITracksView
 		Application.MainLoop.Invoke(() =>
 		{
 			StopRevealAnimation();
+			StopMarqueeTimer();
 			_tracks.Clear();
 			int number = 0;
 			foreach (Track track in tracks)
@@ -48,6 +60,7 @@ public sealed class TracksTileView : View, ITracksView
 			_scrollOffset = 0;
 			_isLoadingMore = false;
 			StartRevealAnimation(0);
+			StartMarqueeTimer();
 		});
 	}
 
@@ -75,10 +88,12 @@ public sealed class TracksTileView : View, ITracksView
 		Application.MainLoop.Invoke(() =>
 		{
 			StopRevealAnimation();
+			StopMarqueeTimer();
 			_revealedCount = 0;
 			_tracks.Clear();
 			_selectedIndex = 0;
 			_scrollOffset = 0;
+			ResetMarqueeOffsets();
 			SetNeedsDisplay();
 		});
 	}
@@ -135,14 +150,23 @@ public sealed class TracksTileView : View, ITracksView
 		// Artist line (highlighted)
 		var artistAttr = isSelected ? ColorScheme.HotFocus : ColorScheme.HotNormal;
 		Driver.SetAttribute(artistAttr);
-		DrawStringAt(x, y + 1, "│" + PadOrTruncate(tile.Artist, innerWidth) + "│", bounds);
+		string artistText = isSelected
+			? MarqueeText(tile.Artist, _marqueeArtistOffset, innerWidth)
+			: PadOrTruncate(tile.Artist, innerWidth);
+		DrawStringAt(x, y + 1, "│" + artistText + "│", bounds);
 		Driver.SetAttribute(attr);
 
 		// Title line
-		DrawStringAt(x, y + 2, "│" + PadOrTruncate(tile.Title, innerWidth) + "│", bounds);
+		string titleText = isSelected
+			? MarqueeText(tile.Title, _marqueeTitleOffset, innerWidth)
+			: PadOrTruncate(tile.Title, innerWidth);
+		DrawStringAt(x, y + 2, "│" + titleText + "│", bounds);
 
 		// Album line
-		DrawStringAt(x, y + 3, "│" + PadOrTruncate(tile.Album, innerWidth) + "│", bounds);
+		string albumText = isSelected
+			? MarqueeText(tile.Album, _marqueeAlbumOffset, innerWidth)
+			: PadOrTruncate(tile.Album, innerWidth);
+		DrawStringAt(x, y + 3, "│" + albumText + "│", bounds);
 
 		// Bottom border
 		DrawStringAt(x, y + 4, "└" + new string('─', innerWidth) + "┘", bounds);
@@ -169,6 +193,15 @@ public sealed class TracksTileView : View, ITracksView
 		return text.Length >= width
 			? text[..(width - 1)] + "…"
 			: text.PadRight(width);
+	}
+
+	private static string MarqueeText(string text, int offset, int width)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= width)
+			return (text ?? "").PadRight(width);
+
+		int safeOffset = Math.Clamp(offset, 0, text.Length - width);
+		return text.Substring(safeOffset, width);
 	}
 
 	private static string Truncate(string text, int width)
@@ -215,6 +248,7 @@ public sealed class TracksTileView : View, ITracksView
 
 		if (_selectedIndex != oldIndex)
 		{
+			ResetMarqueeState();
 			EnsureSelectedVisible();
 			OnTrackSelected?.Invoke(_selectedIndex);
 			CheckNeedMoreTracks();
@@ -267,6 +301,7 @@ public sealed class TracksTileView : View, ITracksView
 
 				if (_selectedIndex != oldIndex)
 				{
+					ResetMarqueeState();
 					OnTrackSelected?.Invoke(_selectedIndex);
 					CheckNeedMoreTracks();
 				}
@@ -285,7 +320,10 @@ public sealed class TracksTileView : View, ITracksView
 
 			if (col < _columns && index >= 0 && index < _revealedCount)
 			{
+				int oldIndex = _selectedIndex;
 				_selectedIndex = index;
+				if (_selectedIndex != oldIndex)
+					ResetMarqueeState();
 				OnCellActivated?.Invoke(_selectedIndex);
 				SetNeedsDisplay();
 			}
@@ -340,6 +378,78 @@ public sealed class TracksTileView : View, ITracksView
 			Application.MainLoop.RemoveTimeout(_animationToken);
 			_animationToken = null;
 		}
+	}
+
+	private void StartMarqueeTimer()
+	{
+		if (_marqueeToken != null)
+			return;
+
+		_marqueeToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(MarqueeIntervalMs), _ =>
+		{
+			if (_tracks.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _tracks.Count)
+				return true;
+
+			int innerWidth = TileWidth - 2;
+			TileData tile = _tracks[_selectedIndex];
+
+			AdvanceMarquee(tile.Artist, innerWidth, ref _marqueeArtistOffset, ref _marqueePauseArtist);
+			AdvanceMarquee(tile.Title, innerWidth, ref _marqueeTitleOffset, ref _marqueePauseTitle);
+			AdvanceMarquee(tile.Album, innerWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
+
+			SetNeedsDisplay();
+			return true;
+		});
+	}
+
+	private static void AdvanceMarquee(string text, int width, ref int offset, ref int pause)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= width)
+			return;
+
+		int maxOffset = text.Length - width;
+
+		if (pause > 0)
+		{
+			pause--;
+			if (pause == 0)
+				offset = 0;
+			return;
+		}
+
+		if (offset >= maxOffset)
+		{
+			pause = MarqueePauseTicks;
+			return;
+		}
+
+		offset++;
+	}
+
+	private void StopMarqueeTimer()
+	{
+		if (_marqueeToken != null)
+		{
+			Application.MainLoop.RemoveTimeout(_marqueeToken);
+			_marqueeToken = null;
+		}
+	}
+
+	private void ResetMarqueeOffsets()
+	{
+		_marqueeArtistOffset = 0;
+		_marqueeTitleOffset = 0;
+		_marqueeAlbumOffset = 0;
+		_marqueePauseArtist = 0;
+		_marqueePauseTitle = 0;
+		_marqueePauseAlbum = 0;
+	}
+
+	private void ResetMarqueeState()
+	{
+		ResetMarqueeOffsets();
+		StopMarqueeTimer();
+		StartMarqueeTimer();
 	}
 
 	private void CheckNeedMoreTracks()
