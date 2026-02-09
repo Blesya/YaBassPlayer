@@ -48,6 +48,11 @@ public static class ServicesProvider
 		)).As<ITrackFileProvider>().SingleInstance();
 			
 		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
+		
+		builder.Register(c => new DatabaseStatisticsService(
+			c.Resolve<SqliteConnection>(),
+			TracksFolder
+		)).As<IDatabaseStatisticsService>().SingleInstance();
 			
 		builder.Register(c => new TrackRepository(
 			c.Resolve<YandexMusicApi>(),
@@ -62,7 +67,7 @@ public static class ServicesProvider
 		// Регистрация Views
 		builder.RegisterType<PlayStatusView>().As<IPlayStatusView>().AsSelf().SingleInstance();
 		builder.RegisterType<PlaylistsView>().As<IPlaylistsView>().AsSelf().SingleInstance();
-		builder.RegisterType<TracksView>().As<ITracksView>().AsSelf().SingleInstance();
+		builder.RegisterType<TracksTileView>().As<ITracksView>().AsSelf().SingleInstance();
 		builder.RegisterType<LocalSearchView>().As<ILocalSearchView>();
 		builder.RegisterType<YandexSearchView>().As<IYandexSearchView>();
 
@@ -73,6 +78,7 @@ public static class ServicesProvider
 		builder.RegisterType<EqualizerPresenter>().As<IEqualizerPresenter>().SingleInstance();
 		builder.RegisterType<LocalSearchPresenter>().As<ILocalSearchPresenter>().SingleInstance();
 		builder.RegisterType<YandexSearchPresenter>().As<IYandexSearchPresenter>().SingleInstance();
+		builder.RegisterType<DatabaseStatisticsPresenter>().As<IDatabaseStatisticsPresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();

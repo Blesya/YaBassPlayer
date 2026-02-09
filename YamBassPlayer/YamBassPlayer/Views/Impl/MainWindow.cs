@@ -22,6 +22,7 @@ public sealed class MainWindow : Window
 	private readonly IEqualizerPresenter _equalizerPresenter;
 	private readonly ILocalSearchPresenter _localSearchPresenter;
 	private readonly IYandexSearchPresenter _yandexSearchPresenter;
+	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
 	private readonly SplashScreenView? _splashScreen;
 
 	public MainWindow(
@@ -31,6 +32,7 @@ public sealed class MainWindow : Window
 		IEqualizerPresenter equalizerPresenter,
 		ILocalSearchPresenter localSearchPresenter,
 		IYandexSearchPresenter yandexSearchPresenter,
+		IDatabaseStatisticsPresenter dbStatsPresenter,
 		ITrackFileProvider trackFileProvider,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
@@ -39,7 +41,7 @@ public sealed class MainWindow : Window
 		IAudioPlayer audioPlayer,
 		PlayStatusView playStatusView,
 		PlaylistsView playlistsView,
-		TracksView tracksView)
+		TracksTileView tracksView)
 		: base(YamBassPlayerTitle)
 	{
 		_playlistsPresenter = playlistsPresenter;
@@ -48,6 +50,7 @@ public sealed class MainWindow : Window
 		_equalizerPresenter = equalizerPresenter;
 		_localSearchPresenter = localSearchPresenter;
 		_yandexSearchPresenter = yandexSearchPresenter;
+		_dbStatsPresenter = dbStatsPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
@@ -200,7 +203,8 @@ public sealed class MainWindow : Window
 			new MenuBarItem("Инструменты", new[]
 			{
 				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog),
-				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog)
+				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog),
+				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog())
 			})
 		});
 
