@@ -16,6 +16,8 @@ public sealed class TracksTileView : View, ITracksView
 	private int _scrollOffset;
 	private int _columns = 1;
 	private bool _isLoadingMore;
+	private int _revealedCount;
+	private object? _animationToken;
 
 	public event Action<int>? OnTrackSelected;
 	public event Action<int>? OnCellActivated;
@@ -32,6 +34,7 @@ public sealed class TracksTileView : View, ITracksView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
+			StopRevealAnimation();
 			_tracks.Clear();
 			int number = 0;
 			foreach (Track track in tracks)
@@ -44,7 +47,7 @@ public sealed class TracksTileView : View, ITracksView
 			_selectedIndex = 0;
 			_scrollOffset = 0;
 			_isLoadingMore = false;
-			SetNeedsDisplay();
+			StartRevealAnimation(0);
 		});
 	}
 
@@ -52,7 +55,8 @@ public sealed class TracksTileView : View, ITracksView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			int number = _tracks.Count;
+			int previousCount = _tracks.Count;
+			int number = previousCount;
 			foreach (Track track in tracks)
 			{
 				number++;
@@ -61,7 +65,8 @@ public sealed class TracksTileView : View, ITracksView
 			}
 
 			_isLoadingMore = false;
-			SetNeedsDisplay();
+			if (_animationToken == null)
+				StartRevealAnimation(previousCount);
 		});
 	}
 
@@ -69,6 +74,8 @@ public sealed class TracksTileView : View, ITracksView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
+			StopRevealAnimation();
+			_revealedCount = 0;
 			_tracks.Clear();
 			_selectedIndex = 0;
 			_scrollOffset = 0;
@@ -100,7 +107,7 @@ public sealed class TracksTileView : View, ITracksView
 			for (int col = 0; col < _columns; col++)
 			{
 				int index = gridRow * _columns + col;
-				if (index >= _tracks.Count)
+				if (index >= _tracks.Count || index >= _revealedCount)
 					break;
 
 				int x = col * (TileWidth + TileGap);
@@ -179,7 +186,7 @@ public sealed class TracksTileView : View, ITracksView
 		switch (kb.Key)
 		{
 			case Key.CursorRight:
-				if (_selectedIndex < _tracks.Count - 1)
+				if (_selectedIndex < _revealedCount - 1)
 					_selectedIndex++;
 				break;
 
@@ -189,7 +196,7 @@ public sealed class TracksTileView : View, ITracksView
 				break;
 
 			case Key.CursorDown:
-				if (_selectedIndex + _columns < _tracks.Count)
+				if (_selectedIndex + _columns < _revealedCount)
 					_selectedIndex += _columns;
 				break;
 
@@ -253,7 +260,7 @@ public sealed class TracksTileView : View, ITracksView
 			int row = me.Y / TileHeight + _scrollOffset;
 			int index = row * _columns + col;
 
-			if (col < _columns && index >= 0 && index < _tracks.Count)
+			if (col < _columns && index >= 0 && index < _revealedCount)
 			{
 				int oldIndex = _selectedIndex;
 				_selectedIndex = index;
@@ -276,7 +283,7 @@ public sealed class TracksTileView : View, ITracksView
 			int row = me.Y / TileHeight + _scrollOffset;
 			int index = row * _columns + col;
 
-			if (col < _columns && index >= 0 && index < _tracks.Count)
+			if (col < _columns && index >= 0 && index < _revealedCount)
 			{
 				_selectedIndex = index;
 				OnCellActivated?.Invoke(_selectedIndex);
@@ -301,6 +308,38 @@ public sealed class TracksTileView : View, ITracksView
 			_scrollOffset = selectedRow;
 		else if (selectedRow >= _scrollOffset + visibleRows)
 			_scrollOffset = selectedRow - visibleRows + 1;
+	}
+
+	private void StartRevealAnimation(int fromIndex)
+	{
+		StopRevealAnimation();
+		_revealedCount = fromIndex;
+
+		if (_tracks.Count == 0)
+			return;
+
+		_animationToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
+		{
+			_revealedCount++;
+			SetNeedsDisplay();
+
+			if (_revealedCount >= _tracks.Count)
+			{
+				_animationToken = null;
+				return false;
+			}
+
+			return true;
+		});
+	}
+
+	private void StopRevealAnimation()
+	{
+		if (_animationToken != null)
+		{
+			Application.MainLoop.RemoveTimeout(_animationToken);
+			_animationToken = null;
+		}
 	}
 
 	private void CheckNeedMoreTracks()
