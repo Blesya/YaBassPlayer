@@ -9,9 +9,10 @@ public sealed class TracksTileView : View, ITracksView
 	private const int TileHeight = 5;
 	private const int TileGap = 1;
 
-	private readonly record struct TileData(string DisplayNumber, string Artist, string Title, string Album);
+	private readonly record struct TileData(string DisplayNumber, string Artist, string Title, string Album, string TrackId);
 
 	private readonly List<TileData> _tracks = [];
+	private string? _playingTrackId;
 	private int _selectedIndex;
 	private int _scrollOffset;
 	private int _columns = 1;
@@ -53,7 +54,7 @@ public sealed class TracksTileView : View, ITracksView
 			{
 				number++;
 				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album));
+				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id));
 			}
 
 			_selectedIndex = 0;
@@ -74,7 +75,7 @@ public sealed class TracksTileView : View, ITracksView
 			{
 				number++;
 				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album));
+				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id));
 			}
 
 			_isLoadingMore = false;
@@ -94,6 +95,15 @@ public sealed class TracksTileView : View, ITracksView
 			_selectedIndex = 0;
 			_scrollOffset = 0;
 			ResetMarqueeOffsets();
+			SetNeedsDisplay();
+		});
+	}
+
+	public void SetPlayingTrackId(string? trackId)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_playingTrackId = trackId;
 			SetNeedsDisplay();
 		});
 	}
@@ -129,22 +139,24 @@ public sealed class TracksTileView : View, ITracksView
 				int y = row * TileHeight;
 
 				bool isSelected = index == _selectedIndex;
-				DrawTile(x, y, _tracks[index], isSelected, bounds);
+				bool isPlaying = _tracks[index].TrackId == _playingTrackId;
+				DrawTile(x, y, _tracks[index], isSelected, isPlaying, bounds);
 			}
 		}
 	}
 
-	private void DrawTile(int x, int y, TileData tile, bool isSelected, Rect bounds)
+	private void DrawTile(int x, int y, TileData tile, bool isSelected, bool isPlaying, Rect bounds)
 	{
 		var attr = isSelected ? ColorScheme.Focus : ColorScheme.Normal;
 		Driver.SetAttribute(attr);
 
 		int innerWidth = TileWidth - 2;
 
-		// Top border: ┌─── N ──────────────────────┐
+		// Top border: ┌─── N ──────────────────────┐  or  ┌─── N ────────────────── ▶┐
 		string numberPart = $" {tile.DisplayNumber} ";
-		int dashesAfter = Math.Max(0, innerWidth - numberPart.Length);
-		string topLine = "┌" + numberPart + new string('─', dashesAfter) + "┐";
+		string playingMark = isPlaying ? " ▶ " : "";
+		int dashesAfter = Math.Max(0, innerWidth - numberPart.Length - playingMark.Length);
+		string topLine = "┌" + numberPart + new string('─', dashesAfter) + playingMark + "┐";
 		DrawStringAt(x, y, Truncate(topLine, TileWidth), bounds);
 
 		// Artist line (highlighted)

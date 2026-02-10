@@ -103,4 +103,8 @@ public sealed class TracksView : View, ITracksView
 			_table.Update();
 		});
 	}
+
+	public void SetPlayingTrackId(string? trackId)
+	{
+	}
 }

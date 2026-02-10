@@ -29,6 +29,7 @@ public class TracksPresenter : ITracksPresenter
 		_view.OnTrackSelected += OnTrackSelected;
 		_view.NeedMoreTracks += OnNeedMoreTracks;
 		_view.OnCellActivated += ViewOnTrackSelected;
+		_playbackQueue.OnTrackChanged += OnPlayingTrackChanged;
 	}
 
 	public async Task LoadTracksFor(Playlist playlist)
@@ -46,6 +47,8 @@ public class TracksPresenter : ITracksPresenter
 		{
 			_view.SetTracks(_tracks, _trackFileProvider.IsTrackDownloaded);
 		}
+
+		_view.SetPlayingTrackId(_playbackQueue.CurrentTrackId);
 	}
 
 	private void ViewOnTrackSelected(int trackNumber)
@@ -55,6 +58,11 @@ public class TracksPresenter : ITracksPresenter
 			return;
 
 		_playbackQueue.SetQueue(allTrackIds, trackNumber);
+	}
+
+	private void OnPlayingTrackChanged(string trackId)
+	{
+		_view.SetPlayingTrackId(trackId);
 	}
 
 	private void OnTrackSelected(int index)
