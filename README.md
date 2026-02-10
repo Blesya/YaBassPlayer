@@ -6,7 +6,8 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-<img width="1734" height="927" alt="image" src="https://github.com/user-attachments/assets/50a45635-9c6f-47bf-b916-8695ef37bf03" />
+<img width="1858" height="1123" alt="image" src="https://github.com/user-attachments/assets/b74ed8ce-e2ba-4e35-94b3-d766afa89a07" />
+
 
 
 ## 📋 Описание
@@ -142,3 +143,4 @@ https://github.com/MarshalX/yandex-music-api/discussions/513
 ---
 
 ⭐ Если вам понравился проект, поставьте звезду на GitHub!
+
