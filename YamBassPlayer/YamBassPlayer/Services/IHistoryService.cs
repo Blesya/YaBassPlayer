@@ -6,4 +6,5 @@ public interface IHistoryService
 	IReadOnlyList<(string trackId, int count)> GetTopTracks(int limit = 10);
 	IReadOnlyList<(string trackId, int count)> GetTopEveningTracks(int limit = 10);
 	IReadOnlyList<(string trackId, int count)> GetTopTracksByDayOfWeek(DayOfWeek day, int limit = 50);
+	int GetListenCount(string trackId);
 }

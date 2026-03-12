@@ -14,6 +14,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly Label _timeLabel;
 	private readonly Button _favoriteButton;
 	private readonly Button _yandexFavoriteButton;
+	private readonly Button _queueButton;
 
 	public event Action? OnPlayClicked;
 	public event Action? OnStopClicked;
@@ -22,6 +23,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action<int>? OnSeekRequested;
 	public event Action? OnFavoriteToggleClicked;
 	public event Action? OnYandexFavoriteToggleClicked;
+	public event Action? OnQueueClicked;
 
 	public PlayStatusView()
 	{
@@ -120,6 +122,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_yandexFavoriteButton.Clicked += () => OnYandexFavoriteToggleClicked?.Invoke();
 
+		_queueButton = new Button
+		{
+			X = Pos.Right(_yandexFavoriteButton) + 1,
+			Y = 0,
+			Text = "\u2261 Очередь"
+		};
+		_queueButton.Clicked += () => OnQueueClicked?.Invoke();
+
 		_statusLabel = new Label
 		{
 			X = 1,
@@ -129,7 +139,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
-		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _progressBar, _statusLabel);
+		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _progressBar, _statusLabel);
 		Add(_panel);
 	}
 

@@ -15,4 +15,5 @@ public interface ITrackRepository
 
 	void UpdateLocalSearchCache(IEnumerable<Track> tracks);
 	void UpdateYandexSearchCache(IEnumerable<Track> tracks);
+	void UpdateQueueCache(IEnumerable<string> trackIds);
 }

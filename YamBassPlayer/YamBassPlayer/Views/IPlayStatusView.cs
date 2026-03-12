@@ -15,4 +15,5 @@ public interface IPlayStatusView
 	void SetFavoriteState(bool isFavorite);
 	event Action? OnYandexFavoriteToggleClicked;
 	void SetYandexFavoriteState(bool isFavorite);
+	event Action? OnQueueClicked;
 }

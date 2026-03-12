@@ -27,6 +27,7 @@ public class TrackRepository(
 	private readonly List<string> _favoritePlaylistCache = new();
 	private readonly List<string> _localSearchCache = new();
 	private readonly List<string> _yandexSearchCache = new();
+	private readonly List<string> _queueCache = new();
 
 	public async Task<IEnumerable<Playlist>> GetPlaylists()
 	{
@@ -141,6 +142,14 @@ public class TrackRepository(
 		var group = new PlaylistGroup("Топ по дням", dayPlaylists, isExpanded: false);
 		roots.Add(PlaylistTreeItem.FromGroup(group));
 
+		var artists = await trackInfoProvider.GetArtistsWithTrackCountAsync();
+		var artistPlaylists = artists.Select(a => new Playlist(a.artistName, PlaylistType.Artist)
+		{
+			TrackCount = a.trackCount
+		}).ToList();
+		var artistGroup = new PlaylistGroup("Исполнители", artistPlaylists, isExpanded: false);
+		roots.Add(PlaylistTreeItem.FromGroup(artistGroup));
+
 		return roots;
 	}
 
@@ -179,6 +188,12 @@ public class TrackRepository(
 					break;
 				case PlaylistType.YandexSearch:
 					await SetYandexSearchPlaylist(playlist);
+					break;
+				case PlaylistType.Artist:
+					await SetArtistPlaylist(playlist);
+					break;
+				case PlaylistType.Queue:
+					await SetQueuePlaylist(playlist);
 					break;
 				default:
 					throw new ArgumentOutOfRangeException();
@@ -245,6 +260,12 @@ public class TrackRepository(
 
 	private Task SetYandexSearchPlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadYandexSearchAsync);
+
+	private Task SetArtistPlaylist(Playlist playlist)
+		=> SetPlaylistAsync(playlist, () => trackInfoProvider.GetTrackIdsByArtistAsync(playlist.PlaylistName));
+
+	private Task SetQueuePlaylist(Playlist playlist)
+		=> SetPlaylistAsync(playlist, () => Task.FromResult(_queueCache.ToList()));
 
 	private Task SetPlaylistOfTheDay(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
@@ -380,6 +401,12 @@ public class TrackRepository(
 	{
 		_yandexSearchCache.Clear();
 		_yandexSearchCache.AddRange(tracks.Select(t => t.Id));
+	}
+
+	public void UpdateQueueCache(IEnumerable<string> trackIds)
+	{
+		_queueCache.Clear();
+		_queueCache.AddRange(trackIds);
 	}
 
 	public async Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount)

@@ -7,6 +7,7 @@ public interface IPlaybackQueue
 	bool HasNext { get; }
 	bool HasPrevious { get; }
 	string? PeekNextTrackId { get; }
+	IReadOnlyList<string> TrackIds { get; }
 	void SetQueue(IEnumerable<string> trackIds, int startIndex = 0);
 	void AddToQueue(IEnumerable<string> trackIds);
 	void Next();

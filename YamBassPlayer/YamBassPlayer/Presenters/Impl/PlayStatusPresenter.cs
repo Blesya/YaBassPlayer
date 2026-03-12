@@ -19,6 +19,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 	public event Action? OnStopClicked;
 	public event Action? OnPrevClicked;
 	public event Action? OnNextClicked;
+	public event Action? OnQueueClicked;
 
 	public PlayStatusPresenter(IPlayStatusView view, IAudioPlayer audioPlayer, ILocalFavoriteService localFavoriteService, IYandexFavoriteService yandexFavoriteService)
 	{
@@ -31,6 +32,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnStopClicked += () => OnStopClicked?.Invoke();
 		_view.OnPrevClicked += () => OnPrevClicked?.Invoke();
 		_view.OnNextClicked += () => OnNextClicked?.Invoke();
+		_view.OnQueueClicked += () => OnQueueClicked?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
 		_view.OnFavoriteToggleClicked += OnFavoriteToggleClickedHandler;
 		_view.OnYandexFavoriteToggleClicked += OnYandexFavoriteToggleClickedHandler;

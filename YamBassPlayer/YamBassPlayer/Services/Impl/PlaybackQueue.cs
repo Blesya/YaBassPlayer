@@ -21,6 +21,7 @@ public class PlaybackQueue : IPlaybackQueue
 	public bool HasNext => _currentIndex < _trackIds.Count - 1;
 	public bool HasPrevious => _currentIndex > 0;
 	public string? PeekNextTrackId => HasNext ? _trackIds[_currentIndex + 1] : null;
+	public IReadOnlyList<string> TrackIds => _trackIds.AsReadOnly();
 
 	public void SetQueue(IEnumerable<string> trackIds, int startIndex = 0)
 	{

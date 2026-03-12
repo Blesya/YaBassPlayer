@@ -10,4 +10,6 @@ public interface ITrackInfoProvider
 	Task<bool> IsTrackCached(string trackId);
 	Task<int> CountCachedTracks(IEnumerable<string> trackIds);
 	Task<IEnumerable<Track>> SearchTracks(string searchQuery, int maxResults = 50);
+	Task<IReadOnlyList<(string artistName, int trackCount)>> GetArtistsWithTrackCountAsync();
+	Task<List<string>> GetTrackIdsByArtistAsync(string artistName);
 }

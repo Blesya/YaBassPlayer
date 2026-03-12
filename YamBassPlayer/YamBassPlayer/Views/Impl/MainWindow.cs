@@ -1,4 +1,4 @@
-﻿using Terminal.Gui;
+using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
@@ -23,6 +23,7 @@ public sealed class MainWindow : Window
 	private readonly ILocalSearchPresenter _localSearchPresenter;
 	private readonly IYandexSearchPresenter _yandexSearchPresenter;
 	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
+	private readonly INowPlayingPresenter _nowPlayingPresenter;
 	private readonly SplashScreenView? _splashScreen;
 
 	public MainWindow(
@@ -33,6 +34,7 @@ public sealed class MainWindow : Window
 		ILocalSearchPresenter localSearchPresenter,
 		IYandexSearchPresenter yandexSearchPresenter,
 		IDatabaseStatisticsPresenter dbStatsPresenter,
+		INowPlayingPresenter nowPlayingPresenter,
 		ITrackFileProvider trackFileProvider,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
@@ -51,6 +53,7 @@ public sealed class MainWindow : Window
 		_localSearchPresenter = localSearchPresenter;
 		_yandexSearchPresenter = yandexSearchPresenter;
 		_dbStatsPresenter = dbStatsPresenter;
+		_nowPlayingPresenter = nowPlayingPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
@@ -68,19 +71,18 @@ public sealed class MainWindow : Window
 
 		playlistsView.X = 0;
 		playlistsView.Width = 30;
-		playlistsView.Height = 25;
+		playlistsView.Height = 35;
 
 		tracksView.X = Pos.Right(playlistsView);
 		tracksView.Width = Dim.Fill();
 		tracksView.Height = Dim.Fill(5);
 
-		SpectrumView spectrum = new SpectrumView()
+		SpectrumView spectrum = new SpectrumView(bars: 25)
 		{
 			X = 0,
 			Y = Pos.Top(playStatusView) - 15,
 			Width = 25,
-			Height = 15,
-			Bars = 25
+			Height = 15
 		};
 
 		Add(playlistsView, spectrum, tracksView, playStatusView);
@@ -115,8 +117,18 @@ public sealed class MainWindow : Window
 		_playlistsPresenter.PlaylistChosen += PlaylistsPresenterOnPlaylistChosen;
 
 		_playStatusPresenter.OnStopClicked += () => _listenTimer.OnTrackStopOrChange();
+		_playStatusPresenter.OnQueueClicked += ShowCurrentQueue;
 		
 		_audioPlayer.OnPreloadRequested += OnPreloadNextTrack;
+
+		KeyPress += e =>
+		{
+			if (e.KeyEvent.Key == Key.F5)
+			{
+				_nowPlayingPresenter.ShowNowPlaying();
+				e.Handled = true;
+			}
+		};
 	}
 
 	private async void OnTrackForPlaySelected(string trackId)
@@ -205,6 +217,10 @@ public sealed class MainWindow : Window
 				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog),
 				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog),
 				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog())
+			}),
+			new MenuBarItem("Вид", new[]
+			{
+				new MenuItem("Визуализация [F5]", "", () => _nowPlayingPresenter.ShowNowPlaying())
 			})
 		});
 
@@ -219,6 +235,34 @@ public sealed class MainWindow : Window
 			_audioPlayer.Free();
 			Application.RequestStop();
 			Console.Clear();
+		}
+	}
+
+	private async void ShowCurrentQueue()
+	{
+		try
+		{
+			var trackIds = _playbackQueue.TrackIds;
+			if (trackIds.Count == 0)
+			{
+				_playStatusPresenter.SetPlayStatus("Очередь воспроизведения пуста");
+				return;
+			}
+
+			_trackRepository.UpdateQueueCache(trackIds);
+
+			var queuePlaylist = new Playlist("Текущая очередь", Enums.PlaylistType.Queue)
+			{
+				Description = "Текущая очередь воспроизведения",
+				TrackCount = trackIds.Count
+			};
+
+			await _tracksPresenter.LoadTracksFor(queuePlaylist);
+			Title = $"{queuePlaylist.PlaylistName} : {queuePlaylist.Description}";
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
 		}
 	}
 

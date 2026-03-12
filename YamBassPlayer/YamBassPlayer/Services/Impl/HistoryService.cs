@@ -124,4 +124,15 @@ public sealed class HistoryService : IHistoryService
 
 		return result;
 	}
+
+	public int GetListenCount(string trackId)
+	{
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText =
+			"""
+			SELECT COUNT(*) FROM listensHistory WHERE trackId = $trackId;
+			""";
+		cmd.Parameters.AddWithValue("$trackId", trackId);
+		return Convert.ToInt32(cmd.ExecuteScalar());
+	}
 }

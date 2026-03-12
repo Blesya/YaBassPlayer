@@ -79,6 +79,7 @@ public static class ServicesProvider
 		builder.RegisterType<LocalSearchPresenter>().As<ILocalSearchPresenter>().SingleInstance();
 		builder.RegisterType<YandexSearchPresenter>().As<IYandexSearchPresenter>().SingleInstance();
 		builder.RegisterType<DatabaseStatisticsPresenter>().As<IDatabaseStatisticsPresenter>().SingleInstance();
+		builder.RegisterType<NowPlayingPresenter>().As<INowPlayingPresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();

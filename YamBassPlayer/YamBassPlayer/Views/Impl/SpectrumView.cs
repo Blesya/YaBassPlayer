@@ -5,15 +5,19 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class SpectrumView : View
 {
-	public int Bars { get; set; } = 25;
+	public int Bars { get; }
+	public int BarWidth { get; set; } = 1;
+	public int BarGap { get; set; } = 0;
+
 	private float[] _fft = new float[128];
 	private readonly float[] _smoothed;
 	private readonly float[] _peaks;
 	private readonly float[] _peakFallSpeed;
 	private readonly Random _rnd = new();
 
-	public SpectrumView()
+	public SpectrumView(int bars = 25)
 	{
+		Bars = bars;
 		_smoothed = new float[Bars];
 		_peaks = new float[Bars];
 		_peakFallSpeed = new float[Bars];
@@ -39,20 +43,24 @@ public sealed class SpectrumView : View
 
 		var driver = Application.Driver;
 		int height = bounds.Height;
-		int width = Math.Min(Bars, bounds.Width);
+		int cellWidth = BarWidth + BarGap;
+		int numBars = Math.Min(Bars, bounds.Width / Math.Max(1, cellWidth));
 
-		int fftStep = _fft.Length / width;
+		if (numBars <= 0) return;
 
-		for (int i = 0; i < width; i++)
+		float fftStepF = (float)_fft.Length / numBars;
+
+		for (int i = 0; i < numBars; i++)
 		{
-			var rawValue = 0f;
-			int start = i * fftStep;
-			int end = start + fftStep;
+			int start = (int)(i * fftStepF);
+			int end = Math.Max(start + 1, (int)((i + 1) * fftStepF));
+			end = Math.Min(end, _fft.Length);
 
+			var rawValue = 0f;
 			for (int j = start; j < end; j++)
 				rawValue += _fft[j];
 
-			rawValue /= fftStep;
+			rawValue /= (end - start);
 
 			float k = ((float)Math.Log2(i + 1.3d)) * 10f;
 			rawValue *= k;
@@ -76,27 +84,39 @@ public sealed class SpectrumView : View
 
 			float t = _smoothed[i];
 
-			Color peakColor = t switch
+			Color barColor = t switch
 			{
-				< 0.33f => Color.Green,
-				< 0.66f => Color.BrightYellow,
+				< 0.15f => Color.Blue,
+				< 0.30f => Color.BrightBlue,
+				< 0.45f => Color.Cyan,
+				< 0.60f => Color.BrightCyan,
+				< 0.75f => Color.Green,
+				< 0.85f => Color.BrightGreen,
+				< 0.95f => Color.BrightYellow,
 				_ => Color.BrightRed
 			};
 
-			driver.SetAttribute(new Attribute(peakColor, Color.Black));
+			driver.SetAttribute(new Attribute(barColor, Color.Black));
 
+			int xStart = i * cellWidth;
 			for (int y = 0; y < barPixels; y++)
 			{
-				Move(i, height - 1 - y);
-				driver.AddRune('█');
+				for (int dx = 0; dx < BarWidth; dx++)
+				{
+					Move(xStart + dx, height - 1 - y);
+					driver.AddRune('█');
+				}
 			}
 
 			int peakY = height - 1 - (int)_peaks[i];
 			if (peakY >= 0 && peakY < height)
 			{
 				driver.SetAttribute(new Attribute(Color.White, Color.Black));
-				Move(i, peakY);
-				driver.AddRune('░');
+				for (int dx = 0; dx < BarWidth; dx++)
+				{
+					Move(xStart + dx, peakY);
+					driver.AddRune('░');
+				}
 			}
 		}
 	}

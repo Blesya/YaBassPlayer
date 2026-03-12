@@ -11,5 +11,7 @@ public enum PlaylistType
 	LocalFavorite,
 	LocalSearch,
 	TopByDay,
-	YandexSearch
+	YandexSearch,
+	Artist,
+	Queue
 }

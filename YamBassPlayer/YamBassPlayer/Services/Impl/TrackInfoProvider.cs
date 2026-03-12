@@ -180,6 +180,59 @@ public class TrackInfoProvider : ITrackInfoProvider
 		return count;
 	}
 
+	public async Task<IReadOnlyList<(string artistName, int trackCount)>> GetArtistsWithTrackCountAsync()
+	{
+		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+		await using var connection = new SqliteConnection($"Data Source={dbPath}");
+		await connection.OpenAsync();
+
+		await using SqliteCommand cmd = connection.CreateCommand();
+		cmd.CommandText = @"
+			SELECT CASE WHEN Artist = '' OR Artist IS NULL THEN 'Неизвестный исполнитель' ELSE Artist END AS ArtistName,
+			       COUNT(*) AS TrackCount
+			FROM Tracks
+			GROUP BY ArtistName
+			ORDER BY ArtistName ASC";
+
+		var result = new List<(string artistName, int trackCount)>();
+		await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+		while (await reader.ReadAsync())
+		{
+			var artistName = reader.GetString(0);
+			var trackCount = reader.GetInt32(1);
+			result.Add((artistName, trackCount));
+		}
+
+		return result;
+	}
+
+	public async Task<List<string>> GetTrackIdsByArtistAsync(string artistName)
+	{
+		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
+		await using var connection = new SqliteConnection($"Data Source={dbPath}");
+		await connection.OpenAsync();
+
+		await using SqliteCommand cmd = connection.CreateCommand();
+		if (artistName == "Неизвестный исполнитель")
+		{
+			cmd.CommandText = "SELECT TrackId FROM Tracks WHERE Artist = '' OR Artist IS NULL ORDER BY Album, Title";
+		}
+		else
+		{
+			cmd.CommandText = "SELECT TrackId FROM Tracks WHERE Artist = @artist ORDER BY Album, Title";
+			cmd.Parameters.AddWithValue("@artist", artistName);
+		}
+
+		var trackIds = new List<string>();
+		await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+		while (await reader.ReadAsync())
+		{
+			trackIds.Add(reader.GetString(0));
+		}
+
+		return trackIds;
+	}
+
 	public async Task<IEnumerable<Track>> SearchTracks(string searchQuery, int maxResults = 50)
 	{
 		if (string.IsNullOrWhiteSpace(searchQuery))

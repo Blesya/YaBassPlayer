@@ -6,6 +6,7 @@ public interface IPlayStatusPresenter
 	event Action? OnStopClicked;
 	event Action? OnPrevClicked;
 	event Action? OnNextClicked;
+	event Action? OnQueueClicked;
 	void SetPlayStatus(string status);
 	void SetTitle(string title);
 	void SetCurrentTrackId(string? trackId);
