@@ -1,4 +1,5 @@
 using Terminal.Gui;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
@@ -24,7 +25,12 @@ public sealed class MainWindow : Window
 	private readonly IYandexSearchPresenter _yandexSearchPresenter;
 	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
 	private readonly INowPlayingPresenter _nowPlayingPresenter;
+	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
+	private readonly ITrackInfoPanelPresenter _trackInfoPanelPresenter;
+	private readonly IOnSameWavePresenter _onSameWavePresenter;
+	private readonly IRecommendationGraphPresenter _recommendationGraphPresenter;
 	private readonly SplashScreenView? _splashScreen;
+	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
 
 	public MainWindow(
 		IPlaylistsPresenter playlistsPresenter,
@@ -35,6 +41,10 @@ public sealed class MainWindow : Window
 		IYandexSearchPresenter yandexSearchPresenter,
 		IDatabaseStatisticsPresenter dbStatsPresenter,
 		INowPlayingPresenter nowPlayingPresenter,
+		ILargeTrackInfoPresenter largeTrackInfoPresenter,
+		IOnSameWavePresenter onSameWavePresenter,
+		IRecommendationGraphPresenter recommendationGraphPresenter,
+		ITrackInfoPanelPresenter trackInfoPanelPresenter,
 		ITrackFileProvider trackFileProvider,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
@@ -43,7 +53,8 @@ public sealed class MainWindow : Window
 		IAudioPlayer audioPlayer,
 		PlayStatusView playStatusView,
 		PlaylistsView playlistsView,
-		TracksTileView tracksView)
+		TracksTileView tracksView,
+		TrackInfoPanelView trackInfoPanelView)
 		: base(YamBassPlayerTitle)
 	{
 		_playlistsPresenter = playlistsPresenter;
@@ -54,6 +65,10 @@ public sealed class MainWindow : Window
 		_yandexSearchPresenter = yandexSearchPresenter;
 		_dbStatsPresenter = dbStatsPresenter;
 		_nowPlayingPresenter = nowPlayingPresenter;
+		_largeTrackInfoPresenter = largeTrackInfoPresenter;
+		_trackInfoPanelPresenter = trackInfoPanelPresenter;
+		_onSameWavePresenter = onSameWavePresenter;
+		_recommendationGraphPresenter = recommendationGraphPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
@@ -71,21 +86,28 @@ public sealed class MainWindow : Window
 
 		playlistsView.X = 0;
 		playlistsView.Width = 30;
-		playlistsView.Height = 35;
+		playlistsView.Height = Dim.Fill(5);
+
+		const int panelWidth = 38;
 
 		tracksView.X = Pos.Right(playlistsView);
-		tracksView.Width = Dim.Fill();
+		tracksView.Width = Dim.Fill(panelWidth);
 		tracksView.Height = Dim.Fill(5);
 
-		SpectrumView spectrum = new SpectrumView(bars: 25)
+		trackInfoPanelView.X = Pos.Right(tracksView);
+		trackInfoPanelView.Y = 0;
+		trackInfoPanelView.Width = panelWidth;
+		trackInfoPanelView.Height = Dim.Fill(5);
+
+		SpectrumView spectrum = new SpectrumView(bars: 29)
 		{
 			X = 0,
 			Y = Pos.Top(playStatusView) - 15,
-			Width = 25,
+			Width = 29,
 			Height = 15
 		};
 
-		Add(playlistsView, spectrum, tracksView, playStatusView);
+		Add(playlistsView, spectrum, tracksView, trackInfoPanelView, playStatusView);
 
 		_playbackQueue.OnTrackChanged += OnTrackForPlaySelected;
 
@@ -104,6 +126,7 @@ public sealed class MainWindow : Window
 		_playStatusPresenter.OnNextClicked += _playbackQueue.Next;
 
 		_playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
+		_tracksPresenter.OnTrackChosen += track => _trackInfoPanelPresenter.OnTrackSelected(track);
 		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
 			float[] fft = _audioPlayer.ChannelGetData();
@@ -128,6 +151,24 @@ public sealed class MainWindow : Window
 				_nowPlayingPresenter.ShowNowPlaying();
 				e.Handled = true;
 			}
+
+			if (e.KeyEvent.Key == Key.F6)
+			{
+				ShowOnSameWave();
+				e.Handled = true;
+			}
+
+			if (e.KeyEvent.Key == Key.F7)
+			{
+				_recommendationGraphPresenter.ShowRecommendationGraph();
+				e.Handled = true;
+			}
+
+			if (e.KeyEvent.Key == Key.F8)
+			{
+				_largeTrackInfoPresenter.ShowLargeTrackInfo();
+				e.Handled = true;
+			}
 		};
 	}
 
@@ -145,7 +186,10 @@ public sealed class MainWindow : Window
 			_playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
 			Console.Title = $"{track.Artist} - {track.Title}";
 			_audioPlayer.Play(filePath);
-			_listenTimer.OnTrackStart(trackId);
+			var source = _currentPlaylistType == PlaylistType.OnSameWave
+				? ListenSource.OnSameWave
+				: ListenSource.Regular;
+			_listenTimer.OnTrackStart(trackId, source);
 			_playStatusPresenter.SetCurrentTrackId(trackId);
 		}
 		catch (Exception exception)
@@ -160,6 +204,7 @@ public sealed class MainWindow : Window
 
 	private async void OnPlaylistChosen(Playlist playlist)
 	{
+		_currentPlaylistType = playlist.Type;
 		await _tracksPresenter.LoadTracksFor(playlist);
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 	}
@@ -216,11 +261,14 @@ public sealed class MainWindow : Window
 			{
 				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog),
 				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog),
+				new MenuItem("На одной волне [F6]", "", ShowOnSameWave),
+				new MenuItem("Граф рекомендаций [F7]", "", () => _recommendationGraphPresenter.ShowRecommendationGraph()),
 				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog())
 			}),
 			new MenuBarItem("Вид", new[]
 			{
-				new MenuItem("Визуализация [F5]", "", () => _nowPlayingPresenter.ShowNowPlaying())
+				new MenuItem("Визуализация [F5]", "", () => _nowPlayingPresenter.ShowNowPlaying()),
+				new MenuItem("Крупное инфо [F8]", "", () => _largeTrackInfoPresenter.ShowLargeTrackInfo())
 			})
 		});
 
@@ -259,6 +307,7 @@ public sealed class MainWindow : Window
 
 			await _tracksPresenter.LoadTracksFor(queuePlaylist);
 			Title = $"{queuePlaylist.PlaylistName} : {queuePlaylist.Description}";
+			_playlistsPresenter.NotifyTransientPlaylistActive(queuePlaylist);
 		}
 		catch (Exception ex)
 		{
@@ -299,6 +348,7 @@ public sealed class MainWindow : Window
 					await _trackRepository.SetPlaylist(yandexSearchPlaylist);
 					await _tracksPresenter.LoadTracksFor(yandexSearchPlaylist);
 					Title = $"{yandexSearchPlaylist.PlaylistName} : {yandexSearchPlaylist.Description}";
+					_playlistsPresenter.NotifyTransientPlaylistActive(yandexSearchPlaylist);
 				}
 			}
 		}
@@ -306,6 +356,15 @@ public sealed class MainWindow : Window
 		{
 			ex.Handle();
 		}
+	}
+
+	private async void ShowOnSameWave()
+	{
+		var playlist = await _onSameWavePresenter.ShowOnSameWaveAsync();
+		if (playlist is null) return;
+		_currentPlaylistType = PlaylistType.OnSameWave;
+		Title = $"{playlist.PlaylistName} : {playlist.Description}";
+		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
 	}
 
 	private async void ShowLocalSearchDialog()
@@ -330,6 +389,7 @@ public sealed class MainWindow : Window
 					await _trackRepository.SetPlaylist(localSearchPlaylist);
 					await _tracksPresenter.LoadTracksFor(localSearchPlaylist);
 					Title = $"{localSearchPlaylist.PlaylistName} : {localSearchPlaylist.Description}";
+					_playlistsPresenter.NotifyTransientPlaylistActive(localSearchPlaylist);
 				}
 			}
 		}

@@ -5,11 +5,11 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class TracksTileView : View, ITracksView
 {
-	private const int TileWidth = 27;
+	private const int TileWidth = 26;
 	private const int TileHeight = 5;
 	private const int TileGap = 1;
 
-	private readonly record struct TileData(string DisplayNumber, string Artist, string Title, string Album, string TrackId);
+	private readonly record struct TileData(string DisplayNumber, string Artist, string Title, string Album, string TrackId, string? Subtitle = null);
 
 	private readonly List<TileData> _tracks = [];
 	private string? _playingTrackId;
@@ -54,7 +54,7 @@ public sealed class TracksTileView : View, ITracksView
 			{
 				number++;
 				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id));
+				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
 			}
 
 			_selectedIndex = 0;
@@ -75,7 +75,7 @@ public sealed class TracksTileView : View, ITracksView
 			{
 				number++;
 				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id));
+				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
 			}
 
 			_isLoadingMore = false;
@@ -174,10 +174,11 @@ public sealed class TracksTileView : View, ITracksView
 			: PadOrTruncate(tile.Title, innerWidth);
 		DrawStringAt(x, y + 2, "│" + titleText + "│", bounds);
 
-		// Album line
+		// Album / Subtitle line
+		string thirdLine = tile.Subtitle ?? tile.Album;
 		string albumText = isSelected
-			? MarqueeText(tile.Album, _marqueeAlbumOffset, innerWidth)
-			: PadOrTruncate(tile.Album, innerWidth);
+			? MarqueeText(thirdLine, _marqueeAlbumOffset, innerWidth)
+			: PadOrTruncate(thirdLine, innerWidth);
 		DrawStringAt(x, y + 3, "│" + albumText + "│", bounds);
 
 		// Bottom border
@@ -407,7 +408,7 @@ public sealed class TracksTileView : View, ITracksView
 
 			AdvanceMarquee(tile.Artist, innerWidth, ref _marqueeArtistOffset, ref _marqueePauseArtist);
 			AdvanceMarquee(tile.Title, innerWidth, ref _marqueeTitleOffset, ref _marqueePauseTitle);
-			AdvanceMarquee(tile.Album, innerWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
+			AdvanceMarquee(tile.Subtitle ?? tile.Album, innerWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
 
 			SetNeedsDisplay();
 			return true;

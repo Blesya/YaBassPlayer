@@ -1,4 +1,5 @@
 ﻿using Microsoft.Data.Sqlite;
+using YamBassPlayer.Enums;
 
 namespace YamBassPlayer.Services.Impl;
 
@@ -14,8 +15,8 @@ public sealed class HistoryService : IHistoryService
 
 	private void EnsureSchema()
 	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText =
+		using var createCmd = _connection.CreateCommand();
+		createCmd.CommandText =
 			"""
 			CREATE TABLE IF NOT EXISTS listensHistory (
 				id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,10 +25,38 @@ public sealed class HistoryService : IHistoryService
 				utcOffsetMinutes INTEGER NOT NULL
 			);
 			""";
-		cmd.ExecuteNonQuery();
+		createCmd.ExecuteNonQuery();
+
+		MigrateAddSourceColumn();
 	}
 
-	public void LogListen(string trackId)
+	private void MigrateAddSourceColumn()
+	{
+		using var checkCmd = _connection.CreateCommand();
+		checkCmd.CommandText = "PRAGMA table_info(listensHistory);";
+		using var reader = checkCmd.ExecuteReader();
+		bool hasSource = false;
+		while (reader.Read())
+		{
+			if (reader.GetString(1) == "source")
+			{
+				hasSource = true;
+				break;
+			}
+		}
+
+		if (hasSource)
+			return;
+
+		using var alterCmd = _connection.CreateCommand();
+		alterCmd.CommandText =
+			"""
+			ALTER TABLE listensHistory ADD COLUMN source TEXT NOT NULL DEFAULT 'Regular';
+			""";
+		alterCmd.ExecuteNonQuery();
+	}
+
+	public void LogListen(string trackId, ListenSource source)
 	{
 		var utcNow = DateTime.UtcNow;
 		var offset = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes;
@@ -35,13 +64,14 @@ public sealed class HistoryService : IHistoryService
 		using var cmd = _connection.CreateCommand();
 		cmd.CommandText =
 			"""
-			INSERT INTO listensHistory (trackId, utcTime, utcOffsetMinutes)
-			VALUES ($t, $u, $o);
+			INSERT INTO listensHistory (trackId, utcTime, utcOffsetMinutes, source)
+			VALUES ($t, $u, $o, $s);
 			""";
 
 		cmd.Parameters.AddWithValue("$t", trackId);
 		cmd.Parameters.AddWithValue("$u", utcNow.ToString("O"));
 		cmd.Parameters.AddWithValue("$o", offset);
+		cmd.Parameters.AddWithValue("$s", source.ToString());
 
 		cmd.ExecuteNonQuery();
 	}

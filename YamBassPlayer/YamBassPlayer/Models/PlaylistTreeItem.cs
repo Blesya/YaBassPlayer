@@ -10,20 +10,29 @@ public class PlaylistTreeItem : ITreeNode
 
 	public object Tag { get; set; } = null!;
 
-	public Playlist? Playlist { get; init; }
+	public Playlist? Playlist { get; set; }
 
 	public PlaylistGroup? Group { get; init; }
 
 	public bool IsGroup => Group != null;
 
+	public bool IsPlaying { get; set; }
+
+	public void UpdateText()
+	{
+		if (Playlist is null) return;
+		Text = $"{Playlist.PlaylistName} ({Playlist.TrackCount})";
+	}
+
 	public static PlaylistTreeItem FromPlaylist(Playlist playlist)
 	{
-		return new PlaylistTreeItem
+		var item = new PlaylistTreeItem
 		{
-			Text = playlist.ToString(),
 			Playlist = playlist,
 			Tag = playlist
 		};
+		item.UpdateText();
+		return item;
 	}
 
 	public static PlaylistTreeItem FromGroup(PlaylistGroup group)

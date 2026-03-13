@@ -28,6 +28,9 @@ public class TrackRepository(
 	private readonly List<string> _localSearchCache = new();
 	private readonly List<string> _yandexSearchCache = new();
 	private readonly List<string> _queueCache = new();
+	private readonly List<Track> _onSameWaveTracksCache = new();
+
+	public PlaylistType? CurrentPlaylistType => _currentPlaylist?.Type;
 
 	public async Task<IEnumerable<Playlist>> GetPlaylists()
 	{
@@ -195,6 +198,9 @@ public class TrackRepository(
 				case PlaylistType.Queue:
 					await SetQueuePlaylist(playlist);
 					break;
+				case PlaylistType.OnSameWave:
+					await SetOnSameWavePlaylist(playlist);
+					break;
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
@@ -266,6 +272,12 @@ public class TrackRepository(
 
 	private Task SetQueuePlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, () => Task.FromResult(_queueCache.ToList()));
+
+	private Task SetOnSameWavePlaylist(Playlist playlist)
+		=> SetPlaylistAsync(playlist, LoadOnSameWaveAsync);
+
+	private Task<List<string>> LoadOnSameWaveAsync()
+		=> Task.FromResult(_onSameWaveTracksCache.Select(t => t.Id).ToList());
 
 	private Task SetPlaylistOfTheDay(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
@@ -409,10 +421,22 @@ public class TrackRepository(
 		_queueCache.AddRange(trackIds);
 	}
 
+	public void UpdateOnSameWaveCache(IEnumerable<Track> tracks)
+	{
+		_onSameWaveTracksCache.Clear();
+		_onSameWaveTracksCache.AddRange(tracks);
+	}
+
 	public async Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount)
 	{
 		try
 		{
+			if (_currentPlaylist?.Type == PlaylistType.OnSameWave)
+			{
+				_currentOffset = _onSameWaveTracksCache.Count;
+				return _onSameWaveTracksCache.ToList();
+			}
+
 			int cachedCount = await trackInfoProvider.CountCachedTracks(_tracksIds);
 
 			int countToLoad = Math.Max(cachedCount, minCount);
@@ -430,3 +454,5 @@ public class TrackRepository(
 		}
 	}
 }
+
+

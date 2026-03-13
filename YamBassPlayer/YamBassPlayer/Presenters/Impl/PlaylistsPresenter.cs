@@ -1,4 +1,5 @@
-﻿using YamBassPlayer.Models;
+﻿using YamBassPlayer.Extensions;
+using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 
@@ -24,19 +25,34 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 	private async void LoadPlaylists()
 	{
-		var roots = await _trackRepository.GetPlaylistTree();
-		_roots = roots.ToList();
-		_view.SetPlaylistTree(_roots);
-
-		var firstPlaylist = _roots.FirstOrDefault(r => r.Playlist != null)?.Playlist;
-		if (firstPlaylist != null)
+		try
 		{
-			PlaylistChosen?.Invoke(firstPlaylist);
+			var roots = await _trackRepository.GetPlaylistTree();
+			_roots = roots.ToList();
+			_view.SetPlaylistTree(_roots);
+
+			var firstPlaylist = _roots.FirstOrDefault(r => r.Playlist != null)?.Playlist;
+			if (firstPlaylist != null)
+			{
+				_view.MarkAsPlaying(firstPlaylist);
+				PlaylistChosen?.Invoke(firstPlaylist);
+			}
 		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
+	}
+
+	public void NotifyTransientPlaylistActive(Playlist playlist)
+	{
+		_view.AddOrUpdateTransientPlaylist(playlist);
+		_view.MarkAsPlaying(playlist);
 	}
 
 	private void OnPlaylistSelected(Playlist playlist)
 	{
+		_view.MarkAsPlaying(playlist);
 		PlaylistChosen?.Invoke(playlist);
 	}
 }

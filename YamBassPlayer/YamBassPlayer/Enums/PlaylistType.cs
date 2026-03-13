@@ -13,5 +13,6 @@ public enum PlaylistType
 	TopByDay,
 	YandexSearch,
 	Artist,
-	Queue
+	Queue,
+	OnSameWave
 }
