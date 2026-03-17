@@ -1,5 +1,6 @@
 ﻿using System.Timers;
 using Terminal.Gui;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 using Timer = System.Timers.Timer;
@@ -20,6 +21,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 	public event Action? OnPrevClicked;
 	public event Action? OnNextClicked;
 	public event Action? OnQueueClicked;
+	public event Action? OnPlaybackModeToggled;
 
 	public PlayStatusPresenter(IPlayStatusView view, IAudioPlayer audioPlayer, ILocalFavoriteService localFavoriteService, IYandexFavoriteService yandexFavoriteService)
 	{
@@ -33,6 +35,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnPrevClicked += () => OnPrevClicked?.Invoke();
 		_view.OnNextClicked += () => OnNextClicked?.Invoke();
 		_view.OnQueueClicked += () => OnQueueClicked?.Invoke();
+		_view.OnPlaybackModeToggled += () => OnPlaybackModeToggled?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
 		_view.OnFavoriteToggleClicked += OnFavoriteToggleClickedHandler;
 		_view.OnYandexFavoriteToggleClicked += OnYandexFavoriteToggleClickedHandler;
@@ -64,6 +67,11 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 	public void SetTitle(string tilte)
 	{
 		_view.SetTitle(tilte);
+	}
+
+	public void SetPlaybackMode(PlaybackMode mode)
+	{
+		_view.SetPlaybackMode(mode);
 	}
 
 	public void SetCurrentTrackId(string? trackId)

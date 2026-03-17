@@ -141,6 +141,7 @@ public sealed class MainWindow : Window
 
 		_playStatusPresenter.OnStopClicked += () => _listenTimer.OnTrackStopOrChange();
 		_playStatusPresenter.OnQueueClicked += ShowCurrentQueue;
+		_playStatusPresenter.OnPlaybackModeToggled += OnPlaybackModeToggled;
 		
 		_audioPlayer.OnPreloadRequested += OnPreloadNextTrack;
 
@@ -284,6 +285,14 @@ public sealed class MainWindow : Window
 			Application.RequestStop();
 			Console.Clear();
 		}
+	}
+
+	private void OnPlaybackModeToggled()
+	{
+		_playbackQueue.Mode = _playbackQueue.Mode == PlaybackMode.Shuffle
+			? PlaybackMode.Sequential
+			: PlaybackMode.Shuffle;
+		_playStatusPresenter.SetPlaybackMode(_playbackQueue.Mode);
 	}
 
 	private async void ShowCurrentQueue()

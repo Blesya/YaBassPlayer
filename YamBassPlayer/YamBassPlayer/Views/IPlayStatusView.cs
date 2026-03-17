@@ -1,3 +1,5 @@
+using YamBassPlayer.Enums;
+
 namespace YamBassPlayer.Views;
 
 public interface IPlayStatusView
@@ -16,4 +18,6 @@ public interface IPlayStatusView
 	event Action? OnYandexFavoriteToggleClicked;
 	void SetYandexFavoriteState(bool isFavorite);
 	event Action? OnQueueClicked;
+	event Action? OnPlaybackModeToggled;
+	void SetPlaybackMode(PlaybackMode mode);
 }

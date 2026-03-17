@@ -1,3 +1,5 @@
+using YamBassPlayer.Enums;
+
 namespace YamBassPlayer.Services;
 
 public interface IPlaybackQueue
@@ -8,6 +10,7 @@ public interface IPlaybackQueue
 	bool HasPrevious { get; }
 	string? PeekNextTrackId { get; }
 	IReadOnlyList<string> TrackIds { get; }
+	PlaybackMode Mode { get; set; }
 	void SetQueue(IEnumerable<string> trackIds, int startIndex = 0);
 	void AddToQueue(IEnumerable<string> trackIds);
 	void Next();

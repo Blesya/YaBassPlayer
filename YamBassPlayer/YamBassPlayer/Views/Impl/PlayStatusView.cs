@@ -1,4 +1,5 @@
 using Terminal.Gui;
+using YamBassPlayer.Enums;
 
 namespace YamBassPlayer.Views.Impl;
 
@@ -15,6 +16,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly Button _favoriteButton;
 	private readonly Button _yandexFavoriteButton;
 	private readonly Button _queueButton;
+	private readonly Button _playbackModeButton;
 
 	public event Action? OnPlayClicked;
 	public event Action? OnStopClicked;
@@ -24,6 +26,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action? OnFavoriteToggleClicked;
 	public event Action? OnYandexFavoriteToggleClicked;
 	public event Action? OnQueueClicked;
+	public event Action? OnPlaybackModeToggled;
 
 	public PlayStatusView()
 	{
@@ -130,6 +133,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_queueButton.Clicked += () => OnQueueClicked?.Invoke();
 
+		_playbackModeButton = new Button
+		{
+			X = Pos.Right(_queueButton) + 1,
+			Y = 0,
+			Text = "Поочерёдно"
+		};
+		_playbackModeButton.Clicked += () => OnPlaybackModeToggled?.Invoke();
+
 		_statusLabel = new Label
 		{
 			X = 1,
@@ -139,7 +150,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
-		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _progressBar, _statusLabel);
+		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton, _progressBar, _statusLabel);
 		Add(_panel);
 	}
 
@@ -188,6 +199,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		Application.MainLoop.Invoke(() =>
 		{
 			_yandexFavoriteButton.Text = isFavorite ? "\u2665" : "\u2661";
+		});
+	}
+
+	public void SetPlaybackMode(PlaybackMode mode)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_playbackModeButton.Text = mode == PlaybackMode.Shuffle ? "Случайно" : "Поочерёдно";
 		});
 	}
 }
