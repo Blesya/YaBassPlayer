@@ -28,9 +28,12 @@ public sealed class MainWindow : Window
 	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
 	private readonly ITrackInfoPanelPresenter _trackInfoPanelPresenter;
 	private readonly IOnSameWavePresenter _onSameWavePresenter;
+	private readonly IMyWavePresenter _myWavePresenter;
 	private readonly IRecommendationGraphPresenter _recommendationGraphPresenter;
 	private readonly SplashScreenView? _splashScreen;
 	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
+	private string? _currentMyWaveTrackId;
+	private bool _myWaveSkipPending;
 
 	public MainWindow(
 		IPlaylistsPresenter playlistsPresenter,
@@ -43,6 +46,7 @@ public sealed class MainWindow : Window
 		INowPlayingPresenter nowPlayingPresenter,
 		ILargeTrackInfoPresenter largeTrackInfoPresenter,
 		IOnSameWavePresenter onSameWavePresenter,
+		IMyWavePresenter myWavePresenter,
 		IRecommendationGraphPresenter recommendationGraphPresenter,
 		ITrackInfoPanelPresenter trackInfoPanelPresenter,
 		ITrackFileProvider trackFileProvider,
@@ -68,6 +72,7 @@ public sealed class MainWindow : Window
 		_largeTrackInfoPresenter = largeTrackInfoPresenter;
 		_trackInfoPanelPresenter = trackInfoPanelPresenter;
 		_onSameWavePresenter = onSameWavePresenter;
+		_myWavePresenter = myWavePresenter;
 		_recommendationGraphPresenter = recommendationGraphPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
@@ -123,7 +128,12 @@ public sealed class MainWindow : Window
 			_audioPlayer.Resume();
 		};
 		_playStatusPresenter.OnPrevClicked += _playbackQueue.Previous;
-		_playStatusPresenter.OnNextClicked += _playbackQueue.Next;
+		_playStatusPresenter.OnNextClicked += () =>
+		{
+			if (_currentPlaylistType == PlaylistType.MyWave)
+				_myWaveSkipPending = true;
+			_playbackQueue.Next();
+		};
 
 		_playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
 		_tracksPresenter.OnTrackChosen += track => _trackInfoPanelPresenter.OnTrackSelected(track);
@@ -170,6 +180,12 @@ public sealed class MainWindow : Window
 				_largeTrackInfoPresenter.ShowLargeTrackInfo();
 				e.Handled = true;
 			}
+
+			if (e.KeyEvent.Key == Key.F9)
+			{
+				ShowMyWave();
+				e.Handled = true;
+			}
 		};
 	}
 
@@ -177,6 +193,17 @@ public sealed class MainWindow : Window
 	{
 		try
 		{
+			// Фидбек для предыдущего трека в режиме Моя волна
+			if (_currentPlaylistType == PlaylistType.MyWave && _currentMyWaveTrackId != null)
+			{
+				double played = _audioPlayer.GetCurrentPosition().TotalSeconds;
+				if (_myWaveSkipPending)
+					_ = _myWavePresenter.NotifyTrackSkippedAsync(_currentMyWaveTrackId, played);
+				else
+					_ = _myWavePresenter.NotifyTrackFinishedAsync(_currentMyWaveTrackId, played);
+				_myWaveSkipPending = false;
+			}
+
 			Track track = await _trackInfoProvider.GetTrackInfoById(trackId);
 
 			_playStatusPresenter.SetTitle($"Загружается трек: {track.Artist} - {track.Title}");
@@ -187,11 +214,25 @@ public sealed class MainWindow : Window
 			_playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
 			Console.Title = $"{track.Artist} - {track.Title}";
 			_audioPlayer.Play(filePath);
-			var source = _currentPlaylistType == PlaylistType.OnSameWave
-				? ListenSource.OnSameWave
-				: ListenSource.Regular;
+
+			var source = _currentPlaylistType switch
+			{
+				PlaylistType.OnSameWave => ListenSource.OnSameWave,
+				PlaylistType.MyWave    => ListenSource.MyWave,
+				_                      => ListenSource.Regular
+			};
 			_listenTimer.OnTrackStart(trackId, source);
 			_playStatusPresenter.SetCurrentTrackId(trackId);
+
+			// Фидбек и бесконечная очередь для Моя волна
+			if (_currentPlaylistType == PlaylistType.MyWave)
+			{
+				_currentMyWaveTrackId = trackId;
+				_ = _myWavePresenter.NotifyTrackStartedAsync(trackId);
+
+				if (!_playbackQueue.HasNext)
+					_ = _myWavePresenter.FetchMoreTracksAsync();
+			}
 		}
 		catch (Exception exception)
 		{
@@ -262,6 +303,8 @@ public sealed class MainWindow : Window
 			{
 				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog),
 				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog),
+				new MenuItem("Моя волна [F9]", "", ShowMyWave),
+				new MenuItem("Моя волна по треку", "", ShowMyWaveByTrack),
 				new MenuItem("На одной волне [F6]", "", ShowOnSameWave),
 				new MenuItem("Граф рекомендаций [F7]", "", () => _recommendationGraphPresenter.ShowRecommendationGraph()),
 				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog())
@@ -372,6 +415,36 @@ public sealed class MainWindow : Window
 		var playlist = await _onSameWavePresenter.ShowOnSameWaveAsync();
 		if (playlist is null) return;
 		_currentPlaylistType = PlaylistType.OnSameWave;
+		_currentMyWaveTrackId = null;
+		Title = $"{playlist.PlaylistName} : {playlist.Description}";
+		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
+	}
+
+	private async void ShowMyWave()
+	{
+		var playlist = await _myWavePresenter.StartMyWaveAsync();
+		if (playlist is null) return;
+		_currentPlaylistType = PlaylistType.MyWave;
+		_currentMyWaveTrackId = null;
+		_myWaveSkipPending = false;
+		Title = $"{playlist.PlaylistName} : {playlist.Description}";
+		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
+	}
+
+	private async void ShowMyWaveByTrack()
+	{
+		var trackId = _playbackQueue.CurrentTrackId;
+		if (trackId == null)
+		{
+			_playStatusPresenter.SetPlayStatus("Сначала начните воспроизведение трека");
+			return;
+		}
+
+		var playlist = await _myWavePresenter.StartMyWaveFromTrackAsync(trackId);
+		if (playlist is null) return;
+		_currentPlaylistType = PlaylistType.MyWave;
+		_currentMyWaveTrackId = null;
+		_myWaveSkipPending = false;
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
 	}

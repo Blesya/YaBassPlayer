@@ -14,5 +14,6 @@ public enum PlaylistType
 	YandexSearch,
 	Artist,
 	Queue,
-	OnSameWave
+	OnSameWave,
+	MyWave
 }

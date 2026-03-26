@@ -145,7 +145,7 @@ return _cachedGraph;
 private int GetHistoryCount()
 {
 using var cmd = connection.CreateCommand();
-cmd.CommandText = "SELECT COUNT(*) FROM listensHistory WHERE source = 'Regular'";
+cmd.CommandText = "SELECT COUNT(*) FROM listensHistory WHERE source IN ('Regular', 'OnSameWave')";
 return Convert.ToInt32(cmd.ExecuteScalar());
 }
 
@@ -154,7 +154,7 @@ private List<(string trackId, DateTime utcTime)> LoadHistory()
 var result = new List<(string trackId, DateTime utcTime)>();
 
 using var cmd = connection.CreateCommand();
-cmd.CommandText = "SELECT trackId, utcTime FROM listensHistory WHERE source = 'Regular' ORDER BY utcTime";
+cmd.CommandText = "SELECT trackId, utcTime FROM listensHistory WHERE source IN ('Regular', 'OnSameWave') ORDER BY utcTime";
 
 using var reader = cmd.ExecuteReader();
 while (reader.Read())
@@ -259,7 +259,7 @@ var result = new HashSet<string>();
 var threshold = DateTime.UtcNow - RecentThreshold;
 
 using var cmd = connection.CreateCommand();
-cmd.CommandText = "SELECT DISTINCT trackId FROM listensHistory WHERE source = 'Regular' AND utcTime >= $threshold";
+cmd.CommandText = "SELECT DISTINCT trackId FROM listensHistory WHERE source IN ('Regular', 'OnSameWave') AND utcTime >= $threshold";
 cmd.Parameters.AddWithValue("$threshold", threshold.ToString("O"));
 
 using var reader = cmd.ExecuteReader();

@@ -29,6 +29,7 @@ public class TrackRepository(
 	private readonly List<string> _yandexSearchCache = new();
 	private readonly List<string> _queueCache = new();
 	private readonly List<Track> _onSameWaveTracksCache = new();
+	private readonly List<Track> _myWaveTracksCache = new();
 
 	public PlaylistType? CurrentPlaylistType => _currentPlaylist?.Type;
 
@@ -201,6 +202,9 @@ public class TrackRepository(
 				case PlaylistType.OnSameWave:
 					await SetOnSameWavePlaylist(playlist);
 					break;
+				case PlaylistType.MyWave:
+					await SetMyWavePlaylist(playlist);
+					break;
 				default:
 					throw new ArgumentOutOfRangeException();
 			}
@@ -278,6 +282,12 @@ public class TrackRepository(
 
 	private Task<List<string>> LoadOnSameWaveAsync()
 		=> Task.FromResult(_onSameWaveTracksCache.Select(t => t.Id).ToList());
+
+	private Task SetMyWavePlaylist(Playlist playlist)
+		=> SetPlaylistAsync(playlist, LoadMyWaveAsync);
+
+	private Task<List<string>> LoadMyWaveAsync()
+		=> Task.FromResult(_myWaveTracksCache.Select(t => t.Id).ToList());
 
 	private Task SetPlaylistOfTheDay(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
@@ -427,6 +437,25 @@ public class TrackRepository(
 		_onSameWaveTracksCache.AddRange(tracks);
 	}
 
+	public void UpdateMyWaveCache(IEnumerable<Track> tracks)
+	{
+		_myWaveTracksCache.Clear();
+		_myWaveTracksCache.AddRange(tracks);
+		if (_currentPlaylist?.Type == PlaylistType.MyWave)
+		{
+			_tracksIds.Clear();
+			_tracksIds.AddRange(_myWaveTracksCache.Select(t => t.Id));
+		}
+	}
+
+	public void AppendMyWaveCache(IEnumerable<Track> tracks)
+	{
+		var trackList = tracks.ToList();
+		_myWaveTracksCache.AddRange(trackList);
+		if (_currentPlaylist?.Type == PlaylistType.MyWave)
+			_tracksIds.AddRange(trackList.Select(t => t.Id));
+	}
+
 	public async Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount)
 	{
 		try
@@ -435,6 +464,12 @@ public class TrackRepository(
 			{
 				_currentOffset = _onSameWaveTracksCache.Count;
 				return _onSameWaveTracksCache.ToList();
+			}
+
+			if (_currentPlaylist?.Type == PlaylistType.MyWave)
+			{
+				_currentOffset = _myWaveTracksCache.Count;
+				return _myWaveTracksCache.ToList();
 			}
 
 			int cachedCount = await trackInfoProvider.CountCachedTracks(_tracksIds);

@@ -31,6 +31,7 @@ public static class ServicesProvider
 		builder.RegisterType<AudioPlayerService>().As<IAudioPlayer>().SingleInstance();
 		builder.RegisterType<BassEqualizer>().As<IBassEqualizer>().SingleInstance();
 		builder.RegisterType<DatabaseProvider>().As<IDatabaseProvider>().SingleInstance();
+		builder.RegisterType<YandexRadioService>().As<IYandexRadioService>().SingleInstance();
 			
 		builder.Register(c => c.Resolve<IDatabaseProvider>().Connection)
 			.As<SqliteConnection>()
@@ -95,6 +96,7 @@ public static class ServicesProvider
 		builder.RegisterType<LargeTrackInfoPresenter>().As<ILargeTrackInfoPresenter>().SingleInstance();
 		builder.RegisterType<OnSameWavePresenter>().As<IOnSameWavePresenter>().SingleInstance();
 		builder.RegisterType<RecommendationGraphPresenter>().As<IRecommendationGraphPresenter>().SingleInstance();
+		builder.RegisterType<MyWavePresenter>().As<IMyWavePresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();

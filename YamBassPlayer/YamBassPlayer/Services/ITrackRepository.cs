@@ -19,4 +19,6 @@ public interface ITrackRepository
     void UpdateYandexSearchCache(IEnumerable<Track> tracks);
     void UpdateQueueCache(IEnumerable<string> trackIds);
     void UpdateOnSameWaveCache(IEnumerable<Track> tracks);
+    void UpdateMyWaveCache(IEnumerable<Track> tracks);
+    void AppendMyWaveCache(IEnumerable<Track> tracks);
 }
