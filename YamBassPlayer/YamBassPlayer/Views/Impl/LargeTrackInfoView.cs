@@ -5,34 +5,38 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 {
-	private const string AsciiRamp = " .:-=+*#%@";
 	private readonly Label _artistTitleLabel;
 	private readonly Label _albumLabel;
-	private readonly Label _listenCountLabel;
 	private readonly CoverAsciiView _asciiView;
-	private readonly Label _statusLabel;
+	private readonly PlaylistRowsView _playlistPanel;
 
 	public Action? OnClose { get; set; }
 
-    private const int CoverWidth = 100;
-    private const int CoverHeight = 55;
+	public Action<string>? OnTrackActivated
+	{
+		get => _playlistPanel.OnTrackActivated;
+		set => _playlistPanel.OnTrackActivated = value;
+	}
 
-    public LargeTrackInfoView() : base("Крупное инфо")
+	private const int CoverWidth = 100;
+	private const int CoverHeight = 55;
+
+	public LargeTrackInfoView() : base("Крупное инфо")
 	{
 		X = 0;
 		Y = 0;
 		Width = Dim.Fill();
 		Height = Dim.Fill();
 
-        _asciiView = new CoverAsciiView
-        {
-            X = 1,
-            Y = 1,
-            Width = CoverWidth,
-            Height = CoverHeight
-        };
+		_asciiView = new CoverAsciiView
+		{
+			X = 1,
+			Y = 1,
+			Width = CoverWidth,
+			Height = CoverHeight
+		};
 
-        _artistTitleLabel = new Label
+		_artistTitleLabel = new Label
 		{
 			X = Pos.Right(_asciiView) + 2,
 			Y = 2,
@@ -54,37 +58,26 @@ public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 			Text = string.Empty
 		};
 
-		_listenCountLabel = new Label
+		_playlistPanel = new PlaylistRowsView
 		{
 			X = Pos.Right(_asciiView) + 2,
 			Y = 6,
 			Width = Dim.Fill() - 2,
-			Height = 1,
-			TextAlignment = TextAlignment.Left,
-			AutoSize = false,
-			Text = "Прослушиваний: —"
-		};
-
-		_statusLabel = new Label
-		{
-			X = Pos.Right(_asciiView) + 2,
-			Y = 8,
-			Width = Dim.Fill() - 2,
-			Height = 1,
-			TextAlignment = TextAlignment.Left,
-			AutoSize = false,
-			Text = "Загрузка обложки..."
+			Height = Dim.Fill() - 3
 		};
 
 		var closeButton = new Button
 		{
 			X = Pos.Center() - 8,
 			Y = Pos.AnchorEnd(2),
-			Text = "Закрыть [ESC]"
+			Text = "Закрыть [ESC]",
+			CanFocus = false
 		};
 		closeButton.Clicked += Close;
 
-		Add(_asciiView, _artistTitleLabel, _albumLabel, _listenCountLabel, _statusLabel, closeButton);
+		Add(_asciiView, _artistTitleLabel, _albumLabel, _playlistPanel, closeButton);
+
+		Loaded += () => _playlistPanel.SetFocus();
 
 		KeyPress += e =>
 		{
@@ -102,17 +95,10 @@ public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 		{
 			_artistTitleLabel.Text = $"{track.Artist}   —   {track.Title}";
 			_albumLabel.Text = string.IsNullOrWhiteSpace(track.Album) ? string.Empty : $"[ {track.Album} ]";
-			_statusLabel.Text = "Загрузка обложки...";
 		});
 	}
 
-	public void SetListenCount(int count)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_listenCountLabel.Text = $"Прослушиваний: {count}";
-		});
-	}
+	public void SetListenCount(int count) { }
 
 	public void SetCover(string? coverPath)
 	{
@@ -120,26 +106,32 @@ public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 		{
 			if (string.IsNullOrWhiteSpace(coverPath) || !File.Exists(coverPath))
 			{
-				_statusLabel.Text = "Обложка недоступна";
 				_asciiView.SetPixels(null);
 				return;
 			}
 
 			try
 			{
-                _asciiView.SetPixels(CoverAsciiView.RenderAscii(
-                    coverPath,
-                    CoverWidth,
-                    CoverHeight));
-
-                _statusLabel.Text = $"Обложка: {Path.GetFileName(coverPath)}";
-            }
+				_asciiView.SetPixels(CoverAsciiView.RenderAscii(
+					coverPath,
+					CoverWidth,
+					CoverHeight));
+			}
 			catch
 			{
-				_statusLabel.Text = "Не удалось отрисовать обложку";
 				_asciiView.SetPixels(null);
 			}
 		});
+	}
+
+	public void SetPlaylist(IReadOnlyList<Track> tracks)
+	{
+		Application.MainLoop.Invoke(() => _playlistPanel.SetTracks(tracks));
+	}
+
+	public void SetCurrentTrackId(string? trackId)
+	{
+		Application.MainLoop.Invoke(() => _playlistPanel.SetCurrentTrackId(trackId));
 	}
 
 	public void Show()
@@ -152,5 +144,4 @@ public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 		OnClose?.Invoke();
 		Application.RequestStop(this);
 	}
-
 }

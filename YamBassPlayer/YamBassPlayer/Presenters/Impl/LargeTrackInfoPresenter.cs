@@ -30,18 +30,62 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 	{
 		var view = ServicesProvider.Ioc.Resolve<ILargeTrackInfoView>();
 
+		LoadPlaylistAsync(view);
+
 		string? currentTrackId = _playbackQueue.CurrentTrackId;
 		if (currentTrackId != null)
 		{
+			view.SetCurrentTrackId(currentTrackId);
 			LoadTrackInfo(view, currentTrackId);
 		}
 
 		Action<string> onTrackChanged = trackId =>
-			Application.MainLoop.Invoke(() => LoadTrackInfo(view, trackId));
+			Application.MainLoop.Invoke(() =>
+			{
+				view.SetCurrentTrackId(trackId);
+				LoadTrackInfo(view, trackId);
+			});
 		_playbackQueue.OnTrackChanged += onTrackChanged;
 
-		view.OnClose = () => _playbackQueue.OnTrackChanged -= onTrackChanged;
+		view.OnTrackActivated = trackId =>
+		{
+			var trackIds = _playbackQueue.TrackIds;
+			int idx = -1;
+			for (int i = 0; i < trackIds.Count; i++)
+			{
+				if (trackIds[i] == trackId)
+				{
+					idx = i;
+					break;
+				}
+			}
+			if (idx >= 0)
+				_playbackQueue.SetQueue(trackIds.ToList(), idx);
+		};
+
+		view.OnClose = () =>
+		{
+			_playbackQueue.OnTrackChanged -= onTrackChanged;
+			view.OnTrackActivated = null;
+		};
 		view.Show();
+	}
+
+	private async void LoadPlaylistAsync(ILargeTrackInfoView view)
+	{
+		try
+		{
+			var trackIds = _playbackQueue.TrackIds;
+			if (trackIds.Count == 0)
+				return;
+
+			var tracks = await _trackInfoProvider.GetTracksInfoByIds(trackIds);
+			view.SetPlaylist(tracks.ToList().AsReadOnly());
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
 	}
 
 	private async void LoadTrackInfo(ILargeTrackInfoView view, string trackId)
