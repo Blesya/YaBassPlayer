@@ -12,7 +12,6 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
     private readonly Label _artistLabel;
     private readonly Label _titleLabel;
     private readonly Label _albumLabel;
-    private readonly Label _listenCountLabel;
     private readonly Label _placeholderLabel;
     private readonly TextView _lyricsTextView;
     private readonly Label _lyricsHeaderLabel;
@@ -75,18 +74,6 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
             Visible = false
         };
 
-        _listenCountLabel = new Label
-        {
-            X = 1,
-            Y = CoverHeight + 5,
-            Width = Dim.Fill() - 1,
-            Height = 1,
-            AutoSize = false,
-            TextAlignment = TextAlignment.Left,
-            Text = string.Empty,
-            Visible = false
-        };
-
         _lyricsHeaderLabel = new Label
         {
             X = 1,
@@ -121,7 +108,7 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
             Visible = false
         };
 
-        Add(_placeholderLabel, _asciiView, _artistLabel, _titleLabel, _albumLabel, _listenCountLabel,
+        Add(_placeholderLabel, _asciiView, _artistLabel, _titleLabel, _albumLabel,
             _lyricsHeaderLabel, _lyricsLoadingLabel, _lyricsTextView);
     }
 
@@ -135,12 +122,10 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
             _artistLabel.Text = track.Artist;
             _titleLabel.Text = track.Title;
             _albumLabel.Text = string.IsNullOrWhiteSpace(track.Album) ? string.Empty : $"[ {track.Album} ]";
-            _listenCountLabel.Text = "Прослушиваний: —";
 
             _artistLabel.Visible = true;
             _titleLabel.Visible = true;
             _albumLabel.Visible = !string.IsNullOrWhiteSpace(track.Album);
-            _listenCountLabel.Visible = true;
 
             _lyricsTextView.Text = string.Empty;
             _lyricsTextView.Visible = false;
@@ -151,14 +136,7 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
         });
     }
 
-    public void SetListenCount(int count)
-    {
-        Application.MainLoop.Invoke(() =>
-        {
-            _listenCountLabel.Text = $"Прослушиваний: {count}";
-            SetNeedsDisplay();
-        });
-    }
+    public void SetListenCount(int count) { }
 
     public void SetCover(string? coverPath)
     {
@@ -210,12 +188,10 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
             _artistLabel.Text = string.Empty;
             _titleLabel.Text = string.Empty;
             _albumLabel.Text = string.Empty;
-            _listenCountLabel.Text = string.Empty;
 
             _artistLabel.Visible = false;
             _titleLabel.Visible = false;
             _albumLabel.Visible = false;
-            _listenCountLabel.Visible = false;
             _lyricsHeaderLabel.Visible = false;
             _lyricsLoadingLabel.Visible = false;
             _lyricsTextView.Visible = false;

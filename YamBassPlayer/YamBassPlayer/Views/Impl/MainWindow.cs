@@ -29,6 +29,7 @@ public sealed class MainWindow : Window
 	private readonly ITrackInfoPanelPresenter _trackInfoPanelPresenter;
 	private readonly IOnSameWavePresenter _onSameWavePresenter;
 	private readonly IMyWavePresenter _myWavePresenter;
+	private readonly IMyWaveWindowPresenter _myWaveWindowPresenter;
 	private readonly IRecommendationGraphPresenter _recommendationGraphPresenter;
 	private readonly SplashScreenView? _splashScreen;
 	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
@@ -47,6 +48,7 @@ public sealed class MainWindow : Window
 		ILargeTrackInfoPresenter largeTrackInfoPresenter,
 		IOnSameWavePresenter onSameWavePresenter,
 		IMyWavePresenter myWavePresenter,
+		IMyWaveWindowPresenter myWaveWindowPresenter,
 		IRecommendationGraphPresenter recommendationGraphPresenter,
 		ITrackInfoPanelPresenter trackInfoPanelPresenter,
 		ITrackFileProvider trackFileProvider,
@@ -73,6 +75,7 @@ public sealed class MainWindow : Window
 		_trackInfoPanelPresenter = trackInfoPanelPresenter;
 		_onSameWavePresenter = onSameWavePresenter;
 		_myWavePresenter = myWavePresenter;
+		_myWaveWindowPresenter = myWaveWindowPresenter;
 		_recommendationGraphPresenter = recommendationGraphPresenter;
 		_trackFileProvider = trackFileProvider;
 		_playbackQueue = playbackQueue;
@@ -429,6 +432,7 @@ public sealed class MainWindow : Window
 		_myWaveSkipPending = false;
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
+		_myWaveWindowPresenter.ShowWindow(playlist);
 	}
 
 	private async void ShowMyWaveByTrack()
@@ -447,6 +451,7 @@ public sealed class MainWindow : Window
 		_myWaveSkipPending = false;
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
+		_myWaveWindowPresenter.ShowWindow(playlist);
 	}
 
 	private async void ShowLocalSearchDialog()

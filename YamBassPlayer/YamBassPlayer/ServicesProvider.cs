@@ -97,6 +97,7 @@ public static class ServicesProvider
 		builder.RegisterType<OnSameWavePresenter>().As<IOnSameWavePresenter>().SingleInstance();
 		builder.RegisterType<RecommendationGraphPresenter>().As<IRecommendationGraphPresenter>().SingleInstance();
 		builder.RegisterType<MyWavePresenter>().As<IMyWavePresenter>().SingleInstance();
+		builder.RegisterType<MyWaveWindowPresenter>().As<IMyWaveWindowPresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();

@@ -87,6 +87,9 @@ public class MyWavePresenter : IMyWavePresenter
 			};
 
 			await _tracksPresenter.LoadTracksFor(playlist);
+
+			// Запускаем первый трек волны автоматически
+			_playbackQueue.SetQueue(trackIds, 0);
 			return playlist;
 		}
 		catch (Exception ex)

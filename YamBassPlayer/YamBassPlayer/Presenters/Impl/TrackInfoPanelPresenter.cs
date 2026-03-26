@@ -8,18 +8,15 @@ namespace YamBassPlayer.Presenters.Impl;
 public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 {
 	private readonly ITrackInfoPanelView _view;
-	private readonly IHistoryService _historyService;
 	private readonly ICoverProvider _coverProvider;
 	private readonly ILyricsService _lyricsService;
 
 	public TrackInfoPanelPresenter(
 		ITrackInfoPanelView view,
-		IHistoryService historyService,
 		ICoverProvider coverProvider,
 		ILyricsService lyricsService)
 	{
 		_view = view;
-		_historyService = historyService;
 		_coverProvider = coverProvider;
 		_lyricsService = lyricsService;
 	}
@@ -34,8 +31,6 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 	{
 		try
 		{
-			_view.SetListenCount(_historyService.GetListenCount(track.Id));
-
 			string coverPath = await _coverProvider.DownloadCoverAsync(track.Id);
 			_view.SetCover(string.IsNullOrWhiteSpace(coverPath) ? null : coverPath);
 

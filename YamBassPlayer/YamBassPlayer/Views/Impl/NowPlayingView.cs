@@ -8,7 +8,6 @@ public sealed class NowPlayingView : Window, INowPlayingView
 	private readonly Label _artistTitleLabel;
 	private readonly Label _albumLabel;
 	private readonly SpectrumView _spectrum;
-	private readonly Label _listenCountLabel;
 
 	public Action? OnClose;
 
@@ -61,15 +60,6 @@ public sealed class NowPlayingView : Window, INowPlayingView
 			AutoSize = false
 		};
 
-		_listenCountLabel = new Label
-		{
-			X = 1,
-			Y = Pos.AnchorEnd(6),
-			Width = Dim.Fill() - 18,
-			Height = 1,
-			Text = "Прослушиваний: —"
-		};
-
 		var closeButton = new Button
 		{
 			X = Pos.AnchorEnd(15),
@@ -89,7 +79,7 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		};
 
 		Add(sepTop, _artistTitleLabel, _albumLabel, sepBottom,
-			_spectrum, _listenCountLabel, closeButton);
+			_spectrum, closeButton);
 
 		KeyPress += e =>
 		{
@@ -115,13 +105,7 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		_spectrum.SetFftData(fft);
 	}
 
-	public void SetListenCount(int count)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_listenCountLabel.Text = $"Прослушиваний: {count}";
-		});
-	}
+	public void SetListenCount(int count) { }
 
 	public void Show()
 	{

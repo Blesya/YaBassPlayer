@@ -11,20 +11,17 @@ public class NowPlayingPresenter : INowPlayingPresenter
 	private readonly IAudioPlayer _audioPlayer;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
-	private readonly IHistoryService _historyService;
 	private readonly PlayStatusView _playStatusView;
 
 	public NowPlayingPresenter(
 		IAudioPlayer audioPlayer,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
-		IHistoryService historyService,
 		PlayStatusView playStatusView)
 	{
 		_audioPlayer = audioPlayer;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
-		_historyService = historyService;
 		_playStatusView = playStatusView;
 	}
 
@@ -73,9 +70,6 @@ public class NowPlayingPresenter : INowPlayingPresenter
 		{
 			Track track = await _trackInfoProvider.GetTrackInfoById(trackId);
 			view.SetTrack(track);
-
-			int listenCount = _historyService.GetListenCount(trackId);
-			view.SetListenCount(listenCount);
 		}
 		catch (Exception ex)
 		{
