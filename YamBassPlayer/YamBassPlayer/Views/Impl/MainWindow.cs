@@ -35,6 +35,8 @@ public sealed class MainWindow : Window
 	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
 	private string? _currentMyWaveTrackId;
 	private bool _myWaveSkipPending;
+	private SpectrumView _spectrum = null!;
+	private Button _spectrumModeButton = null!;
 
 	public MainWindow(
 		IPlaylistsPresenter playlistsPresenter,
@@ -107,7 +109,7 @@ public sealed class MainWindow : Window
 		trackInfoPanelView.Width = panelWidth;
 		trackInfoPanelView.Height = Dim.Fill(5);
 
-		SpectrumView spectrum = new SpectrumView(bars: 29)
+		_spectrum = new SpectrumView(bars: 29)
 		{
 			X = 0,
 			Y = Pos.Top(playStatusView) - 15,
@@ -115,24 +117,16 @@ public sealed class MainWindow : Window
 			Height = 14
 		};
 
-		Button spectrumModeButton = new Button
+		_spectrumModeButton = new Button
 		{
 			X = 0,
 			Y = Pos.Top(playStatusView) - 1,
 			Width = 29,
 			Text = "≋ FFT"
 		};
-		spectrumModeButton.Clicked += () =>
-		{
-			spectrum.Mode = spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Bars
-				? YamBassPlayer.Enums.SpectrumMode.Oscilloscope
-				: YamBassPlayer.Enums.SpectrumMode.Bars;
-			spectrumModeButton.Text = spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope
-				? "〜 Осц."
-				: "≋ FFT";
-		};
+		_spectrumModeButton.Clicked += ToggleSpectrumMode;
 
-		Add(playlistsView, spectrum, spectrumModeButton, tracksView, trackInfoPanelView, playStatusView);
+		Add(playlistsView, _spectrum, _spectrumModeButton, tracksView, trackInfoPanelView, playStatusView);
 
 		_playbackQueue.OnTrackChanged += OnTrackForPlaySelected;
 
@@ -159,13 +153,13 @@ public sealed class MainWindow : Window
 		_tracksPresenter.OnTrackChosen += track => _trackInfoPanelPresenter.OnTrackSelected(track);
 		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
-			if (spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope)
+			if (_spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope)
 			{
-				spectrum.SetWaveformData(_audioPlayer.GetWaveformData(512));
+				_spectrum.SetWaveformData(_audioPlayer.GetWaveformData(512));
 			}
 			else
 			{
-				spectrum.SetFftData(_audioPlayer.ChannelGetData());
+				_spectrum.SetFftData(_audioPlayer.ChannelGetData());
 			}
 
 			return true;
@@ -338,11 +332,22 @@ public sealed class MainWindow : Window
 			new MenuBarItem("Вид", new[]
 			{
 				new MenuItem("Визуализация [F5]", "", () => _nowPlayingPresenter.ShowNowPlaying()),
-				new MenuItem("Крупное инфо [F8]", "", () => _largeTrackInfoPresenter.ShowLargeTrackInfo())
+				new MenuItem("Крупное инфо [F8]", "", () => _largeTrackInfoPresenter.ShowLargeTrackInfo()),
+new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpectrumMode)
 			})
 		});
 
 		return menuBar;
+	}
+
+	private void ToggleSpectrumMode()
+	{
+		_spectrum.Mode = _spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Bars
+			? YamBassPlayer.Enums.SpectrumMode.Oscilloscope
+			: YamBassPlayer.Enums.SpectrumMode.Bars;
+		_spectrumModeButton.Text = _spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope
+			? "〜 Осц."
+			: "≋ FFT";
 	}
 
 	private void Stop()
