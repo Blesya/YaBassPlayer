@@ -112,10 +112,27 @@ public sealed class MainWindow : Window
 			X = 0,
 			Y = Pos.Top(playStatusView) - 15,
 			Width = 29,
-			Height = 15
+			Height = 14
 		};
 
-		Add(playlistsView, spectrum, tracksView, trackInfoPanelView, playStatusView);
+		Button spectrumModeButton = new Button
+		{
+			X = 0,
+			Y = Pos.Top(playStatusView) - 1,
+			Width = 29,
+			Text = "≋ FFT"
+		};
+		spectrumModeButton.Clicked += () =>
+		{
+			spectrum.Mode = spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Bars
+				? YamBassPlayer.Enums.SpectrumMode.Oscilloscope
+				: YamBassPlayer.Enums.SpectrumMode.Bars;
+			spectrumModeButton.Text = spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope
+				? "〜 Осц."
+				: "≋ FFT";
+		};
+
+		Add(playlistsView, spectrum, spectrumModeButton, tracksView, trackInfoPanelView, playStatusView);
 
 		_playbackQueue.OnTrackChanged += OnTrackForPlaySelected;
 
@@ -142,8 +159,14 @@ public sealed class MainWindow : Window
 		_tracksPresenter.OnTrackChosen += track => _trackInfoPanelPresenter.OnTrackSelected(track);
 		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
-			float[] fft = _audioPlayer.ChannelGetData();
-			spectrum.SetFftData(fft);
+			if (spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope)
+			{
+				spectrum.SetWaveformData(_audioPlayer.GetWaveformData(512));
+			}
+			else
+			{
+				spectrum.SetFftData(_audioPlayer.ChannelGetData());
+			}
 
 			return true;
 		});
