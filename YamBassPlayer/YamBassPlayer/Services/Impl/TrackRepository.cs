@@ -17,21 +17,34 @@ public class TrackRepository(
 	string tracksFolder,
 	IHistoryService historyService,
 	ILocalFavoriteService localFavoriteService,
-	IYandexFavoriteService yandexFavoriteService)
+	IYandexFavoriteService yandexFavoriteService,
+	ITrackRepositoryCache cache)
 	: ITrackRepository
 {
 	private List<string> _tracksIds = new();
-	private Playlist _currentPlaylist;
+	private Playlist? _currentPlaylist;
 	private int _currentOffset = 0;
-	private readonly Dictionary<string, List<string>> _customPlaylistCache = new();
-	private readonly List<string> _favoritePlaylistCache = new();
-	private readonly List<string> _localSearchCache = new();
-	private readonly List<string> _yandexSearchCache = new();
-	private readonly List<string> _queueCache = new();
-	private readonly List<Track> _onSameWaveTracksCache = new();
-	private readonly List<Track> _myWaveTracksCache = new();
+	private Dictionary<PlaylistType, Func<Playlist, Task>>? _playlistSetters;
 
 	public PlaylistType? CurrentPlaylistType => _currentPlaylist?.Type;
+
+	private Dictionary<PlaylistType, Func<Playlist, Task>> PlaylistSetters => _playlistSetters ??= new()
+	{
+		[PlaylistType.Favorite] = SetFavorite,
+		[PlaylistType.PlaylistOfTheDaily] = SetPlaylistOfTheDay,
+		[PlaylistType.Custom] = SetCustomPlaylist,
+		[PlaylistType.Cached] = SetCachedPlaylist,
+		[PlaylistType.Top10] = SetTop10Playlist,
+		[PlaylistType.TopEvenings] = SetTopEveningsPlaylist,
+		[PlaylistType.LocalFavorite] = SetLocalFavoritePlaylist,
+		[PlaylistType.LocalSearch] = SetLocalSearchPlaylist,
+		[PlaylistType.TopByDay] = SetTopByDayPlaylist,
+		[PlaylistType.YandexSearch] = SetYandexSearchPlaylist,
+		[PlaylistType.Artist] = SetArtistPlaylist,
+		[PlaylistType.Queue] = SetQueuePlaylist,
+		[PlaylistType.OnSameWave] = SetOnSameWavePlaylist,
+		[PlaylistType.MyWave] = SetMyWavePlaylist
+	};
 
 	public async Task<IEnumerable<Playlist>> GetPlaylists()
 	{
@@ -41,10 +54,10 @@ public class TrackRepository(
 
 			YResponse<YLibraryTracks>? liked = await api.Library.GetLikedTracksAsync(storage);
 			string[] favoriteTrackIds = liked.Result.Library.Tracks.Select(x => x.Id).ToArray();
-			_favoritePlaylistCache.AddRange(favoriteTrackIds);
+			cache.ReplaceFavoriteTrackIds(favoriteTrackIds);
 			yandexFavoriteService.Initialize(favoriteTrackIds);
-			yandexFavoriteService.OnFavoriteAdded += id => { if (!_favoritePlaylistCache.Contains(id)) _favoritePlaylistCache.Insert(0, id); };
-			yandexFavoriteService.OnFavoriteRemoved += id => _favoritePlaylistCache.Remove(id);
+			yandexFavoriteService.OnFavoriteAdded += cache.InsertFavoriteTrackId;
+			yandexFavoriteService.OnFavoriteRemoved += cache.RemoveFavoriteTrackId;
 			int likedTracksCount = favoriteTrackIds.Length;
 
 			var localFavoriteIds = await localFavoriteService.GetAllFavoriteTrackIds();
@@ -89,7 +102,7 @@ public class TrackRepository(
 
 				List<string> trackIds = yTrackContainers.Select(t => t.Id).ToList();
 				string? playlistTitle = yResponse.Result.Title;
-				_customPlaylistCache[playlistTitle] = trackIds;
+				cache.SetCustomPlaylistIds(playlistTitle, trackIds);
 
 				Playlist playlist = new Playlist(playlistTitle, PlaylistType.Custom)
 				{
@@ -161,53 +174,10 @@ public class TrackRepository(
 	{
 		try
 		{
-			switch (playlist.Type)
-			{
-				case PlaylistType.Favorite:
-					await SetFavorite(playlist);
-					break;
-				case PlaylistType.PlaylistOfTheDaily:
-					await SetPlaylistOfTheDay(playlist);
-					break;
-				case PlaylistType.Custom:
-					await SetCustomPlaylist(playlist);
-					break;
-				case PlaylistType.Cached:
-					await SetCachedPlaylist(playlist);
-					break;
-				case PlaylistType.Top10:
-					await SetTop10Playlist(playlist);
-					break;
-				case PlaylistType.TopEvenings:
-					await SetTopEveningsPlaylist(playlist);
-					break;
-				case PlaylistType.LocalFavorite:
-					await SetLocalFavoritePlaylist(playlist);
-					break;
-				case PlaylistType.LocalSearch:
-					await SetLocalSearchPlaylist(playlist);
-					break;
-				case PlaylistType.TopByDay:
-					await SetTopByDayPlaylist(playlist);
-					break;
-				case PlaylistType.YandexSearch:
-					await SetYandexSearchPlaylist(playlist);
-					break;
-				case PlaylistType.Artist:
-					await SetArtistPlaylist(playlist);
-					break;
-				case PlaylistType.Queue:
-					await SetQueuePlaylist(playlist);
-					break;
-				case PlaylistType.OnSameWave:
-					await SetOnSameWavePlaylist(playlist);
-					break;
-				case PlaylistType.MyWave:
-					await SetMyWavePlaylist(playlist);
-					break;
-				default:
-					throw new ArgumentOutOfRangeException();
-			}
+			if (!PlaylistSetters.TryGetValue(playlist.Type, out var setPlaylist))
+				throw new ArgumentOutOfRangeException(nameof(playlist.Type), playlist.Type, "Unsupported playlist type");
+
+			await setPlaylist(playlist);
 
 			_currentPlaylist = playlist;
 		}
@@ -221,13 +191,8 @@ public class TrackRepository(
 		=> SetPlaylistAsync(playlist, LoadTop10Playlist);
 
 	private Task<List<string>> LoadTop10Playlist()
-		=> Task.Run(() =>
-		{
-			List<string> day = historyService.GetTopTracks(10)
-				.Select(x => x.trackId)
-				.ToList();
-			return Task.FromResult(day);
-		});
+		=> Task.FromResult(
+			historyService.GetTopTracks(10).Select(x => x.trackId).ToList());
 
 	private Task SetTopEveningsPlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadTopEveningsPlaylist);
@@ -236,22 +201,12 @@ public class TrackRepository(
 		=> SetPlaylistAsync(playlist, () => LoadTopByDayPlaylist(playlist.DayOfWeek!.Value));
 
 	private Task<List<string>> LoadTopByDayPlaylist(DayOfWeek day)
-		=> Task.Run(() =>
-		{
-			List<string> tracks = historyService.GetTopTracksByDayOfWeek(day, 50)
-				.Select(x => x.trackId)
-				.ToList();
-			return Task.FromResult(tracks);
-		});
+		=> Task.FromResult(
+			historyService.GetTopTracksByDayOfWeek(day, 50).Select(x => x.trackId).ToList());
 
 	private Task<List<string>> LoadTopEveningsPlaylist()
-		=> Task.Run(() =>
-		{
-			List<string> evenings = historyService.GetTopEveningTracks(20)
-				.Select(x => x.trackId)
-				.ToList();
-			return Task.FromResult(evenings);
-		});
+		=> Task.FromResult(
+			historyService.GetTopEveningTracks(20).Select(x => x.trackId).ToList());
 
 	private Task SetCustomPlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, () => LoadCustomPlaylistAsync(playlist.PlaylistName));
@@ -275,19 +230,19 @@ public class TrackRepository(
 		=> SetPlaylistAsync(playlist, () => trackInfoProvider.GetTrackIdsByArtistAsync(playlist.PlaylistName));
 
 	private Task SetQueuePlaylist(Playlist playlist)
-		=> SetPlaylistAsync(playlist, () => Task.FromResult(_queueCache.ToList()));
+		=> SetPlaylistAsync(playlist, () => Task.FromResult(cache.QueueTrackIds.ToList()));
 
 	private Task SetOnSameWavePlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadOnSameWaveAsync);
 
 	private Task<List<string>> LoadOnSameWaveAsync()
-		=> Task.FromResult(_onSameWaveTracksCache.Select(t => t.Id).ToList());
+		=> Task.FromResult(cache.OnSameWaveTracks.Select(t => t.Id).ToList());
 
 	private Task SetMyWavePlaylist(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadMyWaveAsync);
 
 	private Task<List<string>> LoadMyWaveAsync()
-		=> Task.FromResult(_myWaveTracksCache.Select(t => t.Id).ToList());
+		=> Task.FromResult(cache.MyWaveTracks.Select(t => t.Id).ToList());
 
 	private Task SetPlaylistOfTheDay(Playlist playlist)
 		=> SetPlaylistAsync(playlist, LoadPlaylistOfTheDayAsync);
@@ -307,7 +262,7 @@ public class TrackRepository(
 		{
 			return Task.Run(async () =>
 			{
-				if (_customPlaylistCache.TryGetValue(playlistName, out var cachedIds))
+				if (cache.TryGetCustomPlaylistIds(playlistName, out var cachedIds))
 				{
 					return cachedIds;
 				}
@@ -317,7 +272,7 @@ public class TrackRepository(
 							?? throw new InvalidOperationException($"Playlist '{playlistName}' not found");
 
 				var trackIds = found.Result.Tracks.Select(t => t.Id).ToList();
-				_customPlaylistCache[playlistName] = trackIds;
+				cache.SetCustomPlaylistIds(playlistName, trackIds);
 
 				return trackIds;
 			});
@@ -334,7 +289,7 @@ public class TrackRepository(
 		{
 			//var liked = await _api.Library.GetLikedTracksAsync(_storage);
 			//return liked.Result.Library.Tracks.Select(t => t.Id).ToList();
-			return _favoritePlaylistCache;
+			return cache.FavoriteTrackIds.ToList();
 		});
 
 	private async Task<List<string>> LoadLocalFavoritesAsync()
@@ -344,12 +299,12 @@ public class TrackRepository(
 
 	private Task<List<string>> LoadLocalSearchAsync()
 	{
-		return Task.FromResult(_localSearchCache.ToList());
+		return Task.FromResult(cache.LocalSearchTrackIds.ToList());
 	}
 
 	private Task<List<string>> LoadYandexSearchAsync()
 	{
-		return Task.FromResult(_yandexSearchCache.ToList());
+		return Task.FromResult(cache.YandexSearchTrackIds.ToList());
 	}
 
 	private Task<List<string>> LoadPlaylistOfTheDayAsync()
@@ -414,44 +369,31 @@ public class TrackRepository(
 	public IReadOnlyList<string> GetAllTrackIds() => _tracksIds.AsReadOnly();
 
 	public void UpdateLocalSearchCache(IEnumerable<Track> tracks)
-	{
-		_localSearchCache.Clear();
-		_localSearchCache.AddRange(tracks.Select(t => t.Id));
-	}
+		=> cache.ReplaceLocalSearchTracks(tracks);
 
 	public void UpdateYandexSearchCache(IEnumerable<Track> tracks)
-	{
-		_yandexSearchCache.Clear();
-		_yandexSearchCache.AddRange(tracks.Select(t => t.Id));
-	}
+		=> cache.ReplaceYandexSearchTracks(tracks);
 
 	public void UpdateQueueCache(IEnumerable<string> trackIds)
-	{
-		_queueCache.Clear();
-		_queueCache.AddRange(trackIds);
-	}
+		=> cache.ReplaceQueueTrackIds(trackIds);
 
 	public void UpdateOnSameWaveCache(IEnumerable<Track> tracks)
-	{
-		_onSameWaveTracksCache.Clear();
-		_onSameWaveTracksCache.AddRange(tracks);
-	}
+		=> cache.ReplaceOnSameWaveTracks(tracks);
 
 	public void UpdateMyWaveCache(IEnumerable<Track> tracks)
 	{
-		_myWaveTracksCache.Clear();
-		_myWaveTracksCache.AddRange(tracks);
+		cache.ReplaceMyWaveTracks(tracks);
 		if (_currentPlaylist?.Type == PlaylistType.MyWave)
 		{
 			_tracksIds.Clear();
-			_tracksIds.AddRange(_myWaveTracksCache.Select(t => t.Id));
+			_tracksIds.AddRange(cache.MyWaveTracks.Select(t => t.Id));
 		}
 	}
 
 	public void AppendMyWaveCache(IEnumerable<Track> tracks)
 	{
 		var trackList = tracks.ToList();
-		_myWaveTracksCache.AddRange(trackList);
+		cache.AppendMyWaveTracks(trackList);
 		if (_currentPlaylist?.Type == PlaylistType.MyWave)
 			_tracksIds.AddRange(trackList.Select(t => t.Id));
 	}
@@ -462,14 +404,14 @@ public class TrackRepository(
 		{
 			if (_currentPlaylist?.Type == PlaylistType.OnSameWave)
 			{
-				_currentOffset = _onSameWaveTracksCache.Count;
-				return _onSameWaveTracksCache.ToList();
+				_currentOffset = cache.OnSameWaveTracks.Count;
+				return cache.OnSameWaveTracks.ToList();
 			}
 
 			if (_currentPlaylist?.Type == PlaylistType.MyWave)
 			{
-				_currentOffset = _myWaveTracksCache.Count;
-				return _myWaveTracksCache.ToList();
+				_currentOffset = cache.MyWaveTracks.Count;
+				return cache.MyWaveTracks.ToList();
 			}
 
 			int cachedCount = await trackInfoProvider.CountCachedTracks(_tracksIds);

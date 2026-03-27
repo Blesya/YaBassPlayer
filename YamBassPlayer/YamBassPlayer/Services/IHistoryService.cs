@@ -9,4 +9,7 @@ public interface IHistoryService
 	IReadOnlyList<(string trackId, int count)> GetTopEveningTracks(int limit = 10);
 	IReadOnlyList<(string trackId, int count)> GetTopTracksByDayOfWeek(DayOfWeek day, int limit = 50);
 	int GetListenCount(string trackId);
+	int GetListenHistoryCount();
+	IReadOnlyList<(string trackId, DateTime utcTime)> GetListenHistory();
+	HashSet<string> GetRecentlyPlayedTrackIds(TimeSpan lookback);
 }

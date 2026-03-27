@@ -14,7 +14,7 @@ public sealed class MainWindow : Window
 	private readonly IPlaylistsPresenter _playlistsPresenter;
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlayStatusPresenter _playStatusPresenter;
-	private readonly ITrackFileProvider _trackFileProvider;
+	private readonly IPlaybackCoordinator _playbackCoordinator;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly ITrackRepository _trackRepository;
@@ -32,9 +32,6 @@ public sealed class MainWindow : Window
 	private readonly IMyWaveWindowPresenter _myWaveWindowPresenter;
 	private readonly IRecommendationGraphPresenter _recommendationGraphPresenter;
 	private readonly SplashScreenView? _splashScreen;
-	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
-	private string? _currentMyWaveTrackId;
-	private bool _myWaveSkipPending;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
 
@@ -53,7 +50,7 @@ public sealed class MainWindow : Window
 		IMyWaveWindowPresenter myWaveWindowPresenter,
 		IRecommendationGraphPresenter recommendationGraphPresenter,
 		ITrackInfoPanelPresenter trackInfoPanelPresenter,
-		ITrackFileProvider trackFileProvider,
+		IPlaybackCoordinator playbackCoordinator,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
 		ITrackRepository trackRepository,
@@ -79,7 +76,7 @@ public sealed class MainWindow : Window
 		_myWavePresenter = myWavePresenter;
 		_myWaveWindowPresenter = myWaveWindowPresenter;
 		_recommendationGraphPresenter = recommendationGraphPresenter;
-		_trackFileProvider = trackFileProvider;
+		_playbackCoordinator = playbackCoordinator;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
 		_trackRepository = trackRepository;
@@ -136,16 +133,17 @@ public sealed class MainWindow : Window
 			if (_audioPlayer.IsPlayed)
 			{
 				_audioPlayer.Pause();
+				_listenTimer.OnPause();
 				return;
 			}
 
 			_audioPlayer.Resume();
+			_listenTimer.OnResume();
 		};
 		_playStatusPresenter.OnPrevClicked += _playbackQueue.Previous;
 		_playStatusPresenter.OnNextClicked += () =>
 		{
-			if (_currentPlaylistType == PlaylistType.MyWave)
-				_myWaveSkipPending = true;
+			_playbackCoordinator.MarkMyWaveSkipPending();
 			_playbackQueue.Next();
 		};
 
@@ -213,60 +211,17 @@ public sealed class MainWindow : Window
 	{
 		try
 		{
-			// Фидбек для предыдущего трека в режиме Моя волна
-			if (_currentPlaylistType == PlaylistType.MyWave && _currentMyWaveTrackId != null)
-			{
-				double played = _audioPlayer.GetCurrentPosition().TotalSeconds;
-				if (_myWaveSkipPending)
-					_ = _myWavePresenter.NotifyTrackSkippedAsync(_currentMyWaveTrackId, played);
-				else
-					_ = _myWavePresenter.NotifyTrackFinishedAsync(_currentMyWaveTrackId, played);
-				_myWaveSkipPending = false;
-			}
-
-			Track track = await _trackInfoProvider.GetTrackInfoById(trackId);
-
-			_playStatusPresenter.SetTitle($"Загружается трек: {track.Artist} - {track.Title}");
-			string filePath = await _trackFileProvider.DownloadTrackAsync(trackId);
-			if (string.IsNullOrWhiteSpace(filePath))
-				return;
-
-			_playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
-			Console.Title = $"{track.Artist} - {track.Title}";
-			_audioPlayer.Play(filePath);
-
-			var source = _currentPlaylistType switch
-			{
-				PlaylistType.OnSameWave => ListenSource.OnSameWave,
-				PlaylistType.MyWave    => ListenSource.MyWave,
-				_                      => ListenSource.Regular
-			};
-			_listenTimer.OnTrackStart(trackId, source);
-			_playStatusPresenter.SetCurrentTrackId(trackId);
-
-			// Фидбек и бесконечная очередь для Моя волна
-			if (_currentPlaylistType == PlaylistType.MyWave)
-			{
-				_currentMyWaveTrackId = trackId;
-				_ = _myWavePresenter.NotifyTrackStartedAsync(trackId);
-
-				if (!_playbackQueue.HasNext)
-					_ = _myWavePresenter.FetchMoreTracksAsync();
-			}
+			await _playbackCoordinator.PlaySelectedTrackAsync(trackId);
 		}
 		catch (Exception exception)
 		{
 			exception.Handle();
 		}
-		finally
-		{
-			_playStatusPresenter.SetTitle("Управление воспроизведением");
-		}
 	}
 
 	private async void OnPlaylistChosen(Playlist playlist)
 	{
-		_currentPlaylistType = playlist.Type;
+		_playbackCoordinator.SetPlaylistType(playlist.Type);
 		await _tracksPresenter.LoadTracksFor(playlist);
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 	}
@@ -275,24 +230,11 @@ public sealed class MainWindow : Window
 	{
 		try
 		{
-			var nextTrackId = _playbackQueue.PeekNextTrackId;
-			if (nextTrackId == null)
-				return;
-
-			if (!_trackFileProvider.IsTrackDownloaded(nextTrackId))
-			{
-				Track nextTrack = await _trackInfoProvider.GetTrackInfoById(nextTrackId);
-				_playStatusPresenter.SetTitle($"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}");
-				await _trackFileProvider.DownloadTrackAsync(nextTrackId);
-			}
+			await _playbackCoordinator.PreloadNextTrackAsync();
 		}
 		catch (Exception ex)
 		{
 			ex.Handle();
-		}
-		finally
-		{
-			_playStatusPresenter.SetTitle("Управление воспроизведением");
 		}
 	}
 
@@ -445,8 +387,7 @@ new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpect
 	{
 		var playlist = await _onSameWavePresenter.ShowOnSameWaveAsync();
 		if (playlist is null) return;
-		_currentPlaylistType = PlaylistType.OnSameWave;
-		_currentMyWaveTrackId = null;
+		_playbackCoordinator.SetPlaylistType(PlaylistType.OnSameWave);
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
 	}
@@ -455,9 +396,7 @@ new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpect
 	{
 		var playlist = await _myWavePresenter.StartMyWaveAsync();
 		if (playlist is null) return;
-		_currentPlaylistType = PlaylistType.MyWave;
-		_currentMyWaveTrackId = null;
-		_myWaveSkipPending = false;
+		_playbackCoordinator.SetPlaylistType(PlaylistType.MyWave);
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
 		_myWaveWindowPresenter.ShowWindow(playlist);
@@ -474,9 +413,7 @@ new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpect
 
 		var playlist = await _myWavePresenter.StartMyWaveFromTrackAsync(trackId);
 		if (playlist is null) return;
-		_currentPlaylistType = PlaylistType.MyWave;
-		_currentMyWaveTrackId = null;
-		_myWaveSkipPending = false;
+		_playbackCoordinator.SetPlaylistType(PlaylistType.MyWave);
 		Title = $"{playlist.PlaylistName} : {playlist.Description}";
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
 		_myWaveWindowPresenter.ShowWindow(playlist);

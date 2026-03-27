@@ -12,12 +12,13 @@ public class TrackInfoProvider : ITrackInfoProvider
 {
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
-
+	private readonly SqliteConnection _connection;
 
 	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection)
 	{
 		_api = api;
 		_storage = storage;
+		_connection = connection;
 
 		using SqliteCommand cmd = connection.CreateCommand();
 		cmd.CommandText = @"
@@ -35,56 +36,61 @@ public class TrackInfoProvider : ITrackInfoProvider
 	public async Task<IEnumerable<Track>> GetTracksInfoByIds(IEnumerable<string> ids)
 	{
 		var idsList = ids.ToList();
+		if (idsList.Count == 0)
+			return [];
+
 		var tracksResult = new List<Track>();
-		var missingIds = new List<string>();
+		var cachedById = new Dictionary<string, Track>();
 
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
+		// Batch query — one round-trip for all IDs
+		var paramNames = idsList.Select((_, i) => $"@id{i}").ToList();
+		var inClause = string.Join(", ", paramNames);
 
-		foreach (string id in idsList)
+		using (var cmd = _connection.CreateCommand())
 		{
-			await using SqliteCommand cmd = connection.CreateCommand();
-			cmd.CommandText = "SELECT TrackId, Artist, Title, Album FROM Tracks WHERE TrackId = @id";
-			cmd.Parameters.AddWithValue("@id", id);
+			cmd.CommandText = $"SELECT TrackId, Artist, Title, Album FROM Tracks WHERE TrackId IN ({inClause})";
+			for (int i = 0; i < idsList.Count; i++)
+				cmd.Parameters.AddWithValue(paramNames[i], idsList[i]);
 
-			await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
-			if (await reader.ReadAsync())
+			using var reader = await cmd.ExecuteReaderAsync();
+			while (await reader.ReadAsync())
 			{
-				var trackId = reader.GetString(0);
-				var artist = reader.GetString(1);
-				var title = reader.GetString(2);
-				var album = reader.GetString(3);
-
-				tracksResult.Add(new Track(title, artist, album, trackId));
-			}
-			else
-			{
-				missingIds.Add(id);
+				var t = new Track(reader.GetString(2), reader.GetString(1), reader.GetString(3), reader.GetString(0));
+				cachedById[t.Id] = t;
 			}
 		}
 
-		if (missingIds.Any())
+		var missingIds = idsList.Where(id => !cachedById.ContainsKey(id)).ToList();
+
+		if (missingIds.Count > 0)
 		{
 			YResponse<List<YTrack>>? yResponse = await _api.Track.GetAsync(_storage, missingIds);
-			List<YTrack>? yTracks = yResponse.Result;
+			List<YTrack>? yTracks = yResponse?.Result;
 
-			foreach (YTrack yTrack in yTracks)
+			if (yTracks != null)
 			{
-				string artists = yTrack.Artists != null
-					? string.Join(", ", yTrack.Artists.Select(a => a.Name))
-					: "Неизвестный исполнитель";
+				foreach (YTrack yTrack in yTracks)
+				{
+					string artists = yTrack.Artists != null
+						? string.Join(", ", yTrack.Artists.Select(a => a.Name))
+						: "Неизвестный исполнитель";
 
-				string album = yTrack.Albums != null && yTrack.Albums.Any()
-					? yTrack.Albums.First().Title
-					: "";
+					string album = yTrack.Albums != null && yTrack.Albums.Count > 0
+						? yTrack.Albums.First().Title
+						: "";
 
-				var track = new Track(yTrack.Title, artists, album, yTrack.Id);
-					
-				await SaveAsync(track);
-					
-				tracksResult.Add(track);
+					var track = new Track(yTrack.Title, artists, album, yTrack.Id);
+					await SaveAsync(track);
+					cachedById[track.Id] = track;
+				}
 			}
+		}
+
+		// Preserve original order
+		foreach (string id in idsList)
+		{
+			if (cachedById.TryGetValue(id, out var track))
+				tracksResult.Add(track);
 		}
 
 		return tracksResult;
@@ -92,28 +98,17 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task<Track> GetTrackInfoById(string id)
 	{
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
-
-		await using SqliteCommand cmd = connection.CreateCommand();
-		cmd.CommandText = "SELECT TrackId, Artist, Title, Album, UpdatedAt FROM Tracks WHERE TrackId = @id";
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = "SELECT TrackId, Artist, Title, Album FROM Tracks WHERE TrackId = @id";
 		cmd.Parameters.AddWithValue("@id", id);
 
-		await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+		using var reader = await cmd.ExecuteReaderAsync();
 		if (await reader.ReadAsync())
-		{
-			var trackId = reader.GetString(0);
-			var artist = reader.GetString(1);
-			var title = reader.GetString(2);
-			var album = reader.GetString(3);
-
-			return new Track(title, artist, album, id);
-		}
+			return new Track(reader.GetString(2), reader.GetString(1), reader.GetString(3), reader.GetString(0));
 
 		Track? track = await TryGetFromApi(id);
 		if (track == null)
-			throw new ArgumentNullException(nameof(track), $"Не удалось получить информацию о треке: {id}");
+			throw new InvalidOperationException($"Не удалось получить информацию о треке: {id}");
 
 		return track;
 	}
@@ -124,23 +119,16 @@ public class TrackInfoProvider : ITrackInfoProvider
 		YTrack? track = trackResponse?.Result?.FirstOrDefault();
 
 		if (track == null)
-		{
 			return null;
-		}
 
 		Track trackVm = track.ToTrack();
 		await SaveAsync(trackVm);
-
 		return trackVm;
 	}
 
 	public async Task SaveAsync(Track track)
 	{
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
-
-		await using SqliteCommand cmd = connection.CreateCommand();
+		using var cmd = _connection.CreateCommand();
 		cmd.CommandText = @"
 			INSERT OR REPLACE INTO Tracks (TrackId, Artist, Title, Album, UpdatedAt)
 			VALUES (@TrackId, @artist, @title, @album, @updatedAt)";
@@ -153,14 +141,9 @@ public class TrackInfoProvider : ITrackInfoProvider
 		await cmd.ExecuteNonQueryAsync();
 	}
 
-
 	public async Task<bool> IsTrackCached(string trackId)
 	{
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
-
-		await using SqliteCommand cmd = connection.CreateCommand();
+		using var cmd = _connection.CreateCommand();
 		cmd.CommandText = "SELECT 1 FROM Tracks WHERE TrackId = @id LIMIT 1";
 		cmd.Parameters.AddWithValue("@id", trackId);
 
@@ -168,13 +151,30 @@ public class TrackInfoProvider : ITrackInfoProvider
 		return result != null;
 	}
 
+	// Returns the count of leading consecutive cached tracks (stops at first miss).
 	public async Task<int> CountCachedTracks(IEnumerable<string> trackIds)
 	{
+		var idsList = trackIds.ToList();
+		if (idsList.Count == 0)
+			return 0;
+
+		var paramNames = idsList.Select((_, i) => $"@id{i}").ToList();
+		var inClause = string.Join(", ", paramNames);
+
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"SELECT TrackId FROM Tracks WHERE TrackId IN ({inClause})";
+		for (int i = 0; i < idsList.Count; i++)
+			cmd.Parameters.AddWithValue(paramNames[i], idsList[i]);
+
+		var cachedSet = new HashSet<string>();
+		using var reader = await cmd.ExecuteReaderAsync();
+		while (await reader.ReadAsync())
+			cachedSet.Add(reader.GetString(0));
+
 		int count = 0;
-		foreach (string trackId in trackIds)
+		foreach (var id in idsList)
 		{
-			if (!await IsTrackCached(trackId))
-				break;
+			if (!cachedSet.Contains(id)) break;
 			count++;
 		}
 		return count;
@@ -182,11 +182,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task<IReadOnlyList<(string artistName, int trackCount)>> GetArtistsWithTrackCountAsync()
 	{
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
-
-		await using SqliteCommand cmd = connection.CreateCommand();
+		using var cmd = _connection.CreateCommand();
 		cmd.CommandText = @"
 			SELECT CASE WHEN Artist = '' OR Artist IS NULL THEN 'Неизвестный исполнитель' ELSE Artist END AS ArtistName,
 			       COUNT(*) AS TrackCount
@@ -195,24 +191,16 @@ public class TrackInfoProvider : ITrackInfoProvider
 			ORDER BY ArtistName ASC";
 
 		var result = new List<(string artistName, int trackCount)>();
-		await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+		using var reader = await cmd.ExecuteReaderAsync();
 		while (await reader.ReadAsync())
-		{
-			var artistName = reader.GetString(0);
-			var trackCount = reader.GetInt32(1);
-			result.Add((artistName, trackCount));
-		}
+			result.Add((reader.GetString(0), reader.GetInt32(1)));
 
 		return result;
 	}
 
 	public async Task<List<string>> GetTrackIdsByArtistAsync(string artistName)
 	{
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
-
-		await using SqliteCommand cmd = connection.CreateCommand();
+		using var cmd = _connection.CreateCommand();
 		if (artistName == "Неизвестный исполнитель")
 		{
 			cmd.CommandText = "SELECT TrackId FROM Tracks WHERE Artist = '' OR Artist IS NULL ORDER BY Album, Title";
@@ -224,11 +212,9 @@ public class TrackInfoProvider : ITrackInfoProvider
 		}
 
 		var trackIds = new List<string>();
-		await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+		using var reader = await cmd.ExecuteReaderAsync();
 		while (await reader.ReadAsync())
-		{
 			trackIds.Add(reader.GetString(0));
-		}
 
 		return trackIds;
 	}
@@ -238,11 +224,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 		if (string.IsNullOrWhiteSpace(searchQuery))
 			return [];
 
-		string dbPath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
-		await using var connection = new SqliteConnection($"Data Source={dbPath}");
-		await connection.OpenAsync();
-
-		await using SqliteCommand cmd = connection.CreateCommand();
+		using var cmd = _connection.CreateCommand();
 		cmd.CommandText = @"
 			SELECT TrackId, Artist, Title, Album 
 			FROM Tracks 
@@ -250,22 +232,15 @@ public class TrackInfoProvider : ITrackInfoProvider
 			   OR Artist LIKE @query 
 			   OR Album LIKE @query
 			LIMIT @maxResults";
-		
+
 		string likeQuery = $"%{searchQuery}%";
 		cmd.Parameters.AddWithValue("@query", likeQuery);
 		cmd.Parameters.AddWithValue("@maxResults", maxResults);
 
 		var tracks = new List<Track>();
-		await using SqliteDataReader reader = await cmd.ExecuteReaderAsync();
+		using var reader = await cmd.ExecuteReaderAsync();
 		while (await reader.ReadAsync())
-		{
-			var trackId = reader.GetString(0);
-			var artist = reader.GetString(1);
-			var title = reader.GetString(2);
-			var album = reader.GetString(3);
-
-			tracks.Add(new Track(title, artist, album, trackId));
-		}
+			tracks.Add(new Track(reader.GetString(2), reader.GetString(1), reader.GetString(3), reader.GetString(0)));
 
 		return tracks;
 	}

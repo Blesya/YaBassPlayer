@@ -1,10 +1,9 @@
-﻿using Microsoft.Data.Sqlite;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Services.Impl;
 
-public class RecommendationService(SqliteConnection connection, ITrackInfoProvider trackInfoProvider)
+public class RecommendationService(IHistoryService historyService, ITrackInfoProvider trackInfoProvider)
 : IRecommendationService
 {
 private static readonly TimeSpan RecentThreshold = TimeSpan.FromMinutes(30);
@@ -20,7 +19,6 @@ private Dictionary<string, Dictionary<string, int>>? _cachedGraph;
 private int _lastHistoryCount = -1;
 private HashSet<string>? _cachedRecentlyPlayed;
 private DateTime _recentlyPlayedCacheTime = DateTime.MinValue;
-
 public async Task<RecommendationResult> GetRecommendationsAsync(string currentTrackId, int limit = 20)
 {
 var sessionGap = TimeSpan.FromMinutes(AppConfiguration.GetSessionGapMinutes());
@@ -130,45 +128,22 @@ return new RecommendationResult(currentTrackId, result, false, usedArtistFallbac
 
 private Dictionary<string, Dictionary<string, int>> GetOrBuildGraph(TimeSpan sessionGap)
 {
-int currentCount = GetHistoryCount();
+int currentCount = historyService.GetListenHistoryCount();
 if (currentCount == _lastHistoryCount && _cachedGraph != null)
 {
 return _cachedGraph;
 }
 
-var history = LoadHistory();
-_cachedGraph = BuildTransitionGraph(history, sessionGap);
+var history = historyService.GetListenHistory();
+_cachedGraph = BuildTransitionGraph(history.ToList(), sessionGap);
 _lastHistoryCount = currentCount;
 return _cachedGraph;
 }
 
-private int GetHistoryCount()
-{
-using var cmd = connection.CreateCommand();
-cmd.CommandText = "SELECT COUNT(*) FROM listensHistory WHERE source IN ('Regular', 'OnSameWave')";
-return Convert.ToInt32(cmd.ExecuteScalar());
-}
+private int GetHistoryCount() => historyService.GetListenHistoryCount();
 
 private List<(string trackId, DateTime utcTime)> LoadHistory()
-{
-var result = new List<(string trackId, DateTime utcTime)>();
-
-using var cmd = connection.CreateCommand();
-cmd.CommandText = "SELECT trackId, utcTime FROM listensHistory WHERE source IN ('Regular', 'OnSameWave') ORDER BY utcTime";
-
-using var reader = cmd.ExecuteReader();
-while (reader.Read())
-{
-string trackId = reader.GetString(0);
-string utcTimeStr = reader.GetString(1);
-if (DateTime.TryParse(utcTimeStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var utcTime))
-{
-result.Add((trackId, utcTime));
-}
-}
-
-return result;
-}
+	=> historyService.GetListenHistory().ToList();
 
 private static Dictionary<string, Dictionary<string, int>> BuildTransitionGraph(
 List<(string trackId, DateTime utcTime)> history,
@@ -248,27 +223,9 @@ if (_cachedRecentlyPlayed != null && DateTime.UtcNow - _recentlyPlayedCacheTime 
 return _cachedRecentlyPlayed;
 }
 
-_cachedRecentlyPlayed = GetRecentlyPlayedTrackIds();
+_cachedRecentlyPlayed = historyService.GetRecentlyPlayedTrackIds(RecentThreshold);
 _recentlyPlayedCacheTime = DateTime.UtcNow;
 return _cachedRecentlyPlayed;
-}
-
-private HashSet<string> GetRecentlyPlayedTrackIds()
-{
-var result = new HashSet<string>();
-var threshold = DateTime.UtcNow - RecentThreshold;
-
-using var cmd = connection.CreateCommand();
-cmd.CommandText = "SELECT DISTINCT trackId FROM listensHistory WHERE source IN ('Regular', 'OnSameWave') AND utcTime >= $threshold";
-cmd.Parameters.AddWithValue("$threshold", threshold.ToString("O"));
-
-using var reader = cmd.ExecuteReader();
-while (reader.Read())
-{
-result.Add(reader.GetString(0));
-}
-
-return result;
 }
 
 private static void ApplyRecentPenalty(

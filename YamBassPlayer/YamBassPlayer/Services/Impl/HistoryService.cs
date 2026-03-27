@@ -5,6 +5,13 @@ namespace YamBassPlayer.Services.Impl;
 
 public sealed class HistoryService : IHistoryService
 {
+	private const int CurrentSchemaVersion = 1;
+	private static readonly string[] RecommendationSources =
+	[
+		ListenSource.Regular.ToString(),
+		ListenSource.OnSameWave.ToString()
+	];
+
 	private readonly SqliteConnection _connection;
 
 	public HistoryService(SqliteConnection connection)
@@ -27,25 +34,44 @@ public sealed class HistoryService : IHistoryService
 			""";
 		createCmd.ExecuteNonQuery();
 
-		MigrateAddSourceColumn();
+		ApplyMigrations();
 	}
 
-	private void MigrateAddSourceColumn()
+	private void ApplyMigrations()
 	{
-		using var checkCmd = _connection.CreateCommand();
-		checkCmd.CommandText = "PRAGMA table_info(listensHistory);";
-		using var reader = checkCmd.ExecuteReader();
-		bool hasSource = false;
-		while (reader.Read())
+		int schemaVersion = GetSchemaVersion();
+
+		if (schemaVersion < 1)
 		{
-			if (reader.GetString(1) == "source")
-			{
-				hasSource = true;
-				break;
-			}
+			MigrateToVersion1();
+			SetSchemaVersion(1);
+			schemaVersion = 1;
 		}
 
-		if (hasSource)
+		if (schemaVersion != CurrentSchemaVersion)
+		{
+			throw new InvalidOperationException(
+				$"Unsupported listensHistory schema version: {schemaVersion}. Expected {CurrentSchemaVersion}.");
+		}
+	}
+
+	private int GetSchemaVersion()
+	{
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = "PRAGMA user_version;";
+		return Convert.ToInt32(cmd.ExecuteScalar());
+	}
+
+	private void SetSchemaVersion(int version)
+	{
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"PRAGMA user_version = {version};";
+		cmd.ExecuteNonQuery();
+	}
+
+	private void MigrateToVersion1()
+	{
+		if (HasColumn("listensHistory", "source"))
 			return;
 
 		using var alterCmd = _connection.CreateCommand();
@@ -54,6 +80,20 @@ public sealed class HistoryService : IHistoryService
 			ALTER TABLE listensHistory ADD COLUMN source TEXT NOT NULL DEFAULT 'Regular';
 			""";
 		alterCmd.ExecuteNonQuery();
+	}
+
+	private bool HasColumn(string tableName, string columnName)
+	{
+		using var checkCmd = _connection.CreateCommand();
+		checkCmd.CommandText = $"PRAGMA table_info({tableName});";
+		using var reader = checkCmd.ExecuteReader();
+		while (reader.Read())
+		{
+			if (reader.GetString(1) == columnName)
+				return true;
+		}
+
+		return false;
 	}
 
 	public void LogListen(string trackId, ListenSource source)
@@ -164,5 +204,75 @@ public sealed class HistoryService : IHistoryService
 			""";
 		cmd.Parameters.AddWithValue("$trackId", trackId);
 		return Convert.ToInt32(cmd.ExecuteScalar());
+	}
+
+	public int GetListenHistoryCount()
+	{
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = CreateRecommendationSourcesCountQuery();
+		AddRecommendationSourceParameters(cmd);
+		return Convert.ToInt32(cmd.ExecuteScalar());
+	}
+
+	public IReadOnlyList<(string trackId, DateTime utcTime)> GetListenHistory()
+	{
+		var result = new List<(string trackId, DateTime utcTime)>();
+
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"""
+			SELECT trackId, utcTime
+			FROM listensHistory
+			WHERE source IN ({CreateRecommendationSourcePlaceholders()})
+			ORDER BY utcTime
+			""";
+		AddRecommendationSourceParameters(cmd);
+
+		using var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			string trackId = reader.GetString(0);
+			string utcTimeStr = reader.GetString(1);
+			if (DateTime.TryParse(utcTimeStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var utcTime))
+				result.Add((trackId, utcTime));
+		}
+
+		return result;
+	}
+
+	public HashSet<string> GetRecentlyPlayedTrackIds(TimeSpan lookback)
+	{
+		var result = new HashSet<string>();
+		var threshold = DateTime.UtcNow - lookback;
+
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"""
+			SELECT DISTINCT trackId
+			FROM listensHistory
+			WHERE source IN ({CreateRecommendationSourcePlaceholders()}) AND utcTime >= $threshold
+			""";
+		AddRecommendationSourceParameters(cmd);
+		cmd.Parameters.AddWithValue("$threshold", threshold.ToString("O"));
+
+		using var reader = cmd.ExecuteReader();
+		while (reader.Read())
+			result.Add(reader.GetString(0));
+
+		return result;
+	}
+
+	private static string CreateRecommendationSourcesCountQuery()
+		=> $"""
+			SELECT COUNT(*)
+			FROM listensHistory
+			WHERE source IN ({CreateRecommendationSourcePlaceholders()})
+			""";
+
+	private static string CreateRecommendationSourcePlaceholders()
+		=> string.Join(", ", RecommendationSources.Select((_, i) => $"$source{i}"));
+
+	private static void AddRecommendationSourceParameters(SqliteCommand cmd)
+	{
+		for (int i = 0; i < RecommendationSources.Length; i++)
+			cmd.Parameters.AddWithValue($"$source{i}", RecommendationSources[i]);
 	}
 }

@@ -16,11 +16,15 @@ public static class Themes
 
 	private static ColorScheme? _defaultBase;
 	private static ColorScheme? _defaultDialog;
+	private static ColorScheme? _defaultMenu;
+	private static ColorScheme? _defaultError;
 
 	public static void InitializeDefaults()
 	{
 		_defaultBase = Clone(Colors.Base);
 		_defaultDialog = Clone(Colors.Dialog);
+		_defaultMenu = Clone(Colors.Menu);
+		_defaultError = Clone(Colors.Error);
 	}
 
 	public static void ApplySavedTheme()
@@ -221,6 +225,22 @@ public static class Themes
 			Colors.Dialog.Focus = _defaultDialog.Focus;
 			Colors.Dialog.HotNormal = _defaultDialog.HotNormal;
 			Colors.Dialog.HotFocus = _defaultDialog.HotFocus;
+		}
+
+		if (_defaultMenu != null)
+		{
+			Colors.Menu.Normal = _defaultMenu.Normal;
+			Colors.Menu.Focus = _defaultMenu.Focus;
+			Colors.Menu.HotNormal = _defaultMenu.HotNormal;
+			Colors.Menu.HotFocus = _defaultMenu.HotFocus;
+		}
+
+		if (_defaultError != null)
+		{
+			Colors.Error.Normal = _defaultError.Normal;
+			Colors.Error.Focus = _defaultError.Focus;
+			Colors.Error.HotNormal = _defaultError.HotNormal;
+			Colors.Error.HotFocus = _defaultError.HotFocus;
 		}
 
 		if (save)

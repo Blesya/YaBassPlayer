@@ -6,145 +6,134 @@ namespace YamBassPlayer.Configuration;
 
 public class AppConfiguration
 {
-private static IConfiguration? _configuration;
-private static readonly string ConfigFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
+	private static IConfiguration? _configuration;
+	private static readonly string ConfigFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
 
-public static IConfiguration Configuration
-{
-get
-{
-if (_configuration == null)
-{
-ReloadConfiguration();
-}
-return _configuration!;
-}
-}
+	// In-memory cache for read-heavy values; invalidated on every write.
+	private static JsonObject? _cachedRoot;
 
-private static void ReloadConfiguration()
-{
-_configuration = new ConfigurationBuilder()
-.SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
-.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-.Build();
-}
+	public static IConfiguration Configuration
+	{
+		get
+		{
+			if (_configuration == null)
+				ReloadConfiguration();
+			return _configuration!;
+		}
+	}
 
-public static string? GetYandexMusicToken()
-{
-try
-{
-return Configuration["YandexMusic:Token"];
-}
-catch
-{
-return null;
-}
-}
+	private static void ReloadConfiguration()
+	{
+		_configuration = new ConfigurationBuilder()
+			.SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
+			.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+			.Build();
+	}
 
-public static string YandexMusicToken => GetYandexMusicToken()
- ?? throw new InvalidOperationException("YandexMusic:Token not found in configuration");
+	public static string? GetYandexMusicToken()
+	{
+		try { return Configuration["YandexMusic:Token"]; }
+		catch { return null; }
+	}
 
-public static void SaveToken(string token)
-{
-var root = LoadJsonNode();
-root["YandexMusic"] = new JsonObject { ["Token"] = token };
-SaveJsonNode(root);
-}
+	public static string YandexMusicToken => GetYandexMusicToken()
+		?? throw new InvalidOperationException("YandexMusic:Token not found in configuration");
 
-public static float[] GetEqualizerBands()
-{
-try
-{
-var root = LoadJsonNode();
-var bands = root["Equalizer"]?["Bands"]?.AsArray();
-if (bands != null && bands.Count == 10)
-{
-var values = new float[10];
-for (int i = 0; i < 10; i++)
-{
-values[i] = bands[i]?.GetValue<float>() ?? 0f;
-}
-return values;
-}
-}
-catch
-{
-}
-return new float[10];
-}
+	public static void SaveToken(string token)
+	{
+		var root = LoadJsonNode();
+		var section = root["YandexMusic"]?.AsObject() ?? new JsonObject();
+		section["Token"] = token;
+		root["YandexMusic"] = section;
+		SaveJsonNode(root);
+	}
 
-public static void SaveEqualizerBands(float[] bands)
-{
-if (bands.Length != 10)
-throw new ArgumentException("Equalizer must have exactly 10 bands");
+	public static float[] GetEqualizerBands()
+	{
+		try
+		{
+			var bands = LoadJsonNode()["Equalizer"]?["Bands"]?.AsArray();
+			if (bands != null && bands.Count == 10)
+			{
+				var values = new float[10];
+				for (int i = 0; i < 10; i++)
+					values[i] = bands[i]?.GetValue<float>() ?? 0f;
+				return values;
+			}
+		}
+		catch { }
+		return new float[10];
+	}
 
-var root = LoadJsonNode();
-var bandsArray = new JsonArray();
-foreach (var band in bands)
-{
-bandsArray.Add(band);
-}
-root["Equalizer"] = new JsonObject { ["Bands"] = bandsArray };
-SaveJsonNode(root);
-}
+	public static void SaveEqualizerBands(float[] bands)
+	{
+		if (bands.Length != 10)
+			throw new ArgumentException("Equalizer must have exactly 10 bands");
 
-public static string? GetTheme()
-{
-try
-{
-var root = LoadJsonNode();
-return root["Theme"]?.GetValue<string>();
-}
-catch
-{
-return null;
-}
-}
+		var root = LoadJsonNode();
+		var bandsArray = new JsonArray();
+		foreach (var band in bands)
+			bandsArray.Add(band);
 
-public static void SaveTheme(string themeName)
-{
-var root = LoadJsonNode();
-root["Theme"] = themeName;
-SaveJsonNode(root);
-}
+		var section = root["Equalizer"]?.AsObject() ?? new JsonObject();
+		section["Bands"] = bandsArray;
+		root["Equalizer"] = section;
+		SaveJsonNode(root);
+	}
 
-public static int GetSessionGapMinutes()
-{
-try
-{
-var root = LoadJsonNode();
-return root["Recommendation"]?["SessionGapMinutes"]?.GetValue<int>() ?? 20;
-}
-catch
-{
-return 20;
-}
-}
+	public static string? GetTheme()
+	{
+		try { return LoadJsonNode()["Theme"]?.GetValue<string>(); }
+		catch { return null; }
+	}
 
-public static void SaveSessionGapMinutes(int minutes)
-{
-var root = LoadJsonNode();
-root["Recommendation"] = new JsonObject { ["SessionGapMinutes"] = minutes };
-SaveJsonNode(root);
-}
+	public static void SaveTheme(string themeName)
+	{
+		var root = LoadJsonNode();
+		root["Theme"] = themeName;
+		SaveJsonNode(root);
+	}
 
-private static JsonObject LoadJsonNode()
-{
-if (File.Exists(ConfigFilePath))
-{
-string existingJson = File.ReadAllText(ConfigFilePath);
-return JsonNode.Parse(existingJson)?.AsObject() ?? new JsonObject();
-}
-return new JsonObject();
-}
+	public static int GetSessionGapMinutes()
+	{
+		try { return LoadJsonNode()["Recommendation"]?["SessionGapMinutes"]?.GetValue<int>() ?? 20; }
+		catch { return 20; }
+	}
 
-private static void SaveJsonNode(JsonObject root)
-{
-var options = new JsonSerializerOptions { WriteIndented = true };
-string json = root.ToJsonString(options);
-File.WriteAllText(ConfigFilePath, json);
+	public static void SaveSessionGapMinutes(int minutes)
+	{
+		var root = LoadJsonNode();
+		var section = root["Recommendation"]?.AsObject() ?? new JsonObject();
+		section["SessionGapMinutes"] = minutes;
+		root["Recommendation"] = section;
+		SaveJsonNode(root);
+	}
 
-_configuration = null;
-ReloadConfiguration();
-}
+	private static JsonObject LoadJsonNode()
+	{
+		if (_cachedRoot != null)
+			return _cachedRoot;
+
+		if (File.Exists(ConfigFilePath))
+		{
+			string existingJson = File.ReadAllText(ConfigFilePath);
+			_cachedRoot = JsonNode.Parse(existingJson)?.AsObject() ?? new JsonObject();
+		}
+		else
+		{
+			_cachedRoot = new JsonObject();
+		}
+
+		return _cachedRoot;
+	}
+
+	private static void SaveJsonNode(JsonObject root)
+	{
+		var options = new JsonSerializerOptions { WriteIndented = true };
+		File.WriteAllText(ConfigFilePath, root.ToJsonString(options));
+
+		_cachedRoot = null;
+		_configuration = null;
+		ReloadConfiguration();
+	}
 }

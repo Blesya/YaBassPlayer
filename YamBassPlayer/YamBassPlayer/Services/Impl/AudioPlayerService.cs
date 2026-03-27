@@ -239,21 +239,21 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 	public void SetEqualizerBand(int bandIndex, float gain)
 		=> bassEqualizer.SetBand(bandIndex, gain);
 
-        public float[] GetWaveformData(int sampleCount = 512)
-        {
-                try
-                {
-                        float[] buffer = new float[sampleCount];
-                        if (!IsStreamActive)
-                                return buffer;
+	public float[] GetWaveformData(int sampleCount = 512)
+	{
+		try
+		{
+			float[] buffer = new float[sampleCount];
+			if (!IsStreamActive)
+				return buffer;
 
-                        Bass.ChannelGetData(_currentStream, buffer, (int)DataFlags.Float | (sampleCount * 4));
-                        return buffer;
-                }
-                catch (Exception ex)
-                {
-                        ex.Handle();
-                        return new float[sampleCount];
-                }
-        }
+			Bass.ChannelGetData(_currentStream, buffer, (int)DataFlags.Float | (sampleCount * 4));
+			return buffer;
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+			return new float[sampleCount];
+		}
+	}
 }
