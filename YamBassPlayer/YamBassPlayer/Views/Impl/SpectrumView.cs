@@ -73,29 +73,115 @@ public sealed class SpectrumView : View
             driver.AddRune('─');
         }
 
-        driver.SetAttribute(new Attribute(Color.BrightCyan, Color.Black));
+        float[] smoothed = SmoothSamples(_waveform, width, windowSize: 5);
+
+        // Работаем в пространстве полу-строк (0..halfHeight*2-1), чтобы
+        // DrawVerticalSegment мог корректно делить на 2 для символьных строк.
+        int halfHeight = height * 2; // total half-rows
+        int midHalf = halfHeight / 2;
+
+        int prevHY = midHalf - (int)(smoothed[0] * midHalf);
+        prevHY = Math.Clamp(prevHY, 0, halfHeight - 1);
 
         for (int x = 0; x < width; x++)
         {
-            float t = (float)x / (width - 1);
-            int sampleIdx = Math.Clamp((int)(t * (_waveform.Length - 1)), 0, _waveform.Length - 1);
-            float sample = _waveform[sampleIdx];
-
-            int y = midY - (int)(sample * (height / 2f));
-            y = Math.Clamp(y, 0, height - 1);
+            float sample = smoothed[x];
+            int hy = midHalf - (int)(sample * midHalf);
+            hy = Math.Clamp(hy, 0, halfHeight - 1);
 
             Color pointColor = Math.Abs(sample) switch
             {
-                < 0.15f => Color.BrightCyan,
-                < 0.40f => Color.Cyan,
-                < 0.65f => Color.Green,
-                < 0.85f => Color.BrightGreen,
-                _ => Color.BrightYellow
+                < 0.10f => Color.BrightCyan,
+                < 0.25f => Color.Cyan,
+                < 0.45f => Color.Green,
+                < 0.65f => Color.BrightGreen,
+                < 0.80f => Color.BrightYellow,
+                < 0.92f => Color.BrightRed,
+                _ => Color.Red
             };
 
-            driver.SetAttribute(new Attribute(pointColor, Color.Black));
-            Move(x, y);
-            driver.AddRune('█');
+            int hyTop = Math.Min(prevHY, hy);
+            int hyBottom = Math.Max(prevHY, hy);
+            DrawVerticalSegment(driver, x, hyTop, hyBottom, halfHeight, pointColor);
+
+            prevHY = hy;
+        }
+    }
+
+    // Ресэмплирует waveform до targetWidth точек и применяет скользящее среднее.
+    private static float[] SmoothSamples(float[] waveform, int targetWidth, int windowSize)
+    {
+        float[] resampled = new float[targetWidth];
+        for (int x = 0; x < targetWidth; x++)
+        {
+            float t = (float)x / Math.Max(1, targetWidth - 1);
+            int idx = Math.Clamp((int)(t * (waveform.Length - 1)), 0, waveform.Length - 1);
+            resampled[x] = waveform[idx];
+        }
+
+        float[] result = new float[targetWidth];
+        int half = windowSize / 2;
+        for (int x = 0; x < targetWidth; x++)
+        {
+            float sum = 0f;
+            int count = 0;
+            for (int d = -half; d <= half; d++)
+            {
+                int nx = x + d;
+                if (nx >= 0 && nx < targetWidth)
+                {
+                    sum += resampled[nx];
+                    count++;
+                }
+            }
+            result[x] = sum / count;
+        }
+        return result;
+    }
+
+    // Рисует вертикальный отрезок в столбце x от yTop до yBottom используя
+    // полу-блочные символы (▀/▄/█) для двойного вертикального разрешения.
+    private void DrawVerticalSegment(ConsoleDriver driver, int x, int yTop, int yBottom, int height, Color color)
+    {
+        driver.SetAttribute(new Attribute(color, Color.Black));
+
+        // Расширяем до минимум одной строки, чтобы точка всегда была видна.
+        if (yTop == yBottom)
+        {
+            // Определяем полу-строку: чётный y → верхняя половина символьной строки
+            int charRow = yTop / 2;
+            bool isTopHalf = (yTop % 2 == 0);
+            Move(x, charRow);
+            driver.AddRune(isTopHalf ? '▀' : '▄');
+            return;
+        }
+
+        // Для каждой символьной строки, которая пересекается с отрезком [yTop, yBottom],
+        // выбираем подходящий блочный символ.
+        int firstCharRow = yTop / 2;
+        int lastCharRow = yBottom / 2;
+
+        for (int row = firstCharRow; row <= lastCharRow && row < (height + 1) / 2; row++)
+        {
+            int halfTop = row * 2;        // верхняя "полу-строка" символьной строки
+            int halfBottom = row * 2 + 1; // нижняя "полу-строка"
+
+            bool topFilled = halfTop >= yTop && halfTop <= yBottom;
+            bool bottomFilled = halfBottom >= yTop && halfBottom <= yBottom;
+
+            char glyph = (topFilled, bottomFilled) switch
+            {
+                (true, true) => '█',
+                (true, false) => '▀',
+                (false, true) => '▄',
+                _ => ' '
+            };
+
+            if (glyph != ' ')
+            {
+                Move(x, row);
+                driver.AddRune(glyph);
+            }
         }
     }
 
