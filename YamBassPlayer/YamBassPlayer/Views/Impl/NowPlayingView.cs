@@ -1,4 +1,5 @@
 using Terminal.Gui;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
@@ -8,6 +9,9 @@ public sealed class NowPlayingView : Window, INowPlayingView
 	private readonly Label _artistTitleLabel;
 	private readonly Label _albumLabel;
 	private readonly SpectrumView _spectrum;
+	private readonly Button _modeButton;
+
+	public SpectrumMode Mode => _spectrum.Mode;
 
 	public Action? OnClose;
 
@@ -68,6 +72,14 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		};
 		closeButton.Clicked += () => Close();
 
+		_modeButton = new Button
+		{
+			X = 0,
+			Y = Pos.AnchorEnd(6),
+			Text = "≋ FFT"
+		};
+		_modeButton.Clicked += ToggleMode;
+
 		_spectrum = new SpectrumView(bars: 300)
 		{
 			X = 0,
@@ -79,7 +91,7 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		};
 
 		Add(sepTop, _artistTitleLabel, _albumLabel, sepBottom,
-			_spectrum, closeButton);
+			_spectrum, _modeButton, closeButton);
 
 		KeyPress += e =>
 		{
@@ -105,7 +117,22 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		_spectrum.SetFftData(fft);
 	}
 
+	public void SetWaveformData(float[] samples)
+	{
+		_spectrum.SetWaveformData(samples);
+	}
+
 	public void SetListenCount(int count) { }
+
+	private void ToggleMode()
+	{
+		_spectrum.Mode = _spectrum.Mode == SpectrumMode.Bars
+			? SpectrumMode.Oscilloscope
+			: SpectrumMode.Bars;
+		_modeButton.Text = _spectrum.Mode == SpectrumMode.Oscilloscope
+			? "〜 Осц."
+			: "≋ FFT";
+	}
 
 	public void Show()
 	{

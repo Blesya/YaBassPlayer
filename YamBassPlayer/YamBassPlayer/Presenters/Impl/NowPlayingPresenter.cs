@@ -41,7 +41,10 @@ public class NowPlayingPresenter : INowPlayingPresenter
 		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
 			if (!alive) return false;
-			view.SetFftData(_audioPlayer.ChannelGetData());
+			if (view.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope)
+				view.SetWaveformData(_audioPlayer.GetWaveformData(512));
+			else
+				view.SetFftData(_audioPlayer.ChannelGetData());
 			return true;
 		});
 
