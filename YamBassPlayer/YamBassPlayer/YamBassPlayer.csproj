@@ -12,8 +12,10 @@
         <PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
         <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
         <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
+        <PackageReference Include="TagLibSharp" Version="2.3.0" />
         <PackageReference Include="Terminal.Gui" Version="1.19.0" />
         <PackageReference Include="Autofac" Version="8.1.1" />
     </ItemGroup>

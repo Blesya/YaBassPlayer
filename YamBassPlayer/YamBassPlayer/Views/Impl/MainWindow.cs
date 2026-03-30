@@ -1,3 +1,4 @@
+using Autofac;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
@@ -205,6 +206,21 @@ public sealed class MainWindow : Window
 				e.Handled = true;
 			}
 		};
+
+		// Scan local library in background on startup so the playlist tree is populated.
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
+				await libraryService.ScanAllFoldersAsync();
+				Application.MainLoop.Invoke(RefreshPlaylistTree);
+			}
+			catch
+			{
+				// Startup scan is best-effort; swallow errors silently.
+			}
+		});
 	}
 
 	private async void OnTrackForPlaySelected(string trackId)
@@ -269,7 +285,11 @@ public sealed class MainWindow : Window
 				new MenuItem("Моя волна по треку", "", ShowMyWaveByTrack),
 				new MenuItem("На одной волне [F6]", "", ShowOnSameWave),
 				new MenuItem("Граф рекомендаций [F7]", "", () => _recommendationGraphPresenter.ShowRecommendationGraph()),
-				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog())
+				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog()),
+				null,
+				new MenuItem("Добавить папку...", "", ShowAddLocalFolderDialog),
+				new MenuItem("Управление папками...", "", ShowLocalFolderManagerDialog),
+				new MenuItem("Сканировать библиотеку", "", ScanLocalLibrary)
 			}),
 			new MenuBarItem("Вид", new[]
 			{
@@ -449,5 +469,73 @@ new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpect
 		{
 			ex.Handle();
 		}
+	}
+
+	private void ShowAddLocalFolderDialog()
+	{
+		var od = new OpenDialog("Добавить папку", "Выберите папку с музыкой")
+		{
+			CanChooseDirectories = true,
+			CanChooseFiles = false
+		};
+		Application.Run(od);
+
+		if (!od.Canceled && od.FilePath != null)
+		{
+			string path = od.FilePath.ToString()!;
+			_ = Task.Run(async () =>
+			{
+				try
+				{
+					var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
+					await libraryService.AddFolderAsync(path);
+					Application.MainLoop.Invoke(RefreshPlaylistTree);
+				}
+				catch (Exception ex)
+				{
+					Application.MainLoop.Invoke(() => ex.Handle());
+				}
+			});
+		}
+	}
+
+	private async void ShowLocalFolderManagerDialog()
+	{
+		var presenter = ServicesProvider.Ioc.Resolve<ILocalFolderManagerPresenter>();
+		presenter.OnLibraryChanged += RefreshPlaylistTree;
+		try
+		{
+			await presenter.ShowAsync();
+		}
+		finally
+		{
+			presenter.OnLibraryChanged -= RefreshPlaylistTree;
+		}
+	}
+
+	private void ScanLocalLibrary()
+	{
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
+				int count = await libraryService.ScanAllFoldersAsync();
+				Application.MainLoop.Invoke(() =>
+				{
+					RefreshPlaylistTree();
+					MessageBox.Query("Сканирование завершено", $"Найдено треков: {count}", "OK");
+				});
+			}
+			catch (Exception ex)
+			{
+				Application.MainLoop.Invoke(() => ex.Handle());
+			}
+		});
+	}
+
+	private void RefreshPlaylistTree()
+	{
+		_playlistsPresenter.LoadPlaylistTree();
 	}
 }

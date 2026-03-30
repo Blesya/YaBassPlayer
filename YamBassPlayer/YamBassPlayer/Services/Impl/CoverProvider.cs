@@ -1,4 +1,5 @@
 using System.Net.Http;
+using Microsoft.Data.Sqlite;
 using YamBassPlayer.Extensions;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
@@ -11,12 +12,14 @@ public sealed class CoverProvider : ICoverProvider
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly string _coversFolder;
+	private readonly SqliteConnection _connection;
 
-	public CoverProvider(YandexMusicApi api, AuthStorage storage, string coversFolder)
+	public CoverProvider(YandexMusicApi api, AuthStorage storage, string coversFolder, SqliteConnection connection)
 	{
 		_api = api;
 		_storage = storage;
 		_coversFolder = coversFolder;
+		_connection = connection;
 
 		if (!Directory.Exists(_coversFolder))
 		{
@@ -26,7 +29,11 @@ public sealed class CoverProvider : ICoverProvider
 
 	public string GetCoverPath(string trackId)
 	{
-		return Path.Combine(_coversFolder, $"{trackId}.jpg");
+		// Local tracks use the full file path as their ID; hashing it prevents invalid path characters.
+		string safeId = Path.IsPathRooted(trackId)
+			? Convert.ToHexString(System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes(trackId)))
+			: trackId;
+		return Path.Combine(_coversFolder, $"{safeId}.jpg");
 	}
 
 	public bool IsCoverDownloaded(string trackId)
@@ -36,6 +43,10 @@ public sealed class CoverProvider : ICoverProvider
 
 	public async Task<string> DownloadCoverAsync(string trackId)
 	{
+		// Local tracks use an absolute file path as their ID — route them to the local handler.
+		if (Path.IsPathRooted(trackId))
+			return await GetLocalCoverAsync(trackId).ConfigureAwait(false);
+
 		try
 		{
 			string filePath = GetCoverPath(trackId);
@@ -66,6 +77,57 @@ public sealed class CoverProvider : ICoverProvider
 			ex.Handle();
 			return string.Empty;
 		}
+	}
+
+	/// <summary>
+	/// Resolves cover art for a local audio file. Checks the DB for a previously extracted
+	/// cover, then tries embedded ID3 art, and finally looks for well-known image files in the
+	/// same directory (cover.jpg / folder.jpg / album.jpg).
+	/// </summary>
+	private async Task<string> GetLocalCoverAsync(string filePath)
+	{
+		// 1. Return the cover URL already stored in the DB (extracted during scan).
+		string? dbCoverUrl = await GetCoverUrlFromDbAsync(filePath).ConfigureAwait(false);
+		if (!string.IsNullOrEmpty(dbCoverUrl) && File.Exists(dbCoverUrl))
+			return dbCoverUrl;
+
+		// 2. Try to extract an embedded cover from ID3 tags.
+		try
+		{
+			using var tagFile = TagLib.File.Create(filePath);
+			var picture = tagFile.Tag.Pictures?.FirstOrDefault();
+			if (picture?.Data?.Data != null)
+			{
+				string coverFileName = Convert.ToHexString(
+					System.Security.Cryptography.MD5.HashData(
+						System.Text.Encoding.UTF8.GetBytes(filePath))) + ".jpg";
+				string coverPath = Path.Combine(_coversFolder, coverFileName);
+				if (!File.Exists(coverPath))
+					File.WriteAllBytes(coverPath, picture.Data.Data);
+				return coverPath;
+			}
+		}
+		catch { /* corrupt or unsupported file — fall through to folder art */ }
+
+		// 3. Fallback: look for cover/folder.jpg in the same directory.
+		string dir = Path.GetDirectoryName(filePath) ?? "";
+		foreach (string name in new[] { "cover.jpg", "folder.jpg", "album.jpg", "cover.png", "folder.png" })
+		{
+			string candidate = Path.Combine(dir, name);
+			if (File.Exists(candidate))
+				return candidate;
+		}
+
+		return string.Empty;
+	}
+
+	private async Task<string?> GetCoverUrlFromDbAsync(string trackId)
+	{
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = "SELECT CoverUrl FROM Tracks WHERE TrackId = @id";
+		cmd.Parameters.AddWithValue("@id", trackId);
+		var result = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+		return result as string;
 	}
 
 	private static string? ResolveCoverUrl(object track)

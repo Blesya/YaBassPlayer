@@ -5,7 +5,7 @@ namespace YamBassPlayer.Services.Impl;
 
 public sealed class HistoryService : IHistoryService
 {
-	private const int CurrentSchemaVersion = 1;
+	private const int CurrentSchemaVersion = 3;
 	private static readonly string[] RecommendationSources =
 	[
 		ListenSource.Regular.ToString(),
@@ -48,6 +48,20 @@ public sealed class HistoryService : IHistoryService
 			schemaVersion = 1;
 		}
 
+		if (schemaVersion < 2)
+		{
+			MigrateToVersion2();
+			SetSchemaVersion(2);
+			schemaVersion = 2;
+		}
+
+		if (schemaVersion < 3)
+		{
+			MigrateToVersion3();
+			SetSchemaVersion(3);
+			schemaVersion = 3;
+		}
+
 		if (schemaVersion != CurrentSchemaVersion)
 		{
 			throw new InvalidOperationException(
@@ -80,6 +94,85 @@ public sealed class HistoryService : IHistoryService
 			ALTER TABLE listensHistory ADD COLUMN source TEXT NOT NULL DEFAULT 'Regular';
 			""";
 		alterCmd.ExecuteNonQuery();
+	}
+
+	private void MigrateToVersion2()
+	{
+		// Extend Tracks table with new columns — guard each with HasColumn to survive re-runs.
+		var newTrackColumns = new[]
+		{
+			("DurationMs", "INTEGER"),
+			("Year",        "INTEGER"),
+			("CoverUrl",    "TEXT"),
+			("Genres",      "TEXT"),
+			("AlbumId",     "TEXT"),
+			("SourceType",  "TEXT DEFAULT 'yandex'"),
+		};
+
+		foreach (var (column, definition) in newTrackColumns)
+		{
+			if (HasColumn("Tracks", column))
+				continue;
+
+			using var alterCmd = _connection.CreateCommand();
+			alterCmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {column} {definition};";
+			alterCmd.ExecuteNonQuery();
+		}
+
+		// New tables — IF NOT EXISTS guards make these idempotent.
+		using var createCmd = _connection.CreateCommand();
+		createCmd.CommandText =
+			"""
+			CREATE TABLE IF NOT EXISTS Artists (
+				Id          TEXT PRIMARY KEY,
+				Name        TEXT NOT NULL,
+				CoverUrl    TEXT,
+				Description TEXT,
+				UpdatedAt   INTEGER
+			);
+
+			CREATE TABLE IF NOT EXISTS Albums (
+				Id          TEXT PRIMARY KEY,
+				Title       TEXT NOT NULL,
+				Year        INTEGER,
+				CoverUrl    TEXT,
+				Genre       TEXT,
+				TrackCount  INTEGER,
+				UpdatedAt   INTEGER
+			);
+
+			CREATE TABLE IF NOT EXISTS TrackArtists (
+				TrackId  TEXT NOT NULL,
+				ArtistId TEXT NOT NULL,
+				PRIMARY KEY (TrackId, ArtistId)
+			);
+			""";
+		createCmd.ExecuteNonQuery();
+	}
+
+	private void MigrateToVersion3()
+	{
+		// New table for locally scanned music folders.
+		using var createCmd = _connection.CreateCommand();
+		createCmd.CommandText =
+			"""
+			CREATE TABLE IF NOT EXISTS LocalFolders (
+			    Id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			    Path         TEXT    UNIQUE NOT NULL,
+			    Name         TEXT    NOT NULL,
+			    AddedAt      INTEGER NOT NULL,
+			    LastScannedAt INTEGER
+			);
+			""";
+		createCmd.ExecuteNonQuery();
+
+		// Link each track back to its source folder.
+		if (!HasColumn("Tracks", "FolderId"))
+		{
+			using var alterCmd = _connection.CreateCommand();
+			alterCmd.CommandText = "ALTER TABLE Tracks ADD COLUMN FolderId INTEGER;";
+			alterCmd.ExecuteNonQuery();
+		}
 	}
 
 	private bool HasColumn(string tableName, string columnName)

@@ -29,11 +29,17 @@ public class TrackFileProvider : ITrackFileProvider
 
 	public bool IsTrackDownloaded(string trackId)
 	{
+		if (Path.IsPathRooted(trackId))
+			return File.Exists(trackId);
 		return File.Exists(GetTrackPath(trackId));
 	}
 
 	public async Task<string> DownloadTrackAsync(string trackId)
 	{
+		// Local tracks: trackId is the absolute file path — no download needed
+		if (Path.IsPathRooted(trackId))
+			return File.Exists(trackId) ? trackId : string.Empty;
+
 		try
 		{
 			string filePath = GetTrackPath(trackId);

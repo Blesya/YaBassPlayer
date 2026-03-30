@@ -15,5 +15,11 @@ public enum PlaylistType
 	Artist,
 	Queue,
 	OnSameWave,
-	MyWave
+	MyWave,
+	/// <summary>Represents a playlist sourced from an individual local music folder.</summary>
+	LocalFolder,
+	/// <summary>Represents a playlist for a single local-library artist (file-based, not Yandex).</summary>
+	LocalArtist,
+	/// <summary>Represents a playlist for a single local-library album under a specific artist.</summary>
+	LocalAlbum
 }

@@ -109,6 +109,34 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>
+	/// Returns the list of local music folders from configuration.
+	/// Reads <c>LocalMusic:Folders</c> as a JSON string array, or a single
+	/// semicolon-separated string value. Returns an empty array when not configured.
+	/// </summary>
+	public static string[] GetLocalMusicFolders()
+	{
+		try
+		{
+			// Try binding as a proper JSON array (["C:\\Music", "D:\\Music"])
+			var section = Configuration.GetSection("LocalMusic:Folders");
+			if (section.Exists())
+			{
+				var values = section.Get<string[]>();
+				if (values is { Length: > 0 })
+					return values;
+			}
+
+			// Fall back to a semicolon-separated scalar: "C:\\Music;D:\\Music"
+			var raw = Configuration["LocalMusic:Folders"];
+			if (!string.IsNullOrWhiteSpace(raw))
+				return raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		}
+		catch { }
+
+		return [];
+	}
+
 	private static JsonObject LoadJsonNode()
 	{
 		if (_cachedRoot != null)

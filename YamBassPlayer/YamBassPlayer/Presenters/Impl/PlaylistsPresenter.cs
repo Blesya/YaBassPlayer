@@ -44,6 +44,9 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 		}
 	}
 
+	/// <inheritdoc/>
+	public void LoadPlaylistTree() => LoadPlaylists();
+
 	public void NotifyTransientPlaylistActive(Playlist playlist)
 	{
 		_view.AddOrUpdateTransientPlaylist(playlist);

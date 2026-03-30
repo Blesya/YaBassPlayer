@@ -34,7 +34,7 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 			string coverPath = await _coverProvider.DownloadCoverAsync(track.Id);
 			_view.SetCover(string.IsNullOrWhiteSpace(coverPath) ? null : coverPath);
 
-			string? lyrics = await _lyricsService.GetLyricsAsync(track.Id);
+			string? lyrics = await _lyricsService.GetLyricsAsync(track);
 			_view.SetLyrics(lyrics);
 		}
 		catch (Exception ex)

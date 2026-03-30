@@ -38,6 +38,10 @@ public static class ServicesProvider
 			.SingleInstance();
 			
 		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
+		builder.Register(c => new LocalLibraryService(
+			c.Resolve<SqliteConnection>(),
+			CoversFolder
+		)).As<ILocalLibraryService>().SingleInstance();
 		builder.RegisterType<RecommendationService>().As<IRecommendationService>().SingleInstance();
 		builder.RegisterType<TrackRepositoryCache>().As<ITrackRepositoryCache>().SingleInstance();
 		builder.RegisterType<PlaybackCoordinator>().As<IPlaybackCoordinator>().SingleInstance();
@@ -55,7 +59,8 @@ public static class ServicesProvider
 		builder.Register(c => new CoverProvider(
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
-			CoversFolder
+			CoversFolder,
+			c.Resolve<SqliteConnection>()
 		)).As<ICoverProvider>().SingleInstance();
 			
 		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
@@ -67,15 +72,27 @@ public static class ServicesProvider
 		)).As<IDatabaseStatisticsService>().SingleInstance();
 			
 		builder.Register(c => new TrackRepository(
-			c.Resolve<YandexMusicApi>(),
-			c.Resolve<AuthStorage>(),
+			c.Resolve<IMusicSourceRegistry>(),
 			c.Resolve<ITrackInfoProvider>(),
 			TracksFolder,
 			c.Resolve<IHistoryService>(),
 			c.Resolve<ILocalFavoriteService>(),
 			c.Resolve<IYandexFavoriteService>(),
-			c.Resolve<ITrackRepositoryCache>()
+			c.Resolve<ITrackRepositoryCache>(),
+			c.Resolve<ILocalLibraryService>()
 		)).As<ITrackRepository>().SingleInstance();
+
+		// Регистрация источников музыки
+		builder.RegisterType<MusicSourceRegistry>().As<IMusicSourceRegistry>().SingleInstance();
+
+		builder.Register(c => new YandexMusicSource(
+			c.Resolve<YandexMusicApi>(),
+			c.Resolve<AuthStorage>(),
+			TracksFolder,
+			CoversFolder
+		)).Named<IMusicSource>("yandex").SingleInstance();
+
+		builder.RegisterType<LocalMusicSource>().Named<IMusicSource>("local").SingleInstance();
 
 		// Регистрация Views
 		builder.RegisterType<PlayStatusView>().As<IPlayStatusView>().AsSelf().SingleInstance();
@@ -85,6 +102,7 @@ public static class ServicesProvider
 		builder.RegisterType<LocalSearchView>().As<ILocalSearchView>();
 		builder.RegisterType<YandexSearchView>().As<IYandexSearchView>();
 		builder.RegisterType<LargeTrackInfoView>().As<ILargeTrackInfoView>();
+		builder.RegisterType<LocalFolderManagerView>().As<ILocalFolderManagerView>().SingleInstance();
 
 		// Регистрация Presenters
 		builder.RegisterType<PlayStatusPresenter>().As<IPlayStatusPresenter>().SingleInstance();
@@ -101,10 +119,16 @@ public static class ServicesProvider
 		builder.RegisterType<RecommendationGraphPresenter>().As<IRecommendationGraphPresenter>().SingleInstance();
 		builder.RegisterType<MyWavePresenter>().As<IMyWavePresenter>().SingleInstance();
 		builder.RegisterType<MyWaveWindowPresenter>().As<IMyWaveWindowPresenter>().SingleInstance();
+		builder.RegisterType<LocalFolderManagerPresenter>().As<ILocalFolderManagerPresenter>().SingleInstance();
 
 		// Регистрация MainWindow
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();
 
 		Ioc = builder.Build();
+
+		// Populate registry after the container is built
+		var registry = Ioc.Resolve<IMusicSourceRegistry>();
+		registry.Register(Ioc.ResolveNamed<IMusicSource>("yandex"));
+		registry.Register(Ioc.ResolveNamed<IMusicSource>("local"));
 	}
 }
