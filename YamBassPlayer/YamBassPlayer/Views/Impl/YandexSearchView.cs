@@ -5,6 +5,7 @@ namespace YamBassPlayer.Views.Impl;
 
 public class YandexSearchView : Dialog, IYandexSearchView
 {
+	private const string DefaultResultsLabelText = "Результаты: выполните поиск. Пробел отмечает треки.";
 	private readonly TextField _searchField;
 	private readonly Button _searchButton;
 	private readonly ListView _resultsListView;
@@ -48,7 +49,7 @@ public class YandexSearchView : Dialog, IYandexSearchView
 
 		_resultsLabel = new Label
 		{
-			Text = "Результаты (макс. 20):",
+			Text = DefaultResultsLabelText,
 			X = 1,
 			Y = 4,
 			Width = Dim.Fill(1)
@@ -60,7 +61,8 @@ public class YandexSearchView : Dialog, IYandexSearchView
 			Y = 5,
 			Width = Dim.Fill(1),
 			Height = Dim.Fill(4),
-			AllowsMarking = false
+			AllowsMarking = true,
+			AllowsMultipleSelection = true
 		};
 
 		var okButton = new Button("OK")
@@ -91,11 +93,31 @@ public class YandexSearchView : Dialog, IYandexSearchView
 			.ToList();
 
 		_resultsListView.SetSource(displayList);
+		UpdateResultsLabel();
+	}
+
+	public IReadOnlyList<Track> GetMarkedTracks()
+	{
+		if (_resultsListView.Source is null)
+		{
+			return [];
+		}
+
+		var markedTracks = new List<Track>();
+		for (int i = 0; i < _searchResults.Count; i++)
+		{
+			if (_resultsListView.Source.IsMarked(i))
+			{
+				markedTracks.Add(_searchResults[i]);
+			}
+		}
+
+		return markedTracks;
 	}
 
 	public void SetLoading(bool isLoading)
 	{
-		_resultsLabel.Text = isLoading ? "Поиск..." : "Результаты (макс. 20):";
+		_resultsLabel.Text = isLoading ? "Поиск..." : GetResultsLabelText();
 	}
 
 	public void Show()
@@ -111,5 +133,17 @@ public class YandexSearchView : Dialog, IYandexSearchView
 	public void ShowError(string message)
 	{
 		MessageBox.ErrorQuery("Ошибка", message, "OK");
+	}
+
+	private void UpdateResultsLabel()
+	{
+		_resultsLabel.Text = GetResultsLabelText();
+	}
+
+	private string GetResultsLabelText()
+	{
+		return _searchResults.Count == 0
+			? "Результаты: ничего не найдено."
+			: $"Результаты: {_searchResults.Count}. Пробел отмечает треки, OK добавляет отмеченные.";
 	}
 }

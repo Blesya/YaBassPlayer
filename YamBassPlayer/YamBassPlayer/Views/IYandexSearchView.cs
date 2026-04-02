@@ -9,6 +9,11 @@ public interface IYandexSearchView
 	event Action? OnCancelClicked;
 
 	void SetSearchResults(IEnumerable<Track> tracks);
+
+	/// <summary>
+	/// Returns tracks explicitly marked by the user in the results list.
+	/// </summary>
+	IReadOnlyList<Track> GetMarkedTracks();
 	void SetLoading(bool isLoading);
 	void Show();
 	void Close();

@@ -9,6 +9,7 @@ public sealed class YandexFavoriteService : IYandexFavoriteService
 	private readonly AuthStorage _storage;
 	private readonly HashSet<string> _likedTrackIds = new();
 	private bool _isProcessing;
+	public string SourceId => "yandex";
 
 	public event Action<string>? OnFavoriteAdded;
 	public event Action<string>? OnFavoriteRemoved;

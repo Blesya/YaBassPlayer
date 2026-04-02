@@ -7,13 +7,14 @@ namespace YamBassPlayer.Presenters.Impl;
 
 public class LocalSearchPresenter : ILocalSearchPresenter
 {
-	private readonly ITrackInfoProvider _trackInfoProvider;
+	private readonly ISourceSearchService _sourceSearchService;
 	private List<Track> _searchResults = new();
+	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
-	public LocalSearchPresenter(ITrackInfoProvider trackInfoProvider)
+	public LocalSearchPresenter(ISourceSearchService sourceSearchService)
 	{
-		_trackInfoProvider = trackInfoProvider;
+		_sourceSearchService = sourceSearchService;
 	}
 
 	public void ShowLocalSearchDialog()
@@ -21,6 +22,7 @@ public class LocalSearchPresenter : ILocalSearchPresenter
 		var view = ServicesProvider.Ioc.Resolve<ILocalSearchView>();
 		
 		_searchResults.Clear();
+		_selectedTracks.Clear();
 		_cancelled = true;
 
 		view.OnSearchQueryChanged += async (searchQuery) =>
@@ -36,6 +38,7 @@ public class LocalSearchPresenter : ILocalSearchPresenter
 				return;
 			}
 
+			_selectedTracks = GetSelectedTracks(view);
 			_cancelled = false;
 			view.Close();
 		};
@@ -54,14 +57,16 @@ public class LocalSearchPresenter : ILocalSearchPresenter
 		if (string.IsNullOrWhiteSpace(searchQuery))
 		{
 			_searchResults.Clear();
+			_selectedTracks.Clear();
 			view.SetSearchResults(_searchResults);
 			return;
 		}
 
 		try
 		{
-			var results = await _trackInfoProvider.SearchTracks(searchQuery, 50);
+			var results = await _sourceSearchService.SearchAsync("local", searchQuery, 50);
 			_searchResults = results.ToList();
+			_selectedTracks.Clear();
 			view.SetSearchResults(_searchResults);
 		}
 		catch (Exception ex)
@@ -72,7 +77,13 @@ public class LocalSearchPresenter : ILocalSearchPresenter
 
 	public List<Track> GetSelectedTracks()
 	{
-		return _searchResults;
+		return _selectedTracks;
+	}
+
+	private List<Track> GetSelectedTracks(ILocalSearchView view)
+	{
+		var markedTracks = view.GetMarkedTracks();
+		return markedTracks.Count > 0 ? markedTracks.ToList() : _searchResults.ToList();
 	}
 
 	public bool WasCancelled()

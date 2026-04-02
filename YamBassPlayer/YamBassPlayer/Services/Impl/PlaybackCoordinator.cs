@@ -68,7 +68,7 @@ public sealed class PlaybackCoordinator(
 			};
 
 			listenTimer.OnTrackStart(trackId, source);
-			playStatusPresenter.SetCurrentTrackId(trackId);
+			playStatusPresenter.SetCurrentTrack(track.Id, track.SourceType);
 
 			if (_currentPlaylistType == PlaylistType.MyWave)
 			{

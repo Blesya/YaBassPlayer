@@ -6,6 +6,7 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 {
 	private readonly SqliteConnection _connection;
 	private readonly HashSet<string> _favoriteTrackIds = new();
+	public string SourceId => "local";
 
 	public event Action<string>? OnFavoriteAdded;
 	public event Action<string>? OnFavoriteRemoved;

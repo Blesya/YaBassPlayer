@@ -12,6 +12,6 @@ public interface IPlayStatusPresenter
 	event Action? OnPlaybackModeToggled;
 	void SetPlayStatus(string status);
 	void SetTitle(string title);
-	void SetCurrentTrackId(string? trackId);
+	void SetCurrentTrack(string? trackId, string? sourceType);
 	void SetPlaybackMode(PlaybackMode mode);
 }

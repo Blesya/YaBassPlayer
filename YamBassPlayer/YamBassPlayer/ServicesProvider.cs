@@ -45,8 +45,15 @@ public static class ServicesProvider
 		builder.RegisterType<RecommendationService>().As<IRecommendationService>().SingleInstance();
 		builder.RegisterType<TrackRepositoryCache>().As<ITrackRepositoryCache>().SingleInstance();
 		builder.RegisterType<PlaybackCoordinator>().As<IPlaybackCoordinator>().SingleInstance();
-		builder.RegisterType<LocalFavoriteService>().As<ILocalFavoriteService>().SingleInstance();
-		builder.RegisterType<YandexFavoriteService>().As<IYandexFavoriteService>().SingleInstance();
+		builder.RegisterType<LocalFavoriteService>()
+			.As<ILocalFavoriteService>()
+			.As<ITrackFavoriteSourceService>()
+			.SingleInstance();
+		builder.RegisterType<YandexFavoriteService>()
+			.As<IYandexFavoriteService>()
+			.As<ITrackFavoriteSourceService>()
+			.SingleInstance();
+		builder.RegisterType<TrackFavoriteService>().As<ITrackFavoriteService>().SingleInstance();
 		builder.RegisterType<ListenTimer>().As<IListenTimer>().SingleInstance();
 		builder.RegisterType<PlaybackQueue>().As<IPlaybackQueue>().SingleInstance();
 			
@@ -64,7 +71,9 @@ public static class ServicesProvider
 		)).As<ICoverProvider>().SingleInstance();
 			
 		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
+		builder.RegisterType<SourceSearchService>().As<ISourceSearchService>().SingleInstance();
 		builder.RegisterType<LyricsService>().As<ILyricsService>().SingleInstance();
+		builder.RegisterType<PlaylistTreeComposer>().As<IPlaylistTreeComposer>().SingleInstance();
 		
 		builder.Register(c => new DatabaseStatisticsService(
 			c.Resolve<SqliteConnection>(),
@@ -90,9 +99,9 @@ public static class ServicesProvider
 			c.Resolve<AuthStorage>(),
 			TracksFolder,
 			CoversFolder
-		)).Named<IMusicSource>("yandex").SingleInstance();
+		)).Named<IMusicSource>("yandex").As<IMusicSource>().SingleInstance();
 
-		builder.RegisterType<LocalMusicSource>().Named<IMusicSource>("local").SingleInstance();
+		builder.RegisterType<LocalMusicSource>().Named<IMusicSource>("local").As<IMusicSource>().SingleInstance();
 
 		// Регистрация Views
 		builder.RegisterType<PlayStatusView>().As<IPlayStatusView>().AsSelf().SingleInstance();
@@ -125,10 +134,5 @@ public static class ServicesProvider
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();
 
 		Ioc = builder.Build();
-
-		// Populate registry after the container is built
-		var registry = Ioc.Resolve<IMusicSourceRegistry>();
-		registry.Register(Ioc.ResolveNamed<IMusicSource>("yandex"));
-		registry.Register(Ioc.ResolveNamed<IMusicSource>("local"));
 	}
 }

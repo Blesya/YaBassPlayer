@@ -4,6 +4,10 @@ namespace YamBassPlayer.Models;
 
 public class PlaylistTreeItem : ITreeNode
 {
+	private const string PlayingPrefix = "▶ ";
+
+	public string Label { get; set; } = string.Empty;
+
 	public string Text { get; set; } = string.Empty;
 
 	public IList<ITreeNode> Children { get; set; } = new List<ITreeNode>();
@@ -18,16 +22,28 @@ public class PlaylistTreeItem : ITreeNode
 
 	public bool IsPlaying { get; set; }
 
+	public bool IsExpandedByDefault { get; init; }
+
 	public void UpdateText()
 	{
-		if (Playlist is null) return;
-		Text = $"{Playlist.PlaylistName} ({Playlist.TrackCount})";
+		if (Playlist is not null)
+		{
+			var prefix = IsPlaying ? PlayingPrefix : string.Empty;
+			Text = $"{prefix}{Playlist.PlaylistName} ({Playlist.TrackCount})";
+			return;
+		}
+
+		var childCount = Children.OfType<PlaylistTreeItem>().Count();
+		Text = childCount > 0
+			? $"{Label} [{childCount}]"
+			: Label;
 	}
 
 	public static PlaylistTreeItem FromPlaylist(Playlist playlist)
 	{
 		var item = new PlaylistTreeItem
 		{
+			Label = playlist.PlaylistName,
 			Playlist = playlist,
 			Tag = playlist
 		};
@@ -42,12 +58,16 @@ public class PlaylistTreeItem : ITreeNode
 			.Cast<ITreeNode>()
 			.ToList();
 
-		return new PlaylistTreeItem
+		var item = new PlaylistTreeItem
 		{
-			Text = group.Name,
+			Label = group.Name,
 			Group = group,
 			Children = children,
-			Tag = group
+			Tag = group,
+			IsExpandedByDefault = group.IsExpanded
 		};
+
+		item.UpdateText();
+		return item;
 	}
 }

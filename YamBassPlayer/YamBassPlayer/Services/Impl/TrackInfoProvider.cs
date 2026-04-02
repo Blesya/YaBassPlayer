@@ -11,6 +11,9 @@ namespace YamBassPlayer.Services.Impl;
 
 public class TrackInfoProvider : ITrackInfoProvider
 {
+	private const string TrackProjection =
+		"TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, COALESCE(SourceType, 'yandex'), COALESCE(SourceTrackId, TrackId), LocalFilePath";
+
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly SqliteConnection _connection;
@@ -29,9 +32,19 @@ public class TrackInfoProvider : ITrackInfoProvider
 				Artist TEXT,
 				Title TEXT,
 				Album TEXT,
+				RemoteCoverUrl TEXT,
+				LocalCoverPath TEXT,
+				SourceTrackId TEXT,
+				LocalFilePath TEXT,
 				UpdatedAt INTEGER
 			);";
 		cmd.ExecuteNonQuery();
+
+		EnsureTrackColumn("SourceTrackId", "TEXT");
+		EnsureTrackColumn("LocalFilePath", "TEXT");
+		EnsureTrackColumn("RemoteCoverUrl", "TEXT");
+		EnsureTrackColumn("LocalCoverPath", "TEXT");
+		BackfillTrackCoverMetadataColumns();
 	}
 
 	// Raw DB row before artist/album enrichment
@@ -43,9 +56,13 @@ public class TrackInfoProvider : ITrackInfoProvider
 		long? DurationMs,
 		int? Year,
 		string? CoverUrl,
+		string? RemoteCoverUrl,
+		string? LocalCoverPath,
 		string? GenresJson,
 		string? AlbumId,
-		string SourceType);
+		string SourceType,
+		string SourceTrackId,
+		string? LocalFilePath);
 
 	public async Task<IEnumerable<Track>> GetTracksInfoByIds(IEnumerable<string> ids)
 	{
@@ -62,7 +79,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 		using (var cmd = _connection.CreateCommand())
 		{
 			cmd.CommandText = $@"
-				SELECT TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, Genres, AlbumId, COALESCE(SourceType, 'yandex')
+				SELECT {TrackProjection}
 				FROM Tracks WHERE TrackId IN ({inClause})";
 			for (int i = 0; i < idsList.Count; i++)
 				cmd.Parameters.AddWithValue(paramNames[i], idsList[i]);
@@ -76,10 +93,13 @@ public class TrackInfoProvider : ITrackInfoProvider
 		}
 
 		var missingIds = idsList.Where(id => !cachedRows.ContainsKey(id)).ToList();
+		var remoteMissingIds = missingIds
+			.Where(id => !Path.IsPathRooted(id))
+			.ToList();
 
-		if (missingIds.Count > 0)
+		if (remoteMissingIds.Count > 0)
 		{
-			YResponse<List<YTrack>>? yResponse = await _api.Track.GetAsync(_storage, missingIds);
+			YResponse<List<YTrack>>? yResponse = await _api.Track.GetAsync(_storage, remoteMissingIds);
 			List<YTrack>? yTracks = yResponse?.Result;
 
 			if (yTracks != null)
@@ -111,7 +131,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 	{
 		using var cmd = _connection.CreateCommand();
 		cmd.CommandText = @"
-			SELECT TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, Genres, AlbumId, COALESCE(SourceType, 'yandex')
+			SELECT " + TrackProjection + @"
 			FROM Tracks WHERE TrackId = @id";
 		cmd.Parameters.AddWithValue("@id", id);
 
@@ -132,6 +152,9 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	private async Task<Track?> TryGetFromApi(string id)
 	{
+		if (Path.IsPathRooted(id))
+			return null;
+
 		YResponse<List<YTrack>>? trackResponse = await _api.Track.GetAsync(_storage, id);
 		YTrack? track = trackResponse?.Result?.FirstOrDefault();
 
@@ -147,23 +170,31 @@ public class TrackInfoProvider : ITrackInfoProvider
 	{
 		long updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 		string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
+		string sourceType = track.SourceType ?? "yandex";
+		string? remoteCoverUrl = ResolveRemoteCoverUrl(sourceType, track.CoverUrl, track.RemoteCoverUrl);
+		string? localCoverPath = ResolveLocalCoverPath(sourceType, track.CoverUrl, track.LocalCoverPath);
+		string? coverUrl = ResolveLegacyCoverUrl(sourceType, track.CoverUrl, remoteCoverUrl, localCoverPath);
 
 		// Save to Tracks table with all enriched columns
 		using (var cmd = _connection.CreateCommand())
 		{
 			cmd.CommandText = @"
-				INSERT OR REPLACE INTO Tracks (TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, Genres, AlbumId, SourceType, UpdatedAt)
-				VALUES (@TrackId, @artist, @title, @album, @durationMs, @year, @coverUrl, @genres, @albumId, @sourceType, @updatedAt)";
+				INSERT OR REPLACE INTO Tracks (TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, SourceTrackId, LocalFilePath, UpdatedAt)
+				VALUES (@TrackId, @artist, @title, @album, @durationMs, @year, @coverUrl, @remoteCoverUrl, @localCoverPath, @genres, @albumId, @sourceType, @sourceTrackId, @localFilePath, @updatedAt)";
 			cmd.Parameters.AddWithValue("@TrackId", track.Id ?? "");
 			cmd.Parameters.AddWithValue("@artist", track.Artist ?? "");
 			cmd.Parameters.AddWithValue("@title", track.Title ?? "");
 			cmd.Parameters.AddWithValue("@album", track.Album ?? "");
 			cmd.Parameters.AddWithValue("@durationMs", (object?)track.DurationMs ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@year", (object?)track.Year ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@coverUrl", (object?)track.CoverUrl ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@coverUrl", (object?)coverUrl ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@remoteCoverUrl", (object?)remoteCoverUrl ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@localCoverPath", (object?)localCoverPath ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@genres", (object?)genresJson ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@albumId", (object?)track.AlbumInfo?.Id ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@sourceType", track.SourceType ?? "yandex");
+			cmd.Parameters.AddWithValue("@sourceType", sourceType);
+			cmd.Parameters.AddWithValue("@sourceTrackId", track.SourceTrackId ?? track.Id ?? "");
+			cmd.Parameters.AddWithValue("@localFilePath", (object?)track.LocalFilePath ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@updatedAt", updatedAt);
 			await cmd.ExecuteNonQueryAsync();
 		}
@@ -314,9 +345,13 @@ public class TrackInfoProvider : ITrackInfoProvider
 			{
 				DurationMs = row.DurationMs,
 				Year = row.Year,
-				CoverUrl = row.CoverUrl,
+				CoverUrl = ResolveLegacyCoverUrl(row.SourceType, row.CoverUrl, row.RemoteCoverUrl, row.LocalCoverPath),
+				RemoteCoverUrl = ResolveRemoteCoverUrl(row.SourceType, row.CoverUrl, row.RemoteCoverUrl),
+				LocalCoverPath = ResolveLocalCoverPath(row.SourceType, row.CoverUrl, row.LocalCoverPath),
 				Genres = genres,
 				SourceType = row.SourceType,
+				SourceTrackId = row.SourceTrackId,
+				LocalFilePath = row.LocalFilePath,
 				Artists = artists,
 				AlbumInfo = albumInfo,
 			});
@@ -333,9 +368,13 @@ public class TrackInfoProvider : ITrackInfoProvider
 		DurationMs: reader.IsDBNull(4) ? null : reader.GetInt64(4),
 		Year: reader.IsDBNull(5) ? null : reader.GetInt32(5),
 		CoverUrl: reader.IsDBNull(6) ? null : reader.GetString(6),
-		GenresJson: reader.IsDBNull(7) ? null : reader.GetString(7),
-		AlbumId: reader.IsDBNull(8) ? null : reader.GetString(8),
-		SourceType: reader.IsDBNull(9) ? "yandex" : reader.GetString(9));
+		RemoteCoverUrl: reader.IsDBNull(7) ? null : reader.GetString(7),
+		LocalCoverPath: reader.IsDBNull(8) ? null : reader.GetString(8),
+		GenresJson: reader.IsDBNull(9) ? null : reader.GetString(9),
+		AlbumId: reader.IsDBNull(10) ? null : reader.GetString(10),
+		SourceType: reader.IsDBNull(11) ? "yandex" : reader.GetString(11),
+		SourceTrackId: reader.IsDBNull(12) ? reader.GetString(0) : reader.GetString(12),
+		LocalFilePath: reader.IsDBNull(13) ? null : reader.GetString(13));
 
 	/// <summary>Converts an in-memory Track to a TrackRow for use in the enrichment pipeline after an API fetch.</summary>
 	private static TrackRow ToTrackRow(Track track) => new(
@@ -345,10 +384,14 @@ public class TrackInfoProvider : ITrackInfoProvider
 		Album: track.Album,
 		DurationMs: track.DurationMs,
 		Year: track.Year,
-		CoverUrl: track.CoverUrl,
+		CoverUrl: ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, track.LocalCoverPath),
+		RemoteCoverUrl: ResolveRemoteCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl),
+		LocalCoverPath: ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath),
 		GenresJson: track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null,
 		AlbumId: track.AlbumInfo?.Id,
-		SourceType: track.SourceType);
+		SourceType: track.SourceType,
+		SourceTrackId: track.SourceTrackId,
+		LocalFilePath: track.LocalFilePath);
 
 	public async Task<bool> IsTrackCached(string trackId)
 	{
@@ -435,7 +478,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 		using var cmd = _connection.CreateCommand();
 		cmd.CommandText = @"
-			SELECT TrackId, Artist, Title, Album 
+			SELECT TrackId, Artist, Title, Album, COALESCE(SourceType, 'yandex'), COALESCE(SourceTrackId, TrackId), LocalFilePath
 			FROM Tracks 
 			WHERE Title LIKE @query 
 			   OR Artist LIKE @query 
@@ -449,8 +492,96 @@ public class TrackInfoProvider : ITrackInfoProvider
 		var tracks = new List<Track>();
 		using var reader = await cmd.ExecuteReaderAsync();
 		while (await reader.ReadAsync())
-			tracks.Add(new Track(reader.GetString(2), reader.GetString(1), reader.GetString(3), reader.GetString(0)));
+		{
+			string trackId = reader.GetString(0);
+			tracks.Add(new Track(reader.GetString(2), reader.GetString(1), reader.GetString(3), trackId)
+			{
+				SourceType = reader.IsDBNull(4) ? "yandex" : reader.GetString(4),
+				SourceTrackId = reader.IsDBNull(5) ? trackId : reader.GetString(5),
+				LocalFilePath = reader.IsDBNull(6) ? null : reader.GetString(6),
+			});
+		}
 
 		return tracks;
+	}
+
+	private void EnsureTrackColumn(string columnName, string definition)
+	{
+		if (HasColumn("Tracks", columnName))
+			return;
+
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {columnName} {definition};";
+		cmd.ExecuteNonQuery();
+	}
+
+	private void BackfillTrackCoverMetadataColumns()
+	{
+		if (!HasColumn("Tracks", "CoverUrl") || !HasColumn("Tracks", "SourceType"))
+			return;
+
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText =
+			"""
+			UPDATE Tracks
+			SET RemoteCoverUrl = COALESCE(NULLIF(RemoteCoverUrl, ''), CoverUrl)
+			WHERE COALESCE(SourceType, 'yandex') <> 'local'
+			  AND CoverUrl IS NOT NULL
+			  AND CoverUrl <> '';
+
+			UPDATE Tracks
+			SET LocalCoverPath = COALESCE(NULLIF(LocalCoverPath, ''), CoverUrl)
+			WHERE COALESCE(SourceType, 'yandex') = 'local'
+			  AND CoverUrl IS NOT NULL
+			  AND CoverUrl <> '';
+			""";
+		cmd.ExecuteNonQuery();
+	}
+
+	private static bool IsLocalSourceType(string sourceType)
+		=> string.Equals(sourceType, "local", StringComparison.OrdinalIgnoreCase);
+
+	private static string? ResolveRemoteCoverUrl(string sourceType, string? coverUrl, string? remoteCoverUrl)
+	{
+		if (!string.IsNullOrWhiteSpace(remoteCoverUrl))
+			return remoteCoverUrl;
+
+		return IsLocalSourceType(sourceType) ? null : coverUrl;
+	}
+
+	private static string? ResolveLocalCoverPath(string sourceType, string? coverUrl, string? localCoverPath)
+	{
+		if (!string.IsNullOrWhiteSpace(localCoverPath))
+			return localCoverPath;
+
+		return IsLocalSourceType(sourceType) ? coverUrl : null;
+	}
+
+	private static string? ResolveLegacyCoverUrl(
+		string sourceType,
+		string? coverUrl,
+		string? remoteCoverUrl,
+		string? localCoverPath)
+	{
+		if (!string.IsNullOrWhiteSpace(coverUrl))
+			return coverUrl;
+
+		return IsLocalSourceType(sourceType)
+			? ResolveLocalCoverPath(sourceType, coverUrl, localCoverPath)
+			: ResolveRemoteCoverUrl(sourceType, coverUrl, remoteCoverUrl);
+	}
+
+	private bool HasColumn(string tableName, string columnName)
+	{
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"PRAGMA table_info({tableName});";
+		using var reader = cmd.ExecuteReader();
+		while (reader.Read())
+		{
+			if (reader.GetString(1) == columnName)
+				return true;
+		}
+
+		return false;
 	}
 }

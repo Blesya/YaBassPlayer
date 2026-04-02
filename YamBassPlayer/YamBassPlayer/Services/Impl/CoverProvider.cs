@@ -3,12 +3,19 @@ using Microsoft.Data.Sqlite;
 using YamBassPlayer.Extensions;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
+using Yandex.Music.Api.Models.Track;
 
 namespace YamBassPlayer.Services.Impl;
 
 public sealed class CoverProvider : ICoverProvider
 {
 	private static readonly HttpClient HttpClient = new();
+	private sealed record TrackCoverMetadata(
+		string SourceType,
+		string? CoverUrl,
+		string? RemoteCoverUrl,
+		string? LocalCoverPath);
+
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly string _coversFolder;
@@ -55,14 +62,20 @@ public sealed class CoverProvider : ICoverProvider
 				return filePath;
 			}
 
-			var trackResponse = await _api.Track.GetAsync(_storage, trackId);
-			var track = trackResponse?.Result?.FirstOrDefault();
-			if (track == null)
+			TrackCoverMetadata? coverMetadata = await GetTrackCoverMetadataAsync(trackId).ConfigureAwait(false);
+			string? coverUrl = ResolveRemoteCoverUrl(coverMetadata);
+			if (string.IsNullOrWhiteSpace(coverUrl))
 			{
-				return string.Empty;
+				var trackResponse = await _api.Track.GetAsync(_storage, trackId);
+				YTrack? track = trackResponse?.Result?.FirstOrDefault();
+				if (track == null)
+				{
+					return string.Empty;
+				}
+
+				coverUrl = track.ToTrack().RemoteCoverUrl;
 			}
 
-			string? coverUrl = ResolveCoverUrl(track);
 			if (string.IsNullOrWhiteSpace(coverUrl))
 			{
 				return string.Empty;
@@ -86,10 +99,10 @@ public sealed class CoverProvider : ICoverProvider
 	/// </summary>
 	private async Task<string> GetLocalCoverAsync(string filePath)
 	{
-		// 1. Return the cover URL already stored in the DB (extracted during scan).
-		string? dbCoverUrl = await GetCoverUrlFromDbAsync(filePath).ConfigureAwait(false);
-		if (!string.IsNullOrEmpty(dbCoverUrl) && File.Exists(dbCoverUrl))
-			return dbCoverUrl;
+		// 1. Return the explicit local cover path already stored in the DB.
+		string? localCoverPath = await GetStoredLocalCoverPathAsync(filePath).ConfigureAwait(false);
+		if (!string.IsNullOrEmpty(localCoverPath) && File.Exists(localCoverPath))
+			return localCoverPath;
 
 		// 2. Try to extract an embedded cover from ID3 tags.
 		try
@@ -121,72 +134,61 @@ public sealed class CoverProvider : ICoverProvider
 		return string.Empty;
 	}
 
-	private async Task<string?> GetCoverUrlFromDbAsync(string trackId)
+	private async Task<string?> GetStoredLocalCoverPathAsync(string trackId)
+	{
+		TrackCoverMetadata? coverMetadata = await GetTrackCoverMetadataAsync(trackId).ConfigureAwait(false);
+		if (coverMetadata == null)
+			return null;
+
+		if (!string.IsNullOrWhiteSpace(coverMetadata.LocalCoverPath))
+			return coverMetadata.LocalCoverPath;
+
+		return IsLocalSourceType(coverMetadata.SourceType)
+			? coverMetadata.CoverUrl
+			: null;
+	}
+
+	private async Task<TrackCoverMetadata?> GetTrackCoverMetadataAsync(string trackId)
 	{
 		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = "SELECT CoverUrl FROM Tracks WHERE TrackId = @id";
+		cmd.CommandText =
+			"""
+			SELECT COALESCE(SourceType, 'yandex'), CoverUrl, RemoteCoverUrl, LocalCoverPath
+			FROM Tracks
+			WHERE TrackId = @id
+			LIMIT 1
+			""";
 		cmd.Parameters.AddWithValue("@id", trackId);
-		var result = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
-		return result as string;
+
+		using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+		if (!await reader.ReadAsync().ConfigureAwait(false))
+			return null;
+
+		return new TrackCoverMetadata(
+			SourceType: reader.GetString(0),
+			CoverUrl: reader.IsDBNull(1) ? null : reader.GetString(1),
+			RemoteCoverUrl: reader.IsDBNull(2) ? null : reader.GetString(2),
+			LocalCoverPath: reader.IsDBNull(3) ? null : reader.GetString(3));
 	}
 
-	private static string? ResolveCoverUrl(object track)
+	private static string? ResolveRemoteCoverUrl(TrackCoverMetadata? coverMetadata)
 	{
-		string? direct = TryGetStringProperty(track, "CoverUri", "CoverUrl", "OgImage", "ImageUri", "ImageUrl");
-		if (!string.IsNullOrWhiteSpace(direct))
-		{
-			return NormalizeCoverUrl(direct);
-		}
+		if (coverMetadata == null)
+			return null;
 
-		object? albums = TryGetProperty(track, "Albums");
-		if (albums is System.Collections.IEnumerable enumerable)
-		{
-			foreach (object? album in enumerable)
-			{
-				if (album == null)
-				{
-					continue;
-				}
+		string? coverUrl = !string.IsNullOrWhiteSpace(coverMetadata.RemoteCoverUrl)
+			? coverMetadata.RemoteCoverUrl
+			: IsLocalSourceType(coverMetadata.SourceType)
+				? null
+				: coverMetadata.CoverUrl;
 
-				string? albumUri = TryGetStringProperty(album, "CoverUri", "CoverUrl", "OgImage", "ImageUri", "ImageUrl");
-				if (!string.IsNullOrWhiteSpace(albumUri))
-				{
-					return NormalizeCoverUrl(albumUri);
-				}
-			}
-		}
-
-		return null;
+		return string.IsNullOrWhiteSpace(coverUrl)
+			? null
+			: NormalizeCoverUrl(coverUrl);
 	}
 
-	private static object? TryGetProperty(object obj, params string[] propertyNames)
-	{
-		var type = obj.GetType();
-		foreach (var propertyName in propertyNames)
-		{
-			var property = type.GetProperty(propertyName);
-			if (property != null)
-			{
-				return property.GetValue(obj);
-			}
-		}
-
-		return null;
-	}
-
-	private static string? TryGetStringProperty(object obj, params string[] propertyNames)
-	{
-		foreach (var propertyName in propertyNames)
-		{
-			var value = TryGetProperty(obj, propertyName);
-			if (value is string str && !string.IsNullOrWhiteSpace(str))
-			{
-				return str;
-			}
-		}
-
-		return null;
-	}
+	private static bool IsLocalSourceType(string sourceType)
+		=> string.Equals(sourceType, "local", StringComparison.OrdinalIgnoreCase);
 
 	private static string NormalizeCoverUrl(string rawUrl)
 	{

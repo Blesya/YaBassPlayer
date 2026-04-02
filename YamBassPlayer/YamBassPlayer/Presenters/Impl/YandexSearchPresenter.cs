@@ -1,26 +1,20 @@
 using Autofac;
-using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
 
 namespace YamBassPlayer.Presenters.Impl;
 
 public class YandexSearchPresenter : IYandexSearchPresenter
 {
-	private readonly YandexMusicApi _api;
-	private readonly AuthStorage _storage;
-	private readonly ITrackInfoProvider _trackInfoProvider;
+	private readonly ISourceSearchService _sourceSearchService;
 	private List<Track> _searchResults = new();
+	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
-	public YandexSearchPresenter(YandexMusicApi api, AuthStorage storage, ITrackInfoProvider trackInfoProvider)
+	public YandexSearchPresenter(ISourceSearchService sourceSearchService)
 	{
-		_api = api;
-		_storage = storage;
-		_trackInfoProvider = trackInfoProvider;
+		_sourceSearchService = sourceSearchService;
 	}
 
 	public void ShowYandexSearchDialog()
@@ -28,6 +22,7 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 		var view = ServicesProvider.Ioc.Resolve<IYandexSearchView>();
 
 		_searchResults.Clear();
+		_selectedTracks.Clear();
 		_cancelled = true;
 
 		view.OnSearchClicked += async (query) =>
@@ -49,6 +44,7 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 				return;
 			}
 
+			_selectedTracks = GetSelectedTracks(view);
 			_cancelled = false;
 			view.Close();
 		};
@@ -68,20 +64,9 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 
 		try
 		{
-			var response = await _api.Search.TrackAsync(_storage, query, 0, 20);
-			var tracks = response.Result.Tracks?.Results;
-
-			if (tracks == null || tracks.Count == 0)
-			{
-				_searchResults.Clear();
-				view.SetSearchResults(_searchResults);
-				view.SetLoading(false);
-				return;
-			}
-
-			var trackIds = tracks.Select(x => x.Id);
-			var tracksInfo = await _trackInfoProvider.GetTracksInfoByIds(trackIds);
-			_searchResults = tracksInfo.ToList();
+			var tracks = await _sourceSearchService.SearchAsync("yandex", query, 20);
+			_searchResults = tracks.ToList();
+			_selectedTracks.Clear();
 			view.SetSearchResults(_searchResults);
 		}
 		catch (Exception ex)
@@ -96,7 +81,13 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 
 	public List<Track> GetSelectedTracks()
 	{
-		return _searchResults;
+		return _selectedTracks;
+	}
+
+	private List<Track> GetSelectedTracks(IYandexSearchView view)
+	{
+		var markedTracks = view.GetMarkedTracks();
+		return markedTracks.Count > 0 ? markedTracks.ToList() : _searchResults.ToList();
 	}
 
 	public bool WasCancelled()

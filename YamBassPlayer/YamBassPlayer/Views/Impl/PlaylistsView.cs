@@ -41,6 +41,9 @@ public sealed class PlaylistsView : View, IPlaylistsView
 		{
 			_tree.ClearObjects();
 			_tree.AddObjects(_roots.Cast<ITreeNode>().ToList());
+			ExpandDefaultNodes(_roots);
+			ExpandPathToFirstPlaylist(_roots);
+			_tree.SetNeedsDisplay();
 		});
 	}
 
@@ -74,6 +77,7 @@ public sealed class PlaylistsView : View, IPlaylistsView
 				UpdatePlayingMark(root, playlist);
 			}
 
+			EnsurePlaylistVisible(playlist);
 			_tree.SetNeedsDisplay();
 		});
 	}
@@ -93,5 +97,132 @@ public sealed class PlaylistsView : View, IPlaylistsView
 		{
 			UpdatePlayingMark(child, playing);
 		}
+	}
+
+	private void ExpandDefaultNodes(IEnumerable<PlaylistTreeItem> items)
+	{
+		foreach (var item in items)
+		{
+			if (item.IsExpandedByDefault)
+			{
+				_tree.Expand(item);
+			}
+
+			ExpandDefaultNodes(item.Children.OfType<PlaylistTreeItem>());
+		}
+	}
+
+	private void ExpandPathToFirstPlaylist(IEnumerable<PlaylistTreeItem> items)
+	{
+		if (TryFindPathToFirstPlaylist(items, out var path))
+		{
+			ExpandPath(path);
+		}
+	}
+
+	private void EnsurePlaylistVisible(Playlist? playlist)
+	{
+		if (playlist is null)
+		{
+			return;
+		}
+
+		if (!TryFindPathToPlaylist(_roots, playlist, out var path))
+		{
+			return;
+		}
+
+		ExpandPath(path);
+		_tree.EnsureVisible(path[^1]);
+	}
+
+	private void ExpandPath(IReadOnlyList<PlaylistTreeItem> path)
+	{
+		for (var i = 0; i < path.Count - 1; i++)
+		{
+			_tree.Expand(path[i]);
+		}
+	}
+
+	private static bool TryFindPathToFirstPlaylist(
+		IEnumerable<PlaylistTreeItem> items,
+		out List<PlaylistTreeItem> path)
+	{
+		foreach (var item in items)
+		{
+			if (TryFindPathToFirstPlaylist(item, out path))
+			{
+				return true;
+			}
+		}
+
+		path = [];
+		return false;
+	}
+
+	private static bool TryFindPathToFirstPlaylist(PlaylistTreeItem item, out List<PlaylistTreeItem> path)
+	{
+		path = [item];
+		if (item.Playlist is not null)
+		{
+			return true;
+		}
+
+		foreach (var child in item.Children.OfType<PlaylistTreeItem>())
+		{
+			if (!TryFindPathToFirstPlaylist(child, out var childPath))
+			{
+				continue;
+			}
+
+			path.AddRange(childPath);
+			return true;
+		}
+
+		path.Clear();
+		return false;
+	}
+
+	private static bool TryFindPathToPlaylist(
+		IEnumerable<PlaylistTreeItem> items,
+		Playlist playlist,
+		out List<PlaylistTreeItem> path)
+	{
+		foreach (var item in items)
+		{
+			if (TryFindPathToPlaylist(item, playlist, out path))
+			{
+				return true;
+			}
+		}
+
+		path = [];
+		return false;
+	}
+
+	private static bool TryFindPathToPlaylist(
+		PlaylistTreeItem item,
+		Playlist playlist,
+		out List<PlaylistTreeItem> path)
+	{
+		path = [item];
+		if (item.Playlist is not null && IsSamePlaylist(item.Playlist, playlist))
+		{
+			return true;
+		}
+
+		foreach (var child in item.Children.OfType<PlaylistTreeItem>())
+		{
+			if (!TryFindPathToPlaylist(child, playlist, out var childPath))
+			{
+				continue;
+			}
+
+			path.AddRange(childPath);
+			return true;
+		}
+
+		path.Clear();
+		return false;
 	}
 }

@@ -5,7 +5,7 @@ namespace YamBassPlayer.Services.Impl;
 
 public sealed class HistoryService : IHistoryService
 {
-	private const int CurrentSchemaVersion = 3;
+	private const int CurrentSchemaVersion = 5;
 	private static readonly string[] RecommendationSources =
 	[
 		ListenSource.Regular.ToString(),
@@ -60,6 +60,20 @@ public sealed class HistoryService : IHistoryService
 			MigrateToVersion3();
 			SetSchemaVersion(3);
 			schemaVersion = 3;
+		}
+
+		if (schemaVersion < 4)
+		{
+			MigrateToVersion4();
+			SetSchemaVersion(4);
+			schemaVersion = 4;
+		}
+
+		if (schemaVersion < 5)
+		{
+			MigrateToVersion5();
+			SetSchemaVersion(5);
+			schemaVersion = 5;
 		}
 
 		if (schemaVersion != CurrentSchemaVersion)
@@ -173,6 +187,74 @@ public sealed class HistoryService : IHistoryService
 			alterCmd.CommandText = "ALTER TABLE Tracks ADD COLUMN FolderId INTEGER;";
 			alterCmd.ExecuteNonQuery();
 		}
+	}
+
+	private void MigrateToVersion4()
+	{
+		var newTrackColumns = new[]
+		{
+			("SourceTrackId", "TEXT"),
+			("LocalFilePath", "TEXT"),
+		};
+
+		foreach (var (column, definition) in newTrackColumns)
+		{
+			if (HasColumn("Tracks", column))
+				continue;
+
+			using var alterCmd = _connection.CreateCommand();
+			alterCmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {column} {definition};";
+			alterCmd.ExecuteNonQuery();
+		}
+
+		using var backfillCmd = _connection.CreateCommand();
+		backfillCmd.CommandText =
+			"""
+			UPDATE Tracks
+			SET SourceTrackId = COALESCE(NULLIF(SourceTrackId, ''), TrackId);
+
+			UPDATE Tracks
+			SET LocalFilePath = TrackId
+			WHERE COALESCE(SourceType, 'yandex') = 'local'
+			  AND (LocalFilePath IS NULL OR LocalFilePath = '');
+			""";
+		backfillCmd.ExecuteNonQuery();
+	}
+
+	private void MigrateToVersion5()
+	{
+		var newTrackColumns = new[]
+		{
+			("RemoteCoverUrl", "TEXT"),
+			("LocalCoverPath", "TEXT"),
+		};
+
+		foreach (var (column, definition) in newTrackColumns)
+		{
+			if (HasColumn("Tracks", column))
+				continue;
+
+			using var alterCmd = _connection.CreateCommand();
+			alterCmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {column} {definition};";
+			alterCmd.ExecuteNonQuery();
+		}
+
+		using var backfillCmd = _connection.CreateCommand();
+		backfillCmd.CommandText =
+			"""
+			UPDATE Tracks
+			SET RemoteCoverUrl = COALESCE(NULLIF(RemoteCoverUrl, ''), CoverUrl)
+			WHERE COALESCE(SourceType, 'yandex') <> 'local'
+			  AND CoverUrl IS NOT NULL
+			  AND CoverUrl <> '';
+
+			UPDATE Tracks
+			SET LocalCoverPath = COALESCE(NULLIF(LocalCoverPath, ''), CoverUrl)
+			WHERE COALESCE(SourceType, 'yandex') = 'local'
+			  AND CoverUrl IS NOT NULL
+			  AND CoverUrl <> '';
+			""";
+		backfillCmd.ExecuteNonQuery();
 	}
 
 	private bool HasColumn(string tableName, string columnName)

@@ -5,6 +5,9 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class PlayStatusView : View, IPlayStatusView
 {
+	private const string LocalFavoriteButtonLabel = "Локально";
+	private const string YandexFavoriteButtonLabel = "Яндекс";
+
 	private readonly Label _statusLabel;
 	private readonly FrameView _panel;
 	private readonly Button _playButton;
@@ -23,7 +26,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action? OnPrevClicked;
 	public event Action? OnNextClicked;
 	public event Action<int>? OnSeekRequested;
-	public event Action? OnFavoriteToggleClicked;
+	public event Action? OnLocalFavoriteToggleClicked;
 	public event Action? OnYandexFavoriteToggleClicked;
 	public event Action? OnQueueClicked;
 	public event Action? OnPlaybackModeToggled;
@@ -113,15 +116,17 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		{
 			X = Pos.Right(_timeLabel) + 2,
 			Y = 0,
-			Text = "+"
+			Text = GetLocalFavoriteButtonText(isFavorite: false),
+			Enabled = false
 		};
-		_favoriteButton.Clicked += () => OnFavoriteToggleClicked?.Invoke();
+		_favoriteButton.Clicked += () => OnLocalFavoriteToggleClicked?.Invoke();
 
 		_yandexFavoriteButton = new Button
 		{
 			X = Pos.Right(_favoriteButton) + 1,
 			Y = 0,
-			Text = "\u2661"
+			Text = GetYandexFavoriteButtonText(isFavorite: false),
+			Enabled = false
 		};
 		_yandexFavoriteButton.Clicked += () => OnYandexFavoriteToggleClicked?.Invoke();
 
@@ -186,11 +191,11 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		});
 	}
 
-	public void SetFavoriteState(bool isFavorite)
+	public void SetLocalFavoriteState(bool isFavorite)
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_favoriteButton.Text = isFavorite ? "-" : "+";
+			_favoriteButton.Text = GetLocalFavoriteButtonText(isFavorite);
 		});
 	}
 
@@ -198,7 +203,39 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_yandexFavoriteButton.Text = isFavorite ? "\u2665" : "\u2661";
+			_yandexFavoriteButton.Text = GetYandexFavoriteButtonText(isFavorite);
+		});
+	}
+
+	public void SetLocalFavoriteVisibility(bool isVisible)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_favoriteButton.Visible = isVisible;
+		});
+	}
+
+	public void SetLocalFavoriteEnabled(bool isEnabled)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_favoriteButton.Enabled = isEnabled;
+		});
+	}
+
+	public void SetYandexFavoriteVisibility(bool isVisible)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_yandexFavoriteButton.Visible = isVisible;
+		});
+	}
+
+	public void SetYandexFavoriteEnabled(bool isEnabled)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_yandexFavoriteButton.Enabled = isEnabled;
 		});
 	}
 
@@ -209,4 +246,10 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			_playbackModeButton.Text = mode == PlaybackMode.Shuffle ? "Случайно" : "Поочерёдно";
 		});
 	}
+
+	private static string GetLocalFavoriteButtonText(bool isFavorite)
+		=> isFavorite ? $"{LocalFavoriteButtonLabel} -" : $"{LocalFavoriteButtonLabel} +";
+
+	private static string GetYandexFavoriteButtonText(bool isFavorite)
+		=> isFavorite ? $"{YandexFavoriteButtonLabel} \u2665" : $"{YandexFavoriteButtonLabel} \u2661";
 }

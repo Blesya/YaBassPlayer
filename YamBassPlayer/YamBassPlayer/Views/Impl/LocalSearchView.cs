@@ -5,8 +5,10 @@ namespace YamBassPlayer.Views.Impl;
 
 public class LocalSearchView : Dialog, ILocalSearchView
 {
+	private const string EmptyResultsLabelText = "Результаты: введите запрос. Пробел отмечает треки.";
 	private readonly TextField _searchField;
 	private readonly ListView _resultsListView;
+	private readonly Label _resultsLabel;
 	private List<Track> _searchResults = new();
 
 	public event Action? OnOkClicked;
@@ -38,9 +40,9 @@ public class LocalSearchView : Dialog, ILocalSearchView
 			OnSearchQueryChanged?.Invoke(query);
 		};
 
-		var resultsLabel = new Label
+		_resultsLabel = new Label
 		{
-			Text = "Результаты (макс. 50):",
+			Text = EmptyResultsLabelText,
 			X = 1,
 			Y = 4,
 			Width = Dim.Fill(1)
@@ -52,7 +54,8 @@ public class LocalSearchView : Dialog, ILocalSearchView
 			Y = 5,
 			Width = Dim.Fill(1),
 			Height = Dim.Fill(4),
-			AllowsMarking = false
+			AllowsMarking = true,
+			AllowsMultipleSelection = true
 		};
 
 		var okButton = new Button("OK")
@@ -69,7 +72,7 @@ public class LocalSearchView : Dialog, ILocalSearchView
 		};
 		cancelButton.Clicked += () => OnCancelClicked?.Invoke();
 
-		Add(searchLabel, _searchField, resultsLabel, _resultsListView, okButton, cancelButton);
+		Add(searchLabel, _searchField, _resultsLabel, _resultsListView, okButton, cancelButton);
 
 		_searchField.SetFocus();
 	}
@@ -83,6 +86,26 @@ public class LocalSearchView : Dialog, ILocalSearchView
 			.ToList();
 		
 		_resultsListView.SetSource(displayList);
+		UpdateResultsLabel();
+	}
+
+	public IReadOnlyList<Track> GetMarkedTracks()
+	{
+		if (_resultsListView.Source is null)
+		{
+			return [];
+		}
+
+		var markedTracks = new List<Track>();
+		for (int i = 0; i < _searchResults.Count; i++)
+		{
+			if (_resultsListView.Source.IsMarked(i))
+			{
+				markedTracks.Add(_searchResults[i]);
+			}
+		}
+
+		return markedTracks;
 	}
 
 	public void Show()
@@ -98,5 +121,12 @@ public class LocalSearchView : Dialog, ILocalSearchView
 	public void ShowError(string message)
 	{
 		MessageBox.ErrorQuery("Ошибка", message, "OK");
+	}
+
+	private void UpdateResultsLabel()
+	{
+		_resultsLabel.Text = _searchResults.Count == 0
+			? "Результаты: ничего не найдено."
+			: $"Результаты: {_searchResults.Count}. Пробел отмечает треки, OK добавляет отмеченные.";
 	}
 }

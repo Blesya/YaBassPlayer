@@ -40,6 +40,7 @@ public static class YTrackExtensions
 			DurationMs = track.DurationMs,
 			Year = firstAlbum?.Year,
 			CoverUrl = coverUrl,
+			RemoteCoverUrl = coverUrl,
 			Genres = genres,
 			SourceType = "yandex",
 			Artists = artistObjects,

@@ -173,6 +173,8 @@ public sealed class LocalMusicSource : IMusicSource
             return new Track(title, artist, album, filePath)
             {
                 SourceType = "local",
+                SourceTrackId = filePath,
+                LocalFilePath = filePath,
                 Artists = artists,
                 AlbumInfo = albumInfo,
                 Year = tag.Year > 0 ? (int?)tag.Year : null,
@@ -216,6 +218,11 @@ public sealed class LocalMusicSource : IMusicSource
         }
 
         string album = Path.GetDirectoryName(filePath) is { } dir ? Path.GetFileName(dir) : "";
-        return new Track(title, artist, album, filePath) { SourceType = "local" };
+        return new Track(title, artist, album, filePath)
+        {
+            SourceType = "local",
+            SourceTrackId = filePath,
+            LocalFilePath = filePath,
+        };
     }
 }

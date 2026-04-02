@@ -9,14 +9,19 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 {
 	private readonly IPlaylistsView _view;
 	private readonly ITrackRepository _trackRepository;
+	private readonly IPlaylistTreeComposer _playlistTreeComposer;
 
 	private List<PlaylistTreeItem> _roots = new();
 	public event Action<Playlist>? PlaylistChosen;
 
-	public PlaylistsPresenter(IPlaylistsView view, ITrackRepository trackRepository)
+	public PlaylistsPresenter(
+		IPlaylistsView view,
+		ITrackRepository trackRepository,
+		IPlaylistTreeComposer playlistTreeComposer)
 	{
 		_view = view;
 		_trackRepository = trackRepository;
+		_playlistTreeComposer = playlistTreeComposer;
 
 		_view.PlaylistSelected += OnPlaylistSelected;
 
@@ -27,11 +32,12 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 	{
 		try
 		{
-			var roots = await _trackRepository.GetPlaylistTree();
+			var playlists = (await _trackRepository.GetPlaylists()).ToList();
+			var roots = await _playlistTreeComposer.ComposeAsync(playlists);
 			_roots = roots.ToList();
 			_view.SetPlaylistTree(_roots);
 
-			var firstPlaylist = _roots.FirstOrDefault(r => r.Playlist != null)?.Playlist;
+			var firstPlaylist = FindFirstSelectablePlaylist(_roots);
 			if (firstPlaylist != null)
 			{
 				_view.MarkAsPlaying(firstPlaylist);
@@ -46,6 +52,25 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 	/// <inheritdoc/>
 	public void LoadPlaylistTree() => LoadPlaylists();
+
+	private static Playlist? FindFirstSelectablePlaylist(IEnumerable<PlaylistTreeItem> items)
+	{
+		foreach (var item in items)
+		{
+			var nestedPlaylist = FindFirstSelectablePlaylist(item.Children.OfType<PlaylistTreeItem>());
+			if (nestedPlaylist is not null)
+			{
+				return nestedPlaylist;
+			}
+
+			if (item.Playlist is not null)
+			{
+				return item.Playlist;
+			}
+		}
+
+		return null;
+	}
 
 	public void NotifyTransientPlaylistActive(Playlist playlist)
 	{
