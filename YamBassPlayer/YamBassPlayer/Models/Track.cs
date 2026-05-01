@@ -11,6 +11,7 @@ public class Track(string title, string artist, string album, string id)
 	public string? Subtitle { get; init; }
 	public long? DurationMs { get; init; }
 	public int? Year { get; init; }
+	public int? TrackNumber { get; init; }
 	public string? CoverUrl { get; init; }
 	public string? RemoteCoverUrl { get; init; }
 	public string? LocalCoverPath { get; init; }

@@ -31,6 +31,7 @@ public static class ServicesProvider
 		builder.RegisterType<AudioPlayerService>().As<IAudioPlayer>().SingleInstance();
 		builder.RegisterType<BassEqualizer>().As<IBassEqualizer>().SingleInstance();
 		builder.RegisterType<DatabaseProvider>().As<IDatabaseProvider>().SingleInstance();
+		builder.RegisterType<DbWriteLock>().As<IDbWriteLock>().SingleInstance();
 		builder.RegisterType<YandexRadioService>().As<IYandexRadioService>().SingleInstance();
 			
 		builder.Register(c => c.Resolve<IDatabaseProvider>().Connection)
@@ -40,7 +41,8 @@ public static class ServicesProvider
 		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
 		builder.Register(c => new LocalLibraryService(
 			c.Resolve<SqliteConnection>(),
-			CoversFolder
+			CoversFolder,
+			c.Resolve<IDbWriteLock>()
 		)).As<ILocalLibraryService>().SingleInstance();
 		builder.RegisterType<RecommendationService>().As<IRecommendationService>().SingleInstance();
 		builder.RegisterType<TrackRepositoryCache>().As<ITrackRepositoryCache>().SingleInstance();

@@ -13,7 +13,7 @@ namespace YamBassPlayer.Services.Impl;
 public sealed class LocalLibraryService : ILocalLibraryService
 {
 	private const string TrackProjection =
-		"TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, COALESCE(SourceTrackId, TrackId), LocalFilePath";
+		"TrackId, Artist, Title, Album, DurationMs, Year, TrackNumber, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, COALESCE(SourceTrackId, TrackId), LocalFilePath";
 
 	private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
 	{
@@ -22,23 +22,70 @@ public sealed class LocalLibraryService : ILocalLibraryService
 
 	private readonly SqliteConnection _connection;
 	private readonly string _coversFolder;
+	private IDbWriteLock _writeLock;
+	private bool _columnsEnsured;
 
 	public event Action<string>? OnScanProgress;
 	public event Action<int>? OnScanCompleted;
 
-	public LocalLibraryService(SqliteConnection connection, string coversFolder)
+	public LocalLibraryService(SqliteConnection connection, string coversFolder, IDbWriteLock writeLock)
 	{
 		ArgumentNullException.ThrowIfNull(connection);
 		ArgumentNullException.ThrowIfNull(coversFolder);
 		_connection = connection;
 		_coversFolder = coversFolder;
+		_writeLock = writeLock;
 
 		if (!Directory.Exists(_coversFolder))
 			Directory.CreateDirectory(_coversFolder);
+	}
 
+	/// <summary>
+	/// Ensures all required columns exist in the Tracks table.
+	/// Called lazily before the first query to avoid issues with constructor ordering
+	/// (TrackInfoProvider / HistoryService may not have created/migrated the table yet).
+	/// </summary>
+	private void EnsureColumnsInitialized()
+	{
+		if (_columnsEnsured)
+			return;
+		_columnsEnsured = true;
+
+		// Columns normally added by HistoryService.MigrateToVersion2 — ensure they exist
+		// in case LocalLibraryService is resolved before HistoryService.
+		EnsureTrackColumn("DurationMs", "INTEGER");
+		EnsureTrackColumn("Year", "INTEGER");
+		EnsureTrackColumn("CoverUrl", "TEXT");
+		EnsureTrackColumn("Genres", "TEXT");
+		EnsureTrackColumn("AlbumId", "TEXT");
+		EnsureTrackColumn("SourceType", "TEXT DEFAULT 'yandex'");
+		EnsureTrackColumn("FolderId", "INTEGER");
+		EnsureTrackColumn("TrackNumber", "INTEGER");
 		EnsureTrackCoverColumn("RemoteCoverUrl", "TEXT");
 		EnsureTrackCoverColumn("LocalCoverPath", "TEXT");
+		BackfillLocalSourceType();
 		BackfillTrackCoverMetadataColumns();
+	}
+
+	/// <summary>
+	/// Marks tracks whose TrackId looks like a file path as SourceType='local'.
+	/// This handles the case when SourceType column was just added with DEFAULT 'yandex'
+	/// but some tracks were originally inserted by local library scanning (TrackId = file path).
+	/// </summary>
+	private void BackfillLocalSourceType()
+	{
+		if (!HasTable("Tracks") || !HasColumn("Tracks", "SourceType"))
+			return;
+
+		using var cmd = _connection.CreateCommand();
+		// Local tracks use file path as TrackId: on Windows "X:\..." , on Unix "/..."
+		cmd.CommandText = """
+			UPDATE Tracks
+			SET SourceType = 'local'
+			WHERE (SourceType IS NULL OR SourceType = 'yandex')
+			  AND (TrackId LIKE '_:\%' OR TrackId LIKE '/%')
+			""";
+		cmd.ExecuteNonQuery();
 	}
 
 	/// <summary>Returns all registered local folders ordered by name.</summary>
@@ -63,6 +110,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// <exception cref="DirectoryNotFoundException">Thrown when <paramref name="path"/> does not exist.</exception>
 	public async Task<LocalFolder> AddFolderAsync(string path)
 	{
+		using var writeLock = await _writeLock.AcquireAsync();
+
 		if (!Directory.Exists(path))
 			throw new DirectoryNotFoundException($"Directory not found: {path}");
 
@@ -105,6 +154,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task RemoveFolderAsync(int folderId)
 	{
+		using var writeLock = await _writeLock.AcquireAsync();
+
 		using var transaction = _connection.BeginTransaction();
 
 		// Delete artist links first while Tracks rows still exist for the subquery.
@@ -147,6 +198,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// <exception cref="InvalidOperationException">Thrown when <paramref name="folderId"/> is not found.</exception>
 	public async Task<int> ScanFolderAsync(int folderId, IProgress<string>? progress = null)
 	{
+		EnsureColumnsInitialized();
 		string? folderPath;
 		using (var cmd = _connection.CreateCommand())
 		{
@@ -191,9 +243,12 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		return count;
 	}
 
-	/// <summary>Scans all registered folders sequentially and returns the total track count.</summary>
+	/// <summary>
+	/// Scans all registered folders sequentially and returns the total track count.</summary>
 	public async Task<int> ScanAllFoldersAsync(IProgress<string>? progress = null)
 	{
+		using var writeLock = await _writeLock.AcquireAsync();
+
 		IReadOnlyList<LocalFolder> folders = await GetFoldersAsync();
 		int total = 0;
 		foreach (LocalFolder folder in folders)
@@ -207,6 +262,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksAsync(int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		using var cmd = _connection.CreateCommand();
 
 		if (folderId.HasValue)
@@ -241,6 +297,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> SearchTracksAsync(string query)
 	{
+		EnsureColumnsInitialized();
 		if (string.IsNullOrWhiteSpace(query))
 			return [];
 
@@ -272,6 +329,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<(string artistName, int trackCount)>> GetLocalArtistsAsync(int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		using var cmd = _connection.CreateCommand();
 
 		string folderFilter = folderId.HasValue ? " AND FolderId = @folderId" : "";
@@ -301,6 +359,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksByArtistAsync(string artistName, int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(artistName);
 
 		using var cmd = _connection.CreateCommand();
@@ -337,6 +396,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<(string albumName, int trackCount)>> GetLocalAlbumsAsync(string artistName, int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(artistName);
 
 		using var cmd = _connection.CreateCommand();
@@ -369,6 +429,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksByAlbumAsync(string artistName, string albumName, int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(artistName);
 		ArgumentNullException.ThrowIfNull(albumName);
 
@@ -382,7 +443,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			SELECT {TrackProjection}
 			FROM Tracks
 			WHERE SourceType = 'local' AND {artistFilter} AND {albumFilter}{folderFilter}
-			ORDER BY Title";
+			ORDER BY TrackNumber, Title";
 
 		if (!isUnknownArtist)
 			cmd.Parameters.AddWithValue("@artist", artistName);
@@ -405,6 +466,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<(string albumName, int trackCount)>> GetAllLocalAlbumsAsync(int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		using var cmd = _connection.CreateCommand();
 		string folderFilter = folderId.HasValue ? " AND FolderId = @folderId" : "";
 		cmd.CommandText = $@"
@@ -432,6 +494,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksByAlbumTitleAsync(string albumName, int? folderId = null)
 	{
+		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(albumName);
 
 		using var cmd = _connection.CreateCommand();
@@ -442,7 +505,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			SELECT {TrackProjection}
 			FROM Tracks
 			WHERE SourceType = 'local' AND {albumFilter}{folderFilter}
-			ORDER BY Artist, Title";
+			ORDER BY TrackNumber, Title";
 
 		if (!isUnknown)
 			cmd.Parameters.AddWithValue("@album", albumName);
@@ -514,6 +577,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 				Artists = artists,
 				AlbumInfo = albumInfo,
 				Year = tag.Year > 0 ? (int?)tag.Year : null,
+				TrackNumber = tag.Track > 0 ? (int?)tag.Track : null,
 				Genres = genres,
 				DurationMs = durationMs,
 				CoverUrl = localCoverPath,
@@ -579,15 +643,16 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			cmd.Transaction = transaction;
 			cmd.CommandText = @"
 				INSERT OR REPLACE INTO Tracks
-					(TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, SourceTrackId, LocalFilePath, FolderId, UpdatedAt)
+					(TrackId, Artist, Title, Album, DurationMs, Year, TrackNumber, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, SourceTrackId, LocalFilePath, FolderId, UpdatedAt)
 				VALUES
-					(@trackId, @artist, @title, @album, @durationMs, @year, @coverUrl, @remoteCoverUrl, @localCoverPath, @genres, @albumId, 'local', @sourceTrackId, @localFilePath, @folderId, @updatedAt)";
+					(@trackId, @artist, @title, @album, @durationMs, @year, @trackNumber, @coverUrl, @remoteCoverUrl, @localCoverPath, @genres, @albumId, 'local', @sourceTrackId, @localFilePath, @folderId, @updatedAt)";
 			cmd.Parameters.AddWithValue("@trackId", track.Id);
 			cmd.Parameters.AddWithValue("@artist", track.Artist);
 			cmd.Parameters.AddWithValue("@title", track.Title);
 			cmd.Parameters.AddWithValue("@album", track.Album);
 			cmd.Parameters.AddWithValue("@durationMs", (object?)track.DurationMs ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@year", (object?)track.Year ?? DBNull.Value);
+			cmd.Parameters.AddWithValue("@trackNumber", (object?)track.TrackNumber ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@coverUrl", (object?)coverUrl ?? DBNull.Value);
 			cmd.Parameters.AddWithValue("@remoteCoverUrl", DBNull.Value);
 			cmd.Parameters.AddWithValue("@localCoverPath", (object?)localCoverPath ?? DBNull.Value);
@@ -689,14 +754,15 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		string album = reader.IsDBNull(3) ? "" : reader.GetString(3);
 		long? durationMs = reader.IsDBNull(4) ? null : reader.GetInt64(4);
 		int? year = reader.IsDBNull(5) ? null : reader.GetInt32(5);
-		string? coverUrl = reader.IsDBNull(6) ? null : reader.GetString(6);
-		string? remoteCoverUrl = reader.IsDBNull(7) ? null : reader.GetString(7);
-		string? localCoverPath = reader.IsDBNull(8) ? null : reader.GetString(8);
-		string? genresJson = reader.IsDBNull(9) ? null : reader.GetString(9);
-		string? albumId = reader.IsDBNull(10) ? null : reader.GetString(10);
-		string sourceType = reader.IsDBNull(11) ? "local" : reader.GetString(11);
-		string sourceTrackId = reader.IsDBNull(12) ? trackId : reader.GetString(12);
-		string? localFilePath = reader.IsDBNull(13) ? null : reader.GetString(13);
+		int? trackNumber = reader.IsDBNull(6) ? null : reader.GetInt32(6);
+		string? coverUrl = reader.IsDBNull(7) ? null : reader.GetString(7);
+		string? remoteCoverUrl = reader.IsDBNull(8) ? null : reader.GetString(8);
+		string? localCoverPath = reader.IsDBNull(9) ? null : reader.GetString(9);
+		string? genresJson = reader.IsDBNull(10) ? null : reader.GetString(10);
+		string? albumId = reader.IsDBNull(11) ? null : reader.GetString(11);
+		string sourceType = reader.IsDBNull(12) ? "local" : reader.GetString(12);
+		string sourceTrackId = reader.IsDBNull(13) ? trackId : reader.GetString(13);
+		string? localFilePath = reader.IsDBNull(14) ? null : reader.GetString(14);
 
 		IReadOnlyList<string>? genres = null;
 		if (genresJson is not null)
@@ -713,6 +779,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		{
 			DurationMs = durationMs,
 			Year = year,
+			TrackNumber = trackNumber,
 			CoverUrl = ResolveLegacyCoverUrl(sourceType, coverUrl, remoteCoverUrl, localCoverPath),
 			RemoteCoverUrl = ResolveRemoteCoverUrl(sourceType, coverUrl, remoteCoverUrl),
 			LocalCoverPath = ResolveLocalCoverPath(sourceType, coverUrl, localCoverPath),
@@ -779,6 +846,16 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	}
 
 	private void EnsureTrackCoverColumn(string columnName, string definition)
+	{
+		if (!HasTable("Tracks") || HasColumn("Tracks", columnName))
+			return;
+
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {columnName} {definition};";
+		cmd.ExecuteNonQuery();
+	}
+
+	private void EnsureTrackColumn(string columnName, string definition)
 	{
 		if (!HasTable("Tracks") || HasColumn("Tracks", columnName))
 			return;

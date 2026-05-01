@@ -17,12 +17,14 @@ public class TrackInfoProvider : ITrackInfoProvider
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly SqliteConnection _connection;
+	private readonly IDbWriteLock _writeLock;
 
-	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection)
+	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection, IDbWriteLock writeLock)
 	{
 		_api = api;
 		_storage = storage;
 		_connection = connection;
+		_writeLock = writeLock;
 
 		using SqliteCommand cmd = connection.CreateCommand();
 		cmd.CommandText = @"
@@ -168,6 +170,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task SaveAsync(Track track)
 	{
+		using var lockHandle = await _writeLock.AcquireAsync();
+
 		long updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 		string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
 		string sourceType = track.SourceType ?? "yandex";

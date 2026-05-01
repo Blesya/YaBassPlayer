@@ -7,27 +7,27 @@ namespace YamBassPlayer.Presenters.Impl;
 
 public class LocalSearchPresenter : ILocalSearchPresenter
 {
-	private readonly ISourceSearchService _sourceSearchService;
+	private readonly ILocalLibraryService _localLibraryService;
 	private List<Track> _searchResults = new();
 	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
-	public LocalSearchPresenter(ISourceSearchService sourceSearchService)
+	public LocalSearchPresenter(ILocalLibraryService localLibraryService)
 	{
-		_sourceSearchService = sourceSearchService;
+		_localLibraryService = localLibraryService;
 	}
 
 	public void ShowLocalSearchDialog()
 	{
 		var view = ServicesProvider.Ioc.Resolve<ILocalSearchView>();
-		
+
 		_searchResults.Clear();
 		_selectedTracks.Clear();
 		_cancelled = true;
 
-		view.OnSearchQueryChanged += async (searchQuery) =>
+		view.OnSearchQueryChanged += (searchQuery) =>
 		{
-			await PerformSearch(view, searchQuery);
+			PerformSearch(view, searchQuery);
 		};
 
 		view.OnOkClicked += () =>
@@ -52,7 +52,7 @@ public class LocalSearchPresenter : ILocalSearchPresenter
 		view.Show();
 	}
 
-	private async Task PerformSearch(ILocalSearchView view, string searchQuery)
+	private void PerformSearch(ILocalSearchView view, string searchQuery)
 	{
 		if (string.IsNullOrWhiteSpace(searchQuery))
 		{
@@ -64,7 +64,7 @@ public class LocalSearchPresenter : ILocalSearchPresenter
 
 		try
 		{
-			var results = await _sourceSearchService.SearchAsync("local", searchQuery, 50);
+			var results = _localLibraryService.SearchTracksAsync(searchQuery).GetAwaiter().GetResult();
 			_searchResults = results.ToList();
 			_selectedTracks.Clear();
 			view.SetSearchResults(_searchResults);

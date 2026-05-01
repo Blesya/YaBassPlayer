@@ -32,7 +32,7 @@ public sealed class MainWindow : Window
 	private readonly IMyWavePresenter _myWavePresenter;
 	private readonly IMyWaveWindowPresenter _myWaveWindowPresenter;
 	private readonly IRecommendationGraphPresenter _recommendationGraphPresenter;
-	private readonly SplashScreenView? _splashScreen;
+	private SplashScreenView? _splashScreen;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
 
@@ -94,7 +94,7 @@ public sealed class MainWindow : Window
 
 		playlistsView.X = 0;
 		playlistsView.Width = 30;
-		playlistsView.Height = Dim.Fill(5);
+		playlistsView.Height = Dim.Fill(20);
 
 		const int panelWidth = 38;
 
@@ -207,20 +207,6 @@ public sealed class MainWindow : Window
 			}
 		};
 
-		// Scan local library in background on startup so the playlist tree is populated.
-		_ = Task.Run(async () =>
-		{
-			try
-			{
-				var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
-				await libraryService.ScanAllFoldersAsync();
-				Application.MainLoop.Invoke(RefreshPlaylistTree);
-			}
-			catch
-			{
-				// Startup scan is best-effort; swallow errors silently.
-			}
-		});
 	}
 
 	private async void OnTrackForPlaySelected(string trackId)
