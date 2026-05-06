@@ -9,12 +9,14 @@ public class TrackFileProvider : ITrackFileProvider
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly string _tracksFolder;
+	private readonly ITrackSourceDetector _sourceDetector;
 
-	public TrackFileProvider(YandexMusicApi api, AuthStorage storage, string tracksFolder)
+	public TrackFileProvider(YandexMusicApi api, AuthStorage storage, string tracksFolder, ITrackSourceDetector sourceDetector)
 	{
 		_api = api;
 		_storage = storage;
 		_tracksFolder = tracksFolder;
+		_sourceDetector = sourceDetector;
 
 		if (!Directory.Exists(_tracksFolder))
 		{
@@ -29,7 +31,7 @@ public class TrackFileProvider : ITrackFileProvider
 
 	public bool IsTrackDownloaded(string trackId)
 	{
-		if (Path.IsPathRooted(trackId))
+		if (_sourceDetector.IsLocal(trackId))
 			return File.Exists(trackId);
 		return File.Exists(GetTrackPath(trackId));
 	}
@@ -37,7 +39,7 @@ public class TrackFileProvider : ITrackFileProvider
 	public async Task<string> DownloadTrackAsync(string trackId)
 	{
 		// Local tracks: trackId is the absolute file path — no download needed
-		if (Path.IsPathRooted(trackId))
+		if (_sourceDetector.IsLocal(trackId))
 			return File.Exists(trackId) ? trackId : string.Empty;
 
 		try
@@ -66,5 +68,13 @@ public class TrackFileProvider : ITrackFileProvider
 			e.Handle();
 			return string.Empty;
 		}
+	}
+
+	public async Task<string> GetTrackFilePathAsync(string trackId)
+	{
+		if (_sourceDetector.IsLocal(trackId))
+			return trackId;
+
+		return GetTrackPath(trackId);
 	}
 }

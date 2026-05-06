@@ -10,9 +10,13 @@ public class Playlist(string name, PlaylistType type)
 
 	public string Description { get; init; }
 
-	public int TrackCount { get; init; }
+	public int TrackCount { get; set; }
 
 	public DayOfWeek? DayOfWeek { get; init; }
+
+	public string? SourceId { get; init; }
+
+	public string? ParentTag { get; init; }
 
 	public override string ToString()
 	{

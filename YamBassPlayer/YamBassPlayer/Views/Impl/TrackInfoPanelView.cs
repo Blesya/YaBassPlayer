@@ -35,7 +35,7 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
             Height = 1,
             TextAlignment = TextAlignment.Centered,
             AutoSize = false,
-            Text = "Выберите трек"
+            Text = "Трек не играет"
         };
 
         _artistLabel = new Label
@@ -119,9 +119,9 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
             _placeholderLabel.Visible = false;
             _asciiView.SetPixels(null);
 
-            _artistLabel.Text = track.Artist;
-            _titleLabel.Text = track.Title;
-            _albumLabel.Text = string.IsNullOrWhiteSpace(track.Album) ? string.Empty : $"[ {track.Album} ]";
+            _artistLabel.Text = $"Исполнитель: {track.Artist}";
+            _titleLabel.Text = $"Название: {track.Title}";
+            _albumLabel.Text = string.IsNullOrWhiteSpace(track.Album) ? string.Empty : $"Альбом: {track.Album}";
 
             _artistLabel.Visible = true;
             _titleLabel.Visible = true;

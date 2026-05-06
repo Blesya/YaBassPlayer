@@ -12,6 +12,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly FrameView _panel;
 	private readonly Button _playButton;
 	private readonly Button _stopButton;
+	private readonly Button _restartButton;
 	private readonly ProgressBar _progressBar;
 	private readonly Button _prevButton;
 	private readonly Button _nextButton;
@@ -30,6 +31,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action? OnYandexFavoriteToggleClicked;
 	public event Action? OnQueueClicked;
 	public event Action? OnPlaybackModeToggled;
+	public event Action? OnRestartClicked;
 
 	public PlayStatusView()
 	{
@@ -60,9 +62,17 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_stopButton.Clicked += () => OnStopClicked?.Invoke();
 
-		_prevButton = new Button
+		_restartButton = new Button
 		{
 			X = Pos.Right(_stopButton) + 1,
+			Y = 0,
+			Text = "Restart"
+		};
+		_restartButton.Clicked += () => OnRestartClicked?.Invoke();
+
+		_prevButton = new Button
+		{
+			X = Pos.Right(_restartButton) + 1,
 			Y = 0,
 			Text = "Prev"
 		};
@@ -155,7 +165,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
-		_panel.Add(_playButton, _stopButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton, _progressBar, _statusLabel);
+		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton, _progressBar, _statusLabel);
 		Add(_panel);
 	}
 

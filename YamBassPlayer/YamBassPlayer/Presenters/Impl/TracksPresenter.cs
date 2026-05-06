@@ -1,5 +1,6 @@
 ﻿using YamBassPlayer.Models;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Events;
 using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Presenters.Impl;
@@ -10,6 +11,8 @@ public class TracksPresenter : ITracksPresenter
 	private readonly ITrackFileProvider _trackFileProvider;
 	private readonly ITrackRepository _trackRepository;
 	private readonly IPlaybackQueue _playbackQueue;
+	private readonly IEventBus _eventBus;
+	private readonly Action<TrackChangedEvent> _onTrackChangedHandler;
 
 	private List<Track> _tracks = new();
 
@@ -19,17 +22,19 @@ public class TracksPresenter : ITracksPresenter
 
 	public IPlaybackQueue PlaybackQueue => _playbackQueue;
 
-	public TracksPresenter(ITracksView view, ITrackFileProvider trackFileProvider, ITrackRepository trackRepository, IPlaybackQueue playbackQueue)
+	public TracksPresenter(ITracksView view, ITrackFileProvider trackFileProvider, ITrackRepository trackRepository, IPlaybackQueue playbackQueue, IEventBus eventBus)
 	{
 		_view = view;
 		_trackFileProvider = trackFileProvider;
 		_trackRepository = trackRepository;
 		_playbackQueue = playbackQueue;
+		_eventBus = eventBus;
 
 		_view.OnTrackSelected += OnTrackSelected;
 		_view.NeedMoreTracks += OnNeedMoreTracks;
 		_view.OnCellActivated += ViewOnTrackSelected;
-		_playbackQueue.OnTrackChanged += OnPlayingTrackChanged;
+		_onTrackChangedHandler = e => OnPlayingTrackChanged(e.TrackId);
+		_eventBus.Subscribe(_onTrackChangedHandler);
 	}
 
 	public async Task LoadTracksFor(Playlist playlist)

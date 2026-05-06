@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="KM.Yandex.Music.Api" Version="2.0.4" />
+        <PackageReference Include="KM.Yandex.Music.Api" Version="2.0.6" />
         <PackageReference Include="ManagedBass" Version="4.0.2" />
         <PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
         <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" />

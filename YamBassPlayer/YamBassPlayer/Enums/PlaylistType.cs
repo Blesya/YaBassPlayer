@@ -14,7 +14,6 @@ public enum PlaylistType
 	YandexSearch,
 	Artist,
 	Queue,
-	OnSameWave,
 	MyWave,
 	/// <summary>Represents a playlist sourced from an individual local music folder.</summary>
 	LocalFolder,

@@ -2,6 +2,7 @@ using System.Timers;
 using Microsoft.Data.Sqlite;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
+using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 using Timer = System.Timers.Timer;
@@ -10,8 +11,8 @@ namespace YamBassPlayer.Presenters.Impl;
 
 public class PlayStatusPresenter : IPlayStatusPresenter
 {
-	private const string LocalSourceId = "local";
-	private const string YandexSourceId = "yandex";
+	private const string LocalSourceId = SourceIds.Local;
+	private const string YandexSourceId = SourceIds.Yandex;
 	private const string LocalFavoriteSourceName = "локальное избранное";
 	private const string YandexFavoriteSourceName = "Яндекс.Музыка";
 	private readonly IPlayStatusView _view;
@@ -27,6 +28,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 	public event Action? OnNextClicked;
 	public event Action? OnQueueClicked;
 	public event Action? OnPlaybackModeToggled;
+	public event Action? OnRestartClicked;
 
 	public PlayStatusPresenter(IPlayStatusView view, IAudioPlayer audioPlayer, ITrackFavoriteService trackFavoriteService)
 	{
@@ -40,6 +42,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnNextClicked += () => OnNextClicked?.Invoke();
 		_view.OnQueueClicked += () => OnQueueClicked?.Invoke();
 		_view.OnPlaybackModeToggled += () => OnPlaybackModeToggled?.Invoke();
+		_view.OnRestartClicked += () => OnRestartClicked?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
 		_view.OnLocalFavoriteToggleClicked += OnLocalFavoriteToggleClickedHandler;
 		_view.OnYandexFavoriteToggleClicked += OnYandexFavoriteToggleClickedHandler;

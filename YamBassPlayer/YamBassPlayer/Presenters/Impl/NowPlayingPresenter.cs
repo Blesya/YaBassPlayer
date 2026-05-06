@@ -1,7 +1,9 @@
 using Terminal.Gui;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Events;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Presenters.Impl;
@@ -12,17 +14,21 @@ public class NowPlayingPresenter : INowPlayingPresenter
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly PlayStatusView _playStatusView;
+	private readonly IEventBus _eventBus;
+	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
 	public NowPlayingPresenter(
 		IAudioPlayer audioPlayer,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
-		PlayStatusView playStatusView)
+		PlayStatusView playStatusView,
+		IEventBus eventBus)
 	{
 		_audioPlayer = audioPlayer;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
 		_playStatusView = playStatusView;
+		_eventBus = eventBus;
 	}
 
 	public void ShowNowPlaying()
@@ -33,18 +39,19 @@ public class NowPlayingPresenter : INowPlayingPresenter
 		if (currentTrackId != null)
 			LoadTrackInfo(view, currentTrackId);
 
-		Action<string> onTrackChanged = trackId =>
-			Application.MainLoop.Invoke(() => LoadTrackInfo(view, trackId));
-		_playbackQueue.OnTrackChanged += onTrackChanged;
+		_onTrackChangedHandler = e =>
+			Application.MainLoop.Invoke(() => LoadTrackInfo(view, e.TrackId));
+		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		bool alive = true;
 		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
 			if (!alive) return false;
-			if (view.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope)
-				view.SetWaveformData(_audioPlayer.GetWaveformData(512));
-			else
-				view.SetFftData(_audioPlayer.ChannelGetData());
+			if (!_audioPlayer.IsPlayed) return true;
+			view.SetSpectrumData(
+				view.SpectrumDataType == SpectrumDataType.Waveform
+					? _audioPlayer.GetWaveformData(512)
+					: _audioPlayer.ChannelGetData());
 			return true;
 		});
 
@@ -64,7 +71,11 @@ public class NowPlayingPresenter : INowPlayingPresenter
 		view.Show();
 
 		alive = false;
-		_playbackQueue.OnTrackChanged -= onTrackChanged;
+		if (_onTrackChangedHandler is not null)
+		{
+			_eventBus.Unsubscribe(_onTrackChangedHandler);
+			_onTrackChangedHandler = null;
+		}
 	}
 
 	private async void LoadTrackInfo(NowPlayingView view, string trackId)

@@ -11,4 +11,5 @@ public interface ITracksView
 	void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached);
 	void ClearTracks();
 	void SetPlayingTrackId(string? trackId);
+	void SetFilter(string? filter);
 }

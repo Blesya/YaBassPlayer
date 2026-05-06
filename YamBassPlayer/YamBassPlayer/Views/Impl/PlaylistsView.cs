@@ -6,6 +6,7 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class PlaylistsView : View, IPlaylistsView
 {
+	private readonly FrameView _panel;
 	private readonly TreeView _tree;
 	private List<PlaylistTreeItem> _roots = new();
 
@@ -31,7 +32,16 @@ public sealed class PlaylistsView : View, IPlaylistsView
 			}
 		};
 
-		Add(_tree);
+		_panel = new FrameView("Плейлисты")
+		{
+			X = 0,
+			Y = 0,
+			Width = Dim.Fill(),
+			Height = Dim.Fill()
+		};
+
+		_panel.Add(_tree);
+		Add(_panel);
 	}
 
 	public void SetPlaylistTree(IEnumerable<PlaylistTreeItem> roots)
@@ -51,21 +61,52 @@ public sealed class PlaylistsView : View, IPlaylistsView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			var existing = _roots.FirstOrDefault(r => r.Playlist?.Type == playlist.Type);
-			if (existing is not null)
+			var item = PlaylistTreeItem.FromPlaylist(playlist);
+
+			if (playlist.ParentTag is not null)
 			{
-				existing.Playlist = playlist;
-				existing.UpdateText();
+				var parent = FindNodeByTag(_roots, playlist.ParentTag);
+				if (parent is not null)
+				{
+					var existing = parent.Children
+						.OfType<PlaylistTreeItem>()
+						.FirstOrDefault(c => c.Playlist?.Type == playlist.Type);
+					if (existing is not null)
+						parent.Children.Remove(existing);
+					parent.Children.Add(item);
+					parent.UpdateText();
+					_tree.SetNeedsDisplay();
+					return;
+				}
+			}
+
+			var existingRoot = _roots.FirstOrDefault(r => r.Playlist?.Type == playlist.Type);
+			if (existingRoot is not null)
+			{
+				existingRoot.Playlist = playlist;
+				existingRoot.UpdateText();
 			}
 			else
 			{
-				var item = PlaylistTreeItem.FromPlaylist(playlist);
 				_roots.Add(item);
 				_tree.AddObject(item);
 			}
 
 			_tree.SetNeedsDisplay();
 		});
+	}
+
+	private static PlaylistTreeItem? FindNodeByTag(IEnumerable<PlaylistTreeItem> items, string tag)
+	{
+		foreach (var item in items)
+		{
+			if (item.Tag is string s && s == tag)
+				return item;
+			var found = FindNodeByTag(item.Children.OfType<PlaylistTreeItem>(), tag);
+			if (found is not null)
+				return found;
+		}
+		return null;
 	}
 
 	public void MarkAsPlaying(Playlist? playlist)

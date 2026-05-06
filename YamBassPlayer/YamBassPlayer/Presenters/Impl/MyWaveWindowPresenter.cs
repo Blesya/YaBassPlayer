@@ -2,7 +2,7 @@ using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
-using YamBassPlayer.Views;
+using YamBassPlayer.Services.Events;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Presenters.Impl;
@@ -14,19 +14,23 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly ICoverProvider _coverProvider;
 	private readonly PlayStatusView _playStatusView;
+	private readonly IEventBus _eventBus;
+	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
 	public MyWaveWindowPresenter(
 		IAudioPlayer audioPlayer,
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
 		ICoverProvider coverProvider,
-		PlayStatusView playStatusView)
+		PlayStatusView playStatusView,
+		IEventBus eventBus)
 	{
 		_audioPlayer = audioPlayer;
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
 		_coverProvider = coverProvider;
 		_playStatusView = playStatusView;
+		_eventBus = eventBus;
 	}
 
 	public void ShowWindow(Playlist playlist)
@@ -41,21 +45,13 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 			UpdateNextTrackLabel(view);
 		}
 
-		Action<string> onTrackChanged = trackId =>
+		_onTrackChangedHandler = e =>
 			Application.MainLoop.Invoke(() =>
 			{
-				LoadTrackInfoAsync(view, trackId);
+				LoadTrackInfoAsync(view, e.TrackId);
 				UpdateNextTrackLabel(view);
 			});
-		_playbackQueue.OnTrackChanged += onTrackChanged;
-
-		bool alive = true;
-		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
-		{
-			if (!alive) return false;
-			// Обновляем прогресс/время через PlayStatusView — он уже обновляется из PlayStatusPresenter
-			return true;
-		});
+		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		// Заимствуем PlayStatusView (как в NowPlayingPresenter)
 		View? originalParent = _playStatusView.SuperView;
@@ -65,8 +61,7 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 
 		view.OnClose = () =>
 		{
-			alive = false;
-			_playbackQueue.OnTrackChanged -= onTrackChanged;
+			UnsubscribeTrackChanged();
 			view.Remove(_playStatusView);
 			_playStatusView.Y = Pos.AnchorEnd(5);
 			originalParent?.Add(_playStatusView);
@@ -75,11 +70,19 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 
 		view.Show();
 
-		alive = false;
-		_playbackQueue.OnTrackChanged -= onTrackChanged;
+		UnsubscribeTrackChanged();
 	}
 
-	private async void LoadTrackInfoAsync(IMyWaveView view, string trackId)
+	private void UnsubscribeTrackChanged()
+	{
+		if (_onTrackChangedHandler is not null)
+		{
+			_eventBus.Unsubscribe(_onTrackChangedHandler);
+			_onTrackChangedHandler = null;
+		}
+	}
+
+	private async void LoadTrackInfoAsync(MyWaveView view, string trackId)
 	{
 		try
 		{
@@ -96,7 +99,7 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		}
 	}
 
-	private async void UpdateNextTrackLabel(IMyWaveView view)
+	private async void UpdateNextTrackLabel(MyWaveView view)
 	{
 		try
 		{

@@ -94,18 +94,19 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
-	public static int GetSessionGapMinutes()
+	/// <summary>Возвращает сохранённый режим отображения треков (true — плитки, false — таблица).</summary>
+	public static bool GetTracksViewMode()
 	{
-		try { return LoadJsonNode()["Recommendation"]?["SessionGapMinutes"]?.GetValue<int>() ?? 20; }
-		catch { return 20; }
+		try { return LoadJsonNode()["View"]?["TracksMode"]?.GetValue<string>() != "table"; }
+		catch { return true; }
 	}
 
-	public static void SaveSessionGapMinutes(int minutes)
+	public static void SaveTracksViewMode(bool useTiles)
 	{
 		var root = LoadJsonNode();
-		var section = root["Recommendation"]?.AsObject() ?? new JsonObject();
-		section["SessionGapMinutes"] = minutes;
-		root["Recommendation"] = section;
+		var section = root["View"]?.AsObject() ?? new JsonObject();
+		section["TracksMode"] = useTiles ? "tiles" : "table";
+		root["View"] = section;
 		SaveJsonNode(root);
 	}
 

@@ -6,17 +6,14 @@ namespace YamBassPlayer.Services.Impl;
 public sealed class HistoryService : IHistoryService
 {
 	private const int CurrentSchemaVersion = 5;
-	private static readonly string[] RecommendationSources =
-	[
-		ListenSource.Regular.ToString(),
-		ListenSource.OnSameWave.ToString()
-	];
 
 	private readonly SqliteConnection _connection;
+	private readonly IDbWriteLock _writeLock;
 
-	public HistoryService(SqliteConnection connection)
+	public HistoryService(SqliteConnection connection, IDbWriteLock writeLock)
 	{
 		_connection = connection;
+		_writeLock = writeLock;
 		EnsureSchema();
 	}
 
@@ -64,6 +61,8 @@ public sealed class HistoryService : IHistoryService
 			    AddedAt      INTEGER NOT NULL,
 			    LastScannedAt INTEGER
 			);
+
+			CREATE INDEX IF NOT EXISTS idx_history_trackId ON listensHistory(trackId);
 			""";
 		createCmd.ExecuteNonQuery();
 
@@ -82,19 +81,27 @@ public sealed class HistoryService : IHistoryService
 		var utcNow = DateTime.UtcNow;
 		var offset = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes;
 
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText =
-			"""
-			INSERT INTO listensHistory (trackId, utcTime, utcOffsetMinutes, source)
-			VALUES ($t, $u, $o, $s);
-			""";
+		var lockHandle = _writeLock.AcquireAsync().GetAwaiter().GetResult();
+		try
+		{
+			using var cmd = _connection.CreateCommand();
+			cmd.CommandText =
+				"""
+				INSERT INTO listensHistory (trackId, utcTime, utcOffsetMinutes, source)
+				VALUES ($t, $u, $o, $s);
+				""";
 
-		cmd.Parameters.AddWithValue("$t", trackId);
-		cmd.Parameters.AddWithValue("$u", utcNow.ToString("O"));
-		cmd.Parameters.AddWithValue("$o", offset);
-		cmd.Parameters.AddWithValue("$s", source.ToString());
+			cmd.Parameters.AddWithValue("$t", trackId);
+			cmd.Parameters.AddWithValue("$u", utcNow.ToString("O"));
+			cmd.Parameters.AddWithValue("$o", offset);
+			cmd.Parameters.AddWithValue("$s", source.ToString());
 
-		cmd.ExecuteNonQuery();
+			cmd.ExecuteNonQuery();
+		}
+		finally
+		{
+			lockHandle.Dispose();
+		}
 	}
 
 	public IReadOnlyList<(string trackId, int count)> GetTopTracks(int limit = 10)
@@ -185,75 +192,5 @@ public sealed class HistoryService : IHistoryService
 			""";
 		cmd.Parameters.AddWithValue("$trackId", trackId);
 		return Convert.ToInt32(cmd.ExecuteScalar());
-	}
-
-	public int GetListenHistoryCount()
-	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = CreateRecommendationSourcesCountQuery();
-		AddRecommendationSourceParameters(cmd);
-		return Convert.ToInt32(cmd.ExecuteScalar());
-	}
-
-	public IReadOnlyList<(string trackId, DateTime utcTime)> GetListenHistory()
-	{
-		var result = new List<(string trackId, DateTime utcTime)>();
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"""
-			SELECT trackId, utcTime
-			FROM listensHistory
-			WHERE source IN ({CreateRecommendationSourcePlaceholders()})
-			ORDER BY utcTime
-			""";
-		AddRecommendationSourceParameters(cmd);
-
-		using var reader = cmd.ExecuteReader();
-		while (reader.Read())
-		{
-			string trackId = reader.GetString(0);
-			string utcTimeStr = reader.GetString(1);
-			if (DateTime.TryParse(utcTimeStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var utcTime))
-				result.Add((trackId, utcTime));
-		}
-
-		return result;
-	}
-
-	public HashSet<string> GetRecentlyPlayedTrackIds(TimeSpan lookback)
-	{
-		var result = new HashSet<string>();
-		var threshold = DateTime.UtcNow - lookback;
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"""
-			SELECT DISTINCT trackId
-			FROM listensHistory
-			WHERE source IN ({CreateRecommendationSourcePlaceholders()}) AND utcTime >= $threshold
-			""";
-		AddRecommendationSourceParameters(cmd);
-		cmd.Parameters.AddWithValue("$threshold", threshold.ToString("O"));
-
-		using var reader = cmd.ExecuteReader();
-		while (reader.Read())
-			result.Add(reader.GetString(0));
-
-		return result;
-	}
-
-	private static string CreateRecommendationSourcesCountQuery()
-		=> $"""
-			SELECT COUNT(*)
-			FROM listensHistory
-			WHERE source IN ({CreateRecommendationSourcePlaceholders()})
-			""";
-
-	private static string CreateRecommendationSourcePlaceholders()
-		=> string.Join(", ", RecommendationSources.Select((_, i) => $"$source{i}"));
-
-	private static void AddRecommendationSourceParameters(SqliteCommand cmd)
-	{
-		for (int i = 0; i < RecommendationSources.Length; i++)
-			cmd.Parameters.AddWithValue($"$source{i}", RecommendationSources[i]);
 	}
 }

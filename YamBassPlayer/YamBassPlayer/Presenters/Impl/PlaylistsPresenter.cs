@@ -1,4 +1,5 @@
-﻿using YamBassPlayer.Extensions;
+﻿using System.Threading;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
@@ -25,15 +26,17 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 		_view.PlaylistSelected += OnPlaylistSelected;
 
-		LoadPlaylists();
+		// DO NOT call LoadPlaylists() here — call InitializeAsync() explicitly
 	}
 
-	private async void LoadPlaylists()
+	public async Task InitializeAsync(CancellationToken ct = default)
 	{
+		ct.ThrowIfCancellationRequested();
 		try
 		{
-			var playlists = (await _trackRepository.GetPlaylists()).ToList();
-			var roots = await _playlistTreeComposer.ComposeAsync(playlists);
+			var playlists = (await _trackRepository.GetPlaylists(ct)).ToList();
+			_playlistTreeComposer.InvalidateCache();
+			var roots = await _playlistTreeComposer.ComposeAsync(playlists, ct);
 			_roots = roots.ToList();
 			_view.SetPlaylistTree(_roots);
 
@@ -50,8 +53,10 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 		}
 	}
 
-	/// <inheritdoc/>
-	public void LoadPlaylistTree() => LoadPlaylists();
+	public void LoadPlaylistTree()
+	{
+		_ = InitializeAsync();
+	}
 
 	private static Playlist? FindFirstSelectablePlaylist(IEnumerable<PlaylistTreeItem> items)
 	{

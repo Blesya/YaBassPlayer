@@ -1,5 +1,6 @@
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
+using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Services.Impl;
 
@@ -9,7 +10,7 @@ public sealed class YandexFavoriteService : IYandexFavoriteService
 	private readonly AuthStorage _storage;
 	private readonly HashSet<string> _likedTrackIds = new();
 	private bool _isProcessing;
-	public string SourceId => "yandex";
+	public string SourceId => SourceIds.Yandex;
 
 	public event Action<string>? OnFavoriteAdded;
 	public event Action<string>? OnFavoriteRemoved;

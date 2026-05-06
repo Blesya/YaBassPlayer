@@ -1,23 +1,17 @@
-﻿using YamBassPlayer.Enums;
+﻿using System.Threading;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Services;
 
 public interface ITrackRepository
 {
-    Task<IEnumerable<Playlist>> GetPlaylists();
-    Task SetPlaylist(Playlist playlist);
-    Task<IEnumerable<Track>> GetNextTracks(int tracksPerBatch);
+    Task<IEnumerable<Playlist>> GetPlaylists(CancellationToken ct = default);
+    Task SetPlaylist(Playlist playlist, CancellationToken ct = default);
+    Task<IEnumerable<Track>> GetNextTracks(int tracksPerBatch, CancellationToken ct = default);
 
     IReadOnlyList<string> GetAllTrackIds();
     PlaylistType? CurrentPlaylistType { get; }
 
-    Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount);
-
-    void UpdateLocalSearchCache(IEnumerable<Track> tracks);
-    void UpdateYandexSearchCache(IEnumerable<Track> tracks);
-    void UpdateQueueCache(IEnumerable<string> trackIds);
-    void UpdateOnSameWaveCache(IEnumerable<Track> tracks);
-    void UpdateMyWaveCache(IEnumerable<Track> tracks);
-    void AppendMyWaveCache(IEnumerable<Track> tracks);
+    Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount, CancellationToken ct = default);
 }

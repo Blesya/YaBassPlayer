@@ -8,7 +8,6 @@ namespace YamBassPlayer.Presenters.Impl;
 public class YandexSearchPresenter : IYandexSearchPresenter
 {
 	private readonly ISourceSearchService _sourceSearchService;
-	private List<Track> _searchResults = new();
 	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
@@ -21,7 +20,6 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 	{
 		var view = ServicesProvider.Ioc.Resolve<IYandexSearchView>();
 
-		_searchResults.Clear();
 		_selectedTracks.Clear();
 		_cancelled = true;
 
@@ -36,17 +34,25 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 			await PerformSearchAsync(view, query);
 		};
 
-		view.OnOkClicked += () =>
+		view.OnOkClicked += async () =>
 		{
-			if (_searchResults.Count == 0)
+			try
 			{
-				view.ShowError("Нет результатов для добавления в плейлист");
-				return;
-			}
+				var markedItems = view.GetMarkedItems();
+				if (markedItems.Count == 0)
+				{
+					view.ShowError("Нет результатов для добавления в плейлист");
+					return;
+				}
 
-			_selectedTracks = GetSelectedTracks(view);
-			_cancelled = false;
-			view.Close();
+				_selectedTracks = await ExpandItemsAsync(markedItems);
+				_cancelled = false;
+				view.Close();
+			}
+			catch (Exception ex)
+			{
+				view.ShowError($"Ошибка поиска: {ex.Message}");
+			}
 		};
 
 		view.OnCancelClicked += () =>
@@ -64,10 +70,9 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 
 		try
 		{
-			var tracks = await _sourceSearchService.SearchAsync("yandex", query, 20);
-			_searchResults = tracks.ToList();
+			var result = await _sourceSearchService.SearchAllAsync(SourceIds.Yandex, query, 20);
 			_selectedTracks.Clear();
-			view.SetSearchResults(_searchResults);
+			view.SetSearchResults(result);
 		}
 		catch (Exception ex)
 		{
@@ -79,15 +84,31 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 		}
 	}
 
+	private async Task<List<Track>> ExpandItemsAsync(IReadOnlyList<SearchResultItem> items)
+	{
+		var tracks = new List<Track>();
+		foreach (var item in items)
+		{
+			switch (item)
+			{
+				case TrackItem trackItem:
+					tracks.Add(trackItem.Track);
+					break;
+				case ArtistItem artistItem:
+					tracks.AddRange(await _sourceSearchService.GetArtistTracksAsync(SourceIds.Yandex, artistItem.Artist.Id));
+					break;
+				case AlbumItem albumItem:
+					tracks.AddRange(await _sourceSearchService.GetAlbumTracksAsync(SourceIds.Yandex, albumItem.Album.Id));
+					break;
+			}
+		}
+
+		return tracks;
+	}
+
 	public List<Track> GetSelectedTracks()
 	{
 		return _selectedTracks;
-	}
-
-	private List<Track> GetSelectedTracks(IYandexSearchView view)
-	{
-		var markedTracks = view.GetMarkedTracks();
-		return markedTracks.Count > 0 ? markedTracks.ToList() : _searchResults.ToList();
 	}
 
 	public bool WasCancelled()

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta name="google-site-verification" content="5W4fU18fOSn4oQdE1uMLV2B2YFhYIAtdfUlcYXhvQ0k" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YaBassPlayer — музыкальный плеер в терминале</title>
+<meta name="description" content="Кроссплатформенный музыкальный плеер с текстовым интерфейсом для Яндекс.Музыки: спектр-визуализация, 10-полосный эквалайзер, умные плейлисты.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230d1117'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='%2334d399' font-family='monospace'%3E♪%3C/text%3E%3C/svg%3E">
+<style>
+  :root, body[data-theme="light"] {
+    --bg: #f4f6f8;
+    --bg-2: #ffffff;
+    --panel: #ffffff;
+    --border: #d8dee6;
+    --text: #1f2328;
+    --muted: #59636e;
+    --accent: #0e9f6e;
+    --accent-2: #0e7490;
+    --purple: #7c3aed;
+    --nav-bg: rgba(244, 246, 248, .85);
+    --grid: rgba(14, 116, 144, .05);
+    --glow-a: rgba(14, 159, 110, .06);
+    --glow-b: rgba(124, 58, 237, .05);
+  }
+  body[data-theme="dark"] {
+    --bg: #0b0f14;
+    --bg-2: #10161f;
+    --panel: #141b26;
+    --border: #223043;
+    --text: #d7e0ea;
+    --muted: #7c8aa0;
+    --accent: #34d399;
+    --accent-2: #22d3ee;
+    --purple: #a78bfa;
+    --nav-bg: rgba(11, 15, 20, .85);
+    --grid: rgba(34, 211, 238, .04);
+    --glow-a: rgba(52, 211, 153, .08);
+    --glow-b: rgba(167, 139, 250, .07);
+  }
+  body[data-theme="white"] {
+    --bg: #ffffff;
+    --bg-2: #fafbfc;
+    --panel: #ffffff;
+    --border: #e2e4e9;
+    --text: #111827;
+    --muted: #6b7280;
+    --accent: #10b981;
+    --accent-2: #0891b2;
+    --purple: #8b5cf6;
+    --nav-bg: rgba(255, 255, 255, .85);
+    --grid: rgba(8, 145, 178, .05);
+    --glow-a: rgba(16, 185, 129, .05);
+    --glow-b: rgba(139, 92, 246, .04);
+  }
+  body[data-theme="matrix"] {
+    --bg: #001a00;
+    --bg-2: #002200;
+    --panel: #003300;
+    --border: #00cc44;
+    --text: #33ff66;
+    --muted: #00cc33;
+    --accent: #00ff66;
+    --accent-2: #00ff99;
+    --purple: #00ffcc;
+    --nav-bg: rgba(0, 26, 0, .9);
+    --grid: rgba(0, 255, 102, .06);
+    --glow-a: rgba(0, 255, 102, .06);
+    --glow-b: rgba(0, 255, 204, .04);
+  }
+  body[data-theme="cyberpunk"] {
+    --bg: #0d0221;
+    --bg-2: #150030;
+    --panel: #1d0640;
+    --border: #ff00c8;
+    --text: #e8f6ff;
+    --muted: #8fa3c7;
+    --accent: #00fff9;
+    --accent-2: #ff00c8;
+    --purple: #b829ff;
+    --nav-bg: rgba(13, 2, 33, .9);
+    --grid: rgba(0, 255, 249, .06);
+    --glow-a: rgba(184, 41, 255, .09);
+    --glow-b: rgba(0, 255, 249, .08);
+  }
+  body[data-theme="nord"] {
+    --bg: #2e3440;
+    --bg-2: #3b4252;
+    --panel: #434c5e;
+    --border: #4c566a;
+    --text: #eceff4;
+    --muted: #d8dee9;
+    --accent: #88c0d0;
+    --accent-2: #81a1c1;
+    --purple: #b48ead;
+    --nav-bg: rgba(46, 52, 64, .9);
+    --grid: rgba(136, 192, 208, .05);
+    --glow-a: rgba(136, 192, 208, .06);
+    --glow-b: rgba(180, 142, 173, .05);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+    transition: background .3s, color .3s;
+  }
+  ::selection { background: rgba(52, 211, 153, .3); }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2e4058; }
+
+  .bg-grid {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 42px 42px;
+  }
+  .bg-glow {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(600px 300px at 20% 0%, var(--glow-a), transparent 70%),
+      radial-gradient(700px 350px at 80% 10%, var(--glow-b), transparent 70%);
+  }
+
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(10px);
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--text);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo .dot { color: var(--accent); }
+  .logo-mark {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center;
+    color: #06231a;
+    font-size: 16px;
+  }
+  .nav-links { display: flex; gap: 26px; }
+  .nav-links a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color .2s;
+  }
+  .nav-links a:hover { color: var(--accent); }
+  .github-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-family: var(--mono);
+    font-size: 13px;
+    transition: all .2s;
+  }
+  .github-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero { padding: 90px 0 70px; text-align: center; }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    background: rgba(52, 211, 153, .1);
+    border: 1px solid rgba(52, 211, 153, .3);
+    padding: 6px 14px;
+    border-radius: 999px;
+    margin-bottom: 26px;
+  }
+  .hero-badge .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,.6); }
+    50% { box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+  }
+  .hero h1 {
+    font-size: clamp(34px, 6vw, 60px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.1;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--purple));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero p.lead {
+    max-width: 640px;
+    margin: 22px auto 0;
+    color: var(--muted);
+    font-size: 18px;
+  }
+  .hero-cta { margin-top: 36px; display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 28px;
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #06231a;
+    box-shadow: 0 6px 24px rgba(52, 211, 153, .25);
+  }
+  .btn-ghost {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-ghost:hover { border-color: var(--accent-2); }
+
+  .hero-shot {
+    margin: 70px auto 0;
+    max-width: 900px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.5);
+  }
+
+  section { padding: 60px 0; }
+  .sec-title {
+    font-size: clamp(24px, 3.5vw, 34px);
+    font-weight: 700;
+    margin-bottom: 12px;
+    letter-spacing: -.5px;
+  }
+  .sec-sub { color: var(--muted); max-width: 620px; margin-bottom: 40px; }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 18px;
+  }
+  .feature {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    transition: border-color .2s, transform .2s;
+  }
+  .feature:hover { border-color: rgba(52, 211, 153, .5); transform: translateY(-3px); }
+  .feature-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-size: 20px;
+    margin-bottom: 16px;
+    background: rgba(52, 211, 153, .1);
+    border: 1px solid rgba(52, 211, 153, .25);
+  }
+  .feature h3 { font-size: 17px; margin-bottom: 8px; }
+  .feature p { color: var(--muted); font-size: 14px; }
+
+  .commands {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .cmd-row {
+    display: grid;
+    grid-template-columns: 210px 1fr;
+    gap: 18px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    align-items: baseline;
+  }
+  .cmd-row:last-child { border-bottom: none; }
+  .cmd-row:hover { background: rgba(34, 211, 238, .04); }
+  .cmd {
+    font-family: var(--mono);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .cmd-desc { color: var(--text); }
+
+  .screenshot {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--panel);
+    box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  }
+  .screenshot img { width: 100%; display: block; }
+
+  .themes-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  .theme-chip {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color .2s, transform .15s, box-shadow .2s;
+    font-family: var(--sans);
+    color: var(--text);
+    text-align: left;
+  }
+  .theme-chip:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .theme-chip.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent), 0 4px 18px rgba(0,0,0,.15);
+  }
+  .swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); flex-shrink: 0; }
+
+  .install {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 26px;
+    overflow-x: auto;
+  }
+  .install .cmd-line { font-family: var(--mono); font-size: 14px; color: var(--text); }
+  .install .prompt { color: var(--accent); }
+  .install .comment { color: var(--muted); }
+  .install .nl { height: 10px; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 40px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 640px) {
+    .nav-links { display: none; }
+    .cmd-row { grid-template-columns: 1fr; gap: 4px; }
+    .hero { padding: 60px 0 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<nav>
+  <div class="nav-inner">
+    <a href="#" class="logo"><span class="logo-mark">♪</span>YaBass<span class="dot">Player</span></a>
+    <div class="nav-links">
+      <a href="#features">Возможности</a>
+      <a href="#commands">Команды</a>
+      <a href="#install">Установка</a>
+      <a href="#themes">Темы</a>
+      <a href="#usage">Использование</a>
+    </div>
+    <a class="github-btn" href="https://github.com/Blesya/YaBassPlayer" target="_blank" rel="noopener">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.35.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18a11 11 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.58.23 2.75.11 3.04.73.81 1.18 1.83 1.18 3.09 0 4.42-2.69 5.39-5.26 5.68.41.35.78 1.05.78 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.68.8.56A10.5 10.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+      GitHub
+    </a>
+  </div>
+</nav>
+
+<main>
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-badge"><span class="pulse"></span>Кроссплатформенный • Windows / Linux / macOS</div>
+    <h1>Музыка из Яндекс.Музыки<br><span class="grad">прямо в терминале</span></h1>
+    <p class="lead">Консольный музыкальный плеер с визуализацией спектра в реальном времени, 10-полосным эквалайзером и умными плейлистами на основе истории прослушивания.</p>
+    <div class="hero-cta">
+      <a href="#install" class="btn btn-primary">▶ Установить</a>
+      <a href="https://github.com/Blesya/YaBassPlayer" target="_blank" rel="noopener" class="btn btn-ghost">Исходный код</a>
+    </div>
+
+    <div class="screenshot hero-shot">
+      <img src="main.png" alt="Скриншот YaBassPlayer">
+    </div>
+  </header>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <h2 class="sec-title">Возможности</h2>
+    <p class="sec-sub">Всё необходимое для прослушивания музыки — без выхода из терминала.</p>
+    <div class="features-grid">
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        <h3>Визуализация спектра</h3>
+        <p>8 режимов спектра в реальном времени: столбцы, осциллограф, «туннель», водопад, полярная форма волны и другие.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🎛️</div>
+        <h3>10-полосный эквалайзер</h3>
+        <p>Визуальное управление и сохранение настроек. Управление командами или горячими клавишами.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🏆</div>
+        <h3>Умные плейлисты</h3>
+        <p>Топ 10, Топ вечеров и Топ по дням недели — автоматически из истории ваших прослушиваний.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">❤️</div>
+        <h3>Избранное</h3>
+        <p>Локальное избранное и синхронизация лайков с Яндекс.Музыкой — одной кнопкой.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔍</div>
+        <h3>Поиск</h3>
+        <p>Локальный поиск по кэшированной библиотеке и полноценный поиск по Яндекс.Музыке.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🎨</div>
+        <h3>7 тем оформления</h3>
+        <p>Тёмная, светлая, «Матрица», киберпанк, Nord и другие. Тема сохраняется между запусками.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMMANDS -->
+  <section id="commands">
+    <h2 class="sec-title">Командная строка</h2>
+    <p class="sec-sub">Полный контроль над плеером через встроенную консоль — без мыши.</p>
+    <div class="commands">
+      <div class="cmd-row"><span class="cmd">play | p [N]</span><span class="cmd-desc">Воспроизвести трек (или трек под номером N)</span></div>
+      <div class="cmd-row"><span class="cmd">pause | ps</span><span class="cmd-desc">Пауза</span></div>
+      <div class="cmd-row"><span class="cmd">toggle | t</span><span class="cmd-desc">Play / Pause</span></div>
+      <div class="cmd-row"><span class="cmd">stop | s</span><span class="cmd-desc">Остановить воспроизведение</span></div>
+      <div class="cmd-row"><span class="cmd">next | n / prev | b / restart | r</span><span class="cmd-desc">Следующий / предыдущий / с начала</span></div>
+      <div class="cmd-row"><span class="cmd">seek &lt;0-100&gt;</span><span class="cmd-desc">Перемотка в процентах</span></div>
+      <div class="cmd-row"><span class="cmd">mode &lt;seq|shuffle&gt;</span><span class="cmd-desc">Режим очереди: по порядку или перемешать</span></div>
+      <div class="cmd-row"><span class="cmd">queue | q</span><span class="cmd-desc">Показать очередь воспроизведения</span></div>
+      <div class="cmd-row"><span class="cmd">eq [reset|&lt;1-10&gt; &lt;0-10&gt;]</span><span class="cmd-desc">Управление эквалайзером</span></div>
+      <div class="cmd-row"><span class="cmd">search | find [ya] [-t|-ar|-alb] &lt;текст&gt;</span><span class="cmd-desc">Поиск локально или по Яндекс.Музыке</span></div>
+      <div class="cmd-row"><span class="cmd">now | track</span><span class="cmd-desc">Информация о текущем треке</span></div>
+      <div class="cmd-row"><span class="cmd">likeyandex | ly / likelocal | ll</span><span class="cmd-desc">Добавить в избранное (Яндекс / локально)</span></div>
+      <div class="cmd-row"><span class="cmd">help | ?</span><span class="cmd-desc">Справка по командам</span></div>
+    </div>
+  </section>
+
+  <!-- INSTALL -->
+  <section id="install">
+    <h2 class="sec-title">Установка</h2>
+    <p class="sec-sub">Требуется .NET 8 SDK и токен Яндекс.Музыки.</p>
+    <div class="install">
+      <div class="cmd-line"><span class="prompt">$</span> git clone https://github.com/Blesya/YaBassPlayer.git</div>
+      <div class="cmd-line"><span class="prompt">$</span> cd YaBassPlayer/YamBassPlayer</div>
+      <div class="cmd-line"><span class="prompt">$</span> dotnet build</div>
+      <div class="cmd-line"><span class="prompt">$</span> dotnet run --project YamBassPlayer</div>
+      <div class="nl"></div>
+      <div class="cmd-line"><span class="comment"># При первом запуске откроется диалог ввода токена —</span></div>
+      <div class="cmd-line"><span class="comment"># вставьте токен Яндекс.Музыки и нажмите OK.</span></div>
+      <div class="nl"></div>
+      <div class="cmd-line"><span class="comment"># Как получить токен:</span></div>
+      <div class="cmd-line"><span class="prompt">$</span> <span class="comment">https://github.com/MarshalX/yandex-music-api/discussions/513</span></div>
+    </div>
+  </section>
+
+  <!-- THEMES -->
+  <section id="themes">
+    <h2 class="sec-title">Темы оформления</h2>
+    <p class="sec-sub">Выберите тему в меню «Темы» — она сохранится и применится при следующем запуске.</p>
+    <div class="themes-row">
+      <button type="button" class="theme-chip" data-theme="dark" role="button"><span class="swatch" style="background:#1a2027"></span>Тёмная</button>
+      <button type="button" class="theme-chip" data-theme="light" role="button"><span class="swatch" style="background:#e5e7eb"></span>Светлая</button>
+      <button type="button" class="theme-chip" data-theme="white" role="button"><span class="swatch" style="background:#ffffff"></span>Белая</button>
+      <button type="button" class="theme-chip" data-theme="matrix" role="button"><span class="swatch" style="background:#0f380f; box-shadow:0 0 0 1px #34d399"></span>Матрица</button>
+      <button type="button" class="theme-chip" data-theme="cyberpunk" role="button"><span class="swatch" style="background:#ff00ff; box-shadow:0 0 0 1px #00ffff"></span>Киберпанк</button>
+      <button type="button" class="theme-chip" data-theme="nord" role="button"><span class="swatch" style="background:#2e3440"></span>Спокойная (Nord)</button>
+      <button type="button" class="theme-chip" data-theme="light" role="button"><span class="swatch" style="background:#f4f6f8; box-shadow:0 0 0 1px #d8dee6"></span>По умолчанию</button>
+    </div>
+  </section>
+
+  <!-- USAGE -->
+  <section id="usage">
+    <h2 class="sec-title">Использование</h2>
+    <p class="sec-sub">Интуитивное управление с клавиатуры: навигация, плейлисты, меню и избранное.</p>
+    <div class="features-grid">
+      <div class="feature">
+        <h3>⌨️ Навигация</h3>
+        <p>Стрелки <code>↑ ↓ ← →</code> — перемещение по трекам и плейлистам. <code>Enter</code> — воспроизведение. Двойной клик — запуск трека.</p>
+      </div>
+      <div class="feature">
+        <h3>📂 Плейлисты</h3>
+        <p>«Мои треки», локальное избранное, загруженный кэш, умные топы и ваши персональные плейлисты из аккаунта.</p>
+      </div>
+      <div class="feature">
+        <h3>🎛️ Меню</h3>
+        <p><code>F9</code> или <code>Alt</code> — открыть меню: файл, темы, аудио, инструменты (поиск, статистика БД).</p>
+      </div>
+      <div class="feature">
+        <h3>💾 Офлайн</h3>
+        <p>Автоматическое кэширование треков в <code>tracks/</code> — музыка доступна без интернета.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="screenshot">
+      <img src="https://github.com/user-attachments/assets/b74ed8ce-e2ba-4e35-94b3-d766afa89a07" alt="Скриншот YaBassPlayer">
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>YaBassPlayer — консольный плеер для Яндекс.Музыки · MIT License © 2025 <a href="https://github.com/Blesya" target="_blank" rel="noopener">Blesya</a></p>
+  <p style="margin-top:8px">
+    <a href="https://github.com/Blesya/YaBassPlayer" target="_blank" rel="noopener">⭐ Поставьте звезду на GitHub</a>
+  </p>
+</footer>
+
+<script>
+  const THEMES_KEY = 'yabass-theme';
+
+  function applyTheme(name) {
+    document.body.dataset.theme = name;
+    localStorage.setItem(THEMES_KEY, name);
+    document.querySelectorAll('.theme-chip').forEach(chip => {
+      const active = chip.dataset.theme === name;
+      chip.classList.toggle('active', active);
+      chip.setAttribute('aria-pressed', String(active));
+    });
+  }
+
+  const saved = localStorage.getItem(THEMES_KEY);
+  const valid = ['dark', 'light', 'white', 'matrix', 'cyberpunk', 'nord'].includes(saved) ? saved : 'light';
+  applyTheme(valid);
+
+  document.querySelectorAll('.theme-chip').forEach(chip => {
+    chip.addEventListener('click', () => applyTheme(chip.dataset.theme));
+  });
+
+  const rows = document.querySelectorAll('.cmd-row');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (e.isIntersecting) {
+        e.target.style.animation = `fadeIn .4s ${i * .04}s both`;
+      }
+    });
+  }, { threshold: .1 });
+  rows.forEach((r, i) => {
+    r.style.opacity = 0;
+    observer.observe(r);
+  });
+  const style = document.createElement('style');
+  style.textContent = `@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }`;
+  document.head.appendChild(style);
+</script>
+</body>
+</html>

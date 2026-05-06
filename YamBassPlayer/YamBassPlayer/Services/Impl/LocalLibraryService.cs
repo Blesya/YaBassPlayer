@@ -53,18 +53,21 @@ public sealed class LocalLibraryService : ILocalLibraryService
 
 		// Columns normally added by HistoryService.MigrateToVersion2 — ensure they exist
 		// in case LocalLibraryService is resolved before HistoryService.
-		EnsureTrackColumn("DurationMs", "INTEGER");
-		EnsureTrackColumn("Year", "INTEGER");
-		EnsureTrackColumn("CoverUrl", "TEXT");
-		EnsureTrackColumn("Genres", "TEXT");
-		EnsureTrackColumn("AlbumId", "TEXT");
-		EnsureTrackColumn("SourceType", "TEXT DEFAULT 'yandex'");
-		EnsureTrackColumn("FolderId", "INTEGER");
-		EnsureTrackColumn("TrackNumber", "INTEGER");
-		EnsureTrackCoverColumn("RemoteCoverUrl", "TEXT");
-		EnsureTrackCoverColumn("LocalCoverPath", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "DurationMs", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Year", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "CoverUrl", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Genres", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "AlbumId", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "SourceType", "TEXT DEFAULT 'yandex'");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "FolderId", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "TrackNumber", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "RemoteCoverUrl", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "LocalCoverPath", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Lyrics", "TEXT");
+		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_source_folder", "Tracks", "SourceType, FolderId");
+		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_artist", "Tracks", "Artist");
 		BackfillLocalSourceType();
-		BackfillTrackCoverMetadataColumns();
+		SqliteSchemaHelper.BackfillTrackCoverMetadataColumns(_connection);
 	}
 
 	/// <summary>
@@ -74,7 +77,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	private void BackfillLocalSourceType()
 	{
-		if (!HasTable("Tracks") || !HasColumn("Tracks", "SourceType"))
+		if (!SqliteSchemaHelper.HasTable(_connection, "Tracks") || !SqliteSchemaHelper.HasColumn(_connection, "Tracks", "SourceType"))
 			return;
 
 		using var cmd = _connection.CreateCommand();
@@ -528,7 +531,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// Builds a <see cref="Track"/> from a local audio file using TagLib# ID3 tag reading.
 	/// Falls back to filename heuristics when tags are unavailable or the file is corrupt.
 	/// </summary>
-	private Track ParseTrackFromFile(string filePath)
+	public Track ParseTrackFromFile(string filePath)
 	{
 		try
 		{
@@ -571,7 +574,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 
 			return new Track(title, artist, album, filePath)
 			{
-				SourceType = "local",
+				SourceType = SourceIds.Local,
 				SourceTrackId = filePath,
 				LocalFilePath = filePath,
 				Artists = artists,
@@ -616,7 +619,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		string album = Path.GetDirectoryName(filePath) is { } dir ? Path.GetFileName(dir) : "";
 		return new Track(title, artist, album, filePath)
 		{
-			SourceType = "local",
+			SourceType = SourceIds.Local,
 			SourceTrackId = filePath,
 			LocalFilePath = filePath,
 			CoverUrl = coverUrl,
@@ -633,8 +636,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	{
 		string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
 		string localFilePath = track.LocalFilePath ?? track.Id;
-		string? localCoverPath = ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath);
-		string? coverUrl = ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, localCoverPath);
+		string? localCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath);
+		string? coverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, localCoverPath);
 
 		using var transaction = _connection.BeginTransaction();
 
@@ -760,7 +763,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		string? localCoverPath = reader.IsDBNull(9) ? null : reader.GetString(9);
 		string? genresJson = reader.IsDBNull(10) ? null : reader.GetString(10);
 		string? albumId = reader.IsDBNull(11) ? null : reader.GetString(11);
-		string sourceType = reader.IsDBNull(12) ? "local" : reader.GetString(12);
+		string sourceType = reader.IsDBNull(12) ? SourceIds.Local : reader.GetString(12);
 		string sourceTrackId = reader.IsDBNull(13) ? trackId : reader.GetString(13);
 		string? localFilePath = reader.IsDBNull(14) ? null : reader.GetString(14);
 
@@ -780,9 +783,9 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			DurationMs = durationMs,
 			Year = year,
 			TrackNumber = trackNumber,
-			CoverUrl = ResolveLegacyCoverUrl(sourceType, coverUrl, remoteCoverUrl, localCoverPath),
-			RemoteCoverUrl = ResolveRemoteCoverUrl(sourceType, coverUrl, remoteCoverUrl),
-			LocalCoverPath = ResolveLocalCoverPath(sourceType, coverUrl, localCoverPath),
+			CoverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(sourceType, coverUrl, remoteCoverUrl, localCoverPath),
+			RemoteCoverUrl = CoverMetadataResolver.ResolveRemoteCoverUrl(sourceType, coverUrl, remoteCoverUrl),
+			LocalCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(sourceType, coverUrl, localCoverPath),
 			Genres = genres,
 			SourceType = sourceType,
 			SourceTrackId = sourceTrackId,
@@ -843,106 +846,6 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		}
 
 		transaction.Commit();
-	}
-
-	private void EnsureTrackCoverColumn(string columnName, string definition)
-	{
-		if (!HasTable("Tracks") || HasColumn("Tracks", columnName))
-			return;
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {columnName} {definition};";
-		cmd.ExecuteNonQuery();
-	}
-
-	private void EnsureTrackColumn(string columnName, string definition)
-	{
-		if (!HasTable("Tracks") || HasColumn("Tracks", columnName))
-			return;
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {columnName} {definition};";
-		cmd.ExecuteNonQuery();
-	}
-
-	private void BackfillTrackCoverMetadataColumns()
-	{
-		if (!HasTable("Tracks")
-			|| !HasColumn("Tracks", "CoverUrl")
-			|| !HasColumn("Tracks", "SourceType"))
-			return;
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText =
-			"""
-			UPDATE Tracks
-			SET RemoteCoverUrl = COALESCE(NULLIF(RemoteCoverUrl, ''), CoverUrl)
-			WHERE COALESCE(SourceType, 'yandex') <> 'local'
-			  AND CoverUrl IS NOT NULL
-			  AND CoverUrl <> '';
-
-			UPDATE Tracks
-			SET LocalCoverPath = COALESCE(NULLIF(LocalCoverPath, ''), CoverUrl)
-			WHERE COALESCE(SourceType, 'yandex') = 'local'
-			  AND CoverUrl IS NOT NULL
-			  AND CoverUrl <> '';
-			""";
-		cmd.ExecuteNonQuery();
-	}
-
-	private bool HasTable(string tableName)
-	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = @tableName LIMIT 1;";
-		cmd.Parameters.AddWithValue("@tableName", tableName);
-		return cmd.ExecuteScalar() is not null;
-	}
-
-	private bool HasColumn(string tableName, string columnName)
-	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"PRAGMA table_info({tableName});";
-		using var reader = cmd.ExecuteReader();
-		while (reader.Read())
-		{
-			if (reader.GetString(1) == columnName)
-				return true;
-		}
-
-		return false;
-	}
-
-	private static bool IsLocalSourceType(string sourceType)
-		=> string.Equals(sourceType, "local", StringComparison.OrdinalIgnoreCase);
-
-	private static string? ResolveRemoteCoverUrl(string sourceType, string? coverUrl, string? remoteCoverUrl)
-	{
-		if (!string.IsNullOrWhiteSpace(remoteCoverUrl))
-			return remoteCoverUrl;
-
-		return IsLocalSourceType(sourceType) ? null : coverUrl;
-	}
-
-	private static string? ResolveLocalCoverPath(string sourceType, string? coverUrl, string? localCoverPath)
-	{
-		if (!string.IsNullOrWhiteSpace(localCoverPath))
-			return localCoverPath;
-
-		return IsLocalSourceType(sourceType) ? coverUrl : null;
-	}
-
-	private static string? ResolveLegacyCoverUrl(
-		string sourceType,
-		string? coverUrl,
-		string? remoteCoverUrl,
-		string? localCoverPath)
-	{
-		if (!string.IsNullOrWhiteSpace(coverUrl))
-			return coverUrl;
-
-		return IsLocalSourceType(sourceType)
-			? ResolveLocalCoverPath(sourceType, coverUrl, localCoverPath)
-			: ResolveRemoteCoverUrl(sourceType, coverUrl, remoteCoverUrl);
 	}
 
 	private async Task UpdateFolderLastScannedAtAsync(int folderId)

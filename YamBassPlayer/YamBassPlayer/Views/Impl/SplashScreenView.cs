@@ -2,7 +2,11 @@
 
 namespace YamBassPlayer.Views.Impl;
 
-internal class SplashScreenView : Window
+/// <summary>
+/// Splash screen overlay shown during initial playlist tree loading.
+/// Removed from Application.Top once the user selects their first playlist.
+/// </summary>
+public class SplashScreenView : Window
 {
     public SplashScreenView()
     {

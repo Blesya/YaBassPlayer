@@ -1,3 +1,4 @@
+using System.Threading;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 
@@ -17,7 +18,7 @@ public sealed class LocalMusicSource : IMusicSource
         _localLibraryService = localLibraryService;
     }
 
-    public string SourceId => "local";
+    public string SourceId => SourceIds.Local;
     public string DisplayName => "Локальная музыка";
     public bool SupportsSearch => true;
     public bool SupportsFavorites => false;
@@ -29,8 +30,9 @@ public sealed class LocalMusicSource : IMusicSource
     /// The folder id is encoded in <see cref="Playlist.Description"/> so it can be decoded in
     /// <see cref="GetPlaylistTracksAsync"/>.
     /// </summary>
-    public async Task<IEnumerable<Playlist>> GetPlaylistsAsync()
+    public async Task<IEnumerable<Playlist>> GetPlaylistsAsync(CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var folders = await _localLibraryService.GetFoldersAsync();
 
         var result = new List<Playlist>();
@@ -59,13 +61,24 @@ public sealed class LocalMusicSource : IMusicSource
     }
 
     /// <summary>
+    /// Returns only track IDs (file paths) for the given local playlist.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetPlaylistTrackIdsAsync(Playlist playlist, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var tracks = await GetPlaylistTracksAsync(playlist, 0, int.MaxValue, ct);
+        return tracks.Select(t => t.Id).ToList();
+    }
+
+    /// <summary>
     /// Returns a paginated slice of tracks for the given playlist.
     /// For <see cref="PlaylistType.LocalFolder"/>, the folder id is decoded from
     /// <see cref="Playlist.Description"/>. For <see cref="PlaylistType.LocalSearch"/>,
     /// all local tracks are returned. Offset and limit are applied in memory.
     /// </summary>
-    public async Task<IEnumerable<Track>> GetPlaylistTracksAsync(Playlist playlist, int offset, int limit)
+    public async Task<IEnumerable<Track>> GetPlaylistTracksAsync(Playlist playlist, int offset, int limit, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         IReadOnlyList<Track> tracks = playlist.Type switch
         {
             PlaylistType.LocalFolder when int.TryParse(playlist.Description, out int folderId)
@@ -82,18 +95,20 @@ public sealed class LocalMusicSource : IMusicSource
     /// Looks up a single track by its file path (the track ID for local sources).
     /// Returns <see langword="null"/> if the file no longer exists.
     /// </summary>
-    public Task<Track?> GetTrackAsync(string trackId)
+    public Task<Track?> GetTrackAsync(string trackId, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         if (!File.Exists(trackId))
             return Task.FromResult<Track?>(null);
 
-        return Task.FromResult<Track?>(ParseTrackFromFile(trackId));
+        return Task.FromResult<Track?>(_localLibraryService.ParseTrackFromFile(trackId));
     }
 
     /// <inheritdoc />
-    public async Task<IEnumerable<Track>> GetTracksByIdsAsync(IEnumerable<string> ids)
+    public async Task<IEnumerable<Track>> GetTracksByIdsAsync(IEnumerable<string> ids, CancellationToken ct = default)
     {
-        var tasks = ids.Select(GetTrackAsync);
+        ct.ThrowIfCancellationRequested();
+        var tasks = ids.Select(id => GetTrackAsync(id, ct));
         var results = await Task.WhenAll(tasks);
         return results.Where(t => t is not null).Select(t => t!);
     }
@@ -102,8 +117,9 @@ public sealed class LocalMusicSource : IMusicSource
     /// For local sources the track ID is the absolute file path, so no copying is needed.
     /// <paramref name="destinationPath"/> is ignored.
     /// </summary>
-    public Task<string> GetAudioFilePathAsync(string trackId, string destinationPath)
+    public Task<string> GetAudioFilePathAsync(string trackId, string destinationPath, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         if (!File.Exists(trackId))
             throw new FileNotFoundException("Local audio file not found.", trackId);
 
@@ -114,115 +130,18 @@ public sealed class LocalMusicSource : IMusicSource
     /// Cover art extraction from embedded ID3 tags is not implemented yet.
     /// TODO: Use TagLib# to read embedded cover art and return a temp-file URL or data URI.
     /// </summary>
-    public Task<string?> GetCoverUrlAsync(string trackId) =>
-        Task.FromResult<string?>(null);
+    public Task<string?> GetCoverUrlAsync(string trackId, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult<string?>(null);
+    }
 
     /// <summary>
     /// Delegates full-text search (title, artist, album) to <see cref="ILocalLibraryService"/>.
     /// </summary>
-    public async Task<IEnumerable<Track>> SearchAsync(string query)
-        => await _localLibraryService.SearchTracksAsync(query);
-
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
-    /// <summary>
-    /// Builds a <see cref="Track"/> from a local audio file path using TagLib# ID3 tag reading.
-    /// Falls back to filename heuristics when tags are unavailable or the file is corrupt.
-    /// </summary>
-    private static Track ParseTrackFromFile(string filePath)
+    public async Task<IEnumerable<Track>> SearchAsync(string query, CancellationToken ct = default)
     {
-        try
-        {
-            using var tagFile = TagLib.File.Create(filePath);
-            var tag = tagFile.Tag;
-
-            string title = !string.IsNullOrWhiteSpace(tag.Title)
-                ? tag.Title
-                : Path.GetFileNameWithoutExtension(filePath);
-
-            string artist = tag.Performers.Length > 0
-                ? string.Join(", ", tag.Performers)
-                : "Неизвестный исполнитель";
-
-            string album = !string.IsNullOrWhiteSpace(tag.Album)
-                ? tag.Album
-                : Path.GetDirectoryName(filePath) is { } dir ? Path.GetFileName(dir) : "";
-
-            var artists = tag.Performers.Length > 0
-                ? tag.Performers.Select(p => new Artist(p, p)).ToList()
-                : null;
-
-            var albumInfo = !string.IsNullOrWhiteSpace(tag.Album)
-                ? new Album(tag.Album, tag.Album)
-                {
-                    Year = tag.Year > 0 ? (int?)tag.Year : null,
-                    Genre = tag.Genres.Length > 0 ? tag.Genres[0] : null,
-                }
-                : null;
-
-            IReadOnlyList<string>? genres = tag.Genres.Length > 0
-                ? tag.Genres.ToList()
-                : null;
-
-            long? durationMs = tagFile.Properties?.Duration is { } dur && dur > TimeSpan.Zero
-                ? (long?)dur.TotalMilliseconds
-                : null;
-
-            return new Track(title, artist, album, filePath)
-            {
-                SourceType = "local",
-                SourceTrackId = filePath,
-                LocalFilePath = filePath,
-                Artists = artists,
-                AlbumInfo = albumInfo,
-                Year = tag.Year > 0 ? (int?)tag.Year : null,
-                Genres = genres,
-                DurationMs = durationMs,
-            };
-        }
-        catch
-        {
-            // Fallback to filename parsing if TagLib fails (corrupt file, unsupported format)
-            return ParseTrackFromFilename(filePath);
-        }
-    }
-
-    /// <summary>
-    /// Builds a <see cref="Track"/> from a local audio file path using filename heuristics.
-    /// Used as a fallback when TagLib# cannot read the file.
-    /// </summary>
-    /// <remarks>
-    /// Supported filename pattern: <c>Artist - Title.ext</c> (split on first " - ").
-    /// When the pattern is not matched, the full filename (without extension) becomes the title
-    /// and the artist falls back to "Неизвестный исполнитель".
-    /// The parent directory name is used as the album.
-    /// </remarks>
-    private static Track ParseTrackFromFilename(string filePath)
-    {
-        string filename = Path.GetFileNameWithoutExtension(filePath);
-        string title, artist;
-
-        // Attempt "Artist - Title" pattern; require content on both sides of the separator.
-        int separatorIdx = filename.IndexOf(" - ", StringComparison.Ordinal);
-        if (separatorIdx > 0)
-        {
-            artist = filename[..separatorIdx].Trim();
-            title = filename[(separatorIdx + 3)..].Trim();
-        }
-        else
-        {
-            title = filename;
-            artist = "Неизвестный исполнитель";
-        }
-
-        string album = Path.GetDirectoryName(filePath) is { } dir ? Path.GetFileName(dir) : "";
-        return new Track(title, artist, album, filePath)
-        {
-            SourceType = "local",
-            SourceTrackId = filePath,
-            LocalFilePath = filePath,
-        };
+        ct.ThrowIfCancellationRequested();
+        return await _localLibraryService.SearchTracksAsync(query);
     }
 }

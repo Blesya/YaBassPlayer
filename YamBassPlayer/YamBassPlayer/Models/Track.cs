@@ -16,7 +16,7 @@ public class Track(string title, string artist, string album, string id)
 	public string? RemoteCoverUrl { get; init; }
 	public string? LocalCoverPath { get; init; }
 	public IReadOnlyList<string>? Genres { get; init; }
-	public string SourceType { get; init; } = "yandex";
+	public string SourceType { get; init; } = SourceIds.Yandex;
 	public IReadOnlyList<Artist>? Artists { get; init; }
 	public Album? AlbumInfo { get; init; }
 

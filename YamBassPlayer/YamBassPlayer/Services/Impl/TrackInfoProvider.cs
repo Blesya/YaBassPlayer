@@ -18,13 +18,15 @@ public class TrackInfoProvider : ITrackInfoProvider
 	private readonly AuthStorage _storage;
 	private readonly SqliteConnection _connection;
 	private readonly IDbWriteLock _writeLock;
+	private readonly IMusicSourceRegistry _musicSourceRegistry;
 
-	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection, IDbWriteLock writeLock)
+	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection, IDbWriteLock writeLock, IMusicSourceRegistry musicSourceRegistry)
 	{
 		_api = api;
 		_storage = storage;
 		_connection = connection;
 		_writeLock = writeLock;
+		_musicSourceRegistry = musicSourceRegistry;
 
 		using SqliteCommand cmd = connection.CreateCommand();
 		cmd.CommandText = @"
@@ -42,11 +44,21 @@ public class TrackInfoProvider : ITrackInfoProvider
 			);";
 		cmd.ExecuteNonQuery();
 
-		EnsureTrackColumn("SourceTrackId", "TEXT");
-		EnsureTrackColumn("LocalFilePath", "TEXT");
-		EnsureTrackColumn("RemoteCoverUrl", "TEXT");
-		EnsureTrackColumn("LocalCoverPath", "TEXT");
-		BackfillTrackCoverMetadataColumns();
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "SourceTrackId", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "LocalFilePath", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "RemoteCoverUrl", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "LocalCoverPath", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "DurationMs", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Year", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "CoverUrl", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Genres", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "AlbumId", "TEXT");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "SourceType", "TEXT DEFAULT 'yandex'");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "FolderId", "INTEGER");
+		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Lyrics", "TEXT");
+		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_source_folder", "Tracks", "SourceType, FolderId");
+		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_artist", "Tracks", "Artist");
+		SqliteSchemaHelper.BackfillTrackCoverMetadataColumns(_connection);
 	}
 
 	// Raw DB row before artist/album enrichment
@@ -145,6 +157,17 @@ public class TrackInfoProvider : ITrackInfoProvider
 			return enriched[0];
 		}
 
+		// Un-cached local track: delegate to the local source — its single owner of file parsing.
+		if (Path.IsPathRooted(id))
+		{
+			IMusicSource? localSource = _musicSourceRegistry.Get(SourceIds.Local);
+			Track? localTrack = localSource is null ? null : await localSource.GetTrackAsync(id);
+			if (localTrack is not null)
+				return localTrack;
+
+			throw new InvalidOperationException($"Не удалось получить информацию о треке: {id}");
+		}
+
 		Track? track = await TryGetFromApi(id);
 		if (track == null)
 			throw new InvalidOperationException($"Не удалось получить информацию о треке: {id}");
@@ -174,10 +197,10 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 		long updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 		string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
-		string sourceType = track.SourceType ?? "yandex";
-		string? remoteCoverUrl = ResolveRemoteCoverUrl(sourceType, track.CoverUrl, track.RemoteCoverUrl);
-		string? localCoverPath = ResolveLocalCoverPath(sourceType, track.CoverUrl, track.LocalCoverPath);
-		string? coverUrl = ResolveLegacyCoverUrl(sourceType, track.CoverUrl, remoteCoverUrl, localCoverPath);
+		string sourceType = track.SourceType ?? SourceIds.Yandex;
+		string? remoteCoverUrl = CoverMetadataResolver.ResolveRemoteCoverUrl(sourceType, track.CoverUrl, track.RemoteCoverUrl);
+		string? localCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(sourceType, track.CoverUrl, track.LocalCoverPath);
+		string? coverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(sourceType, track.CoverUrl, remoteCoverUrl, localCoverPath);
 
 		// Save to Tracks table with all enriched columns
 		using (var cmd = _connection.CreateCommand())
@@ -349,9 +372,9 @@ public class TrackInfoProvider : ITrackInfoProvider
 			{
 				DurationMs = row.DurationMs,
 				Year = row.Year,
-				CoverUrl = ResolveLegacyCoverUrl(row.SourceType, row.CoverUrl, row.RemoteCoverUrl, row.LocalCoverPath),
-				RemoteCoverUrl = ResolveRemoteCoverUrl(row.SourceType, row.CoverUrl, row.RemoteCoverUrl),
-				LocalCoverPath = ResolveLocalCoverPath(row.SourceType, row.CoverUrl, row.LocalCoverPath),
+				CoverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(row.SourceType, row.CoverUrl, row.RemoteCoverUrl, row.LocalCoverPath),
+				RemoteCoverUrl = CoverMetadataResolver.ResolveRemoteCoverUrl(row.SourceType, row.CoverUrl, row.RemoteCoverUrl),
+				LocalCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(row.SourceType, row.CoverUrl, row.LocalCoverPath),
 				Genres = genres,
 				SourceType = row.SourceType,
 				SourceTrackId = row.SourceTrackId,
@@ -376,7 +399,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 		LocalCoverPath: reader.IsDBNull(8) ? null : reader.GetString(8),
 		GenresJson: reader.IsDBNull(9) ? null : reader.GetString(9),
 		AlbumId: reader.IsDBNull(10) ? null : reader.GetString(10),
-		SourceType: reader.IsDBNull(11) ? "yandex" : reader.GetString(11),
+		SourceType: reader.IsDBNull(11) ? SourceIds.Yandex : reader.GetString(11),
 		SourceTrackId: reader.IsDBNull(12) ? reader.GetString(0) : reader.GetString(12),
 		LocalFilePath: reader.IsDBNull(13) ? null : reader.GetString(13));
 
@@ -388,9 +411,9 @@ public class TrackInfoProvider : ITrackInfoProvider
 		Album: track.Album,
 		DurationMs: track.DurationMs,
 		Year: track.Year,
-		CoverUrl: ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, track.LocalCoverPath),
-		RemoteCoverUrl: ResolveRemoteCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl),
-		LocalCoverPath: ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath),
+		CoverUrl: CoverMetadataResolver.ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, track.LocalCoverPath),
+		RemoteCoverUrl: CoverMetadataResolver.ResolveRemoteCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl),
+		LocalCoverPath: CoverMetadataResolver.ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath),
 		GenresJson: track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null,
 		AlbumId: track.AlbumInfo?.Id,
 		SourceType: track.SourceType,
@@ -500,92 +523,12 @@ public class TrackInfoProvider : ITrackInfoProvider
 			string trackId = reader.GetString(0);
 			tracks.Add(new Track(reader.GetString(2), reader.GetString(1), reader.GetString(3), trackId)
 			{
-				SourceType = reader.IsDBNull(4) ? "yandex" : reader.GetString(4),
+				SourceType = reader.IsDBNull(4) ? SourceIds.Yandex : reader.GetString(4),
 				SourceTrackId = reader.IsDBNull(5) ? trackId : reader.GetString(5),
 				LocalFilePath = reader.IsDBNull(6) ? null : reader.GetString(6),
 			});
 		}
 
 		return tracks;
-	}
-
-	private void EnsureTrackColumn(string columnName, string definition)
-	{
-		if (HasColumn("Tracks", columnName))
-			return;
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {columnName} {definition};";
-		cmd.ExecuteNonQuery();
-	}
-
-	private void BackfillTrackCoverMetadataColumns()
-	{
-		if (!HasColumn("Tracks", "CoverUrl") || !HasColumn("Tracks", "SourceType"))
-			return;
-
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText =
-			"""
-			UPDATE Tracks
-			SET RemoteCoverUrl = COALESCE(NULLIF(RemoteCoverUrl, ''), CoverUrl)
-			WHERE COALESCE(SourceType, 'yandex') <> 'local'
-			  AND CoverUrl IS NOT NULL
-			  AND CoverUrl <> '';
-
-			UPDATE Tracks
-			SET LocalCoverPath = COALESCE(NULLIF(LocalCoverPath, ''), CoverUrl)
-			WHERE COALESCE(SourceType, 'yandex') = 'local'
-			  AND CoverUrl IS NOT NULL
-			  AND CoverUrl <> '';
-			""";
-		cmd.ExecuteNonQuery();
-	}
-
-	private static bool IsLocalSourceType(string sourceType)
-		=> string.Equals(sourceType, "local", StringComparison.OrdinalIgnoreCase);
-
-	private static string? ResolveRemoteCoverUrl(string sourceType, string? coverUrl, string? remoteCoverUrl)
-	{
-		if (!string.IsNullOrWhiteSpace(remoteCoverUrl))
-			return remoteCoverUrl;
-
-		return IsLocalSourceType(sourceType) ? null : coverUrl;
-	}
-
-	private static string? ResolveLocalCoverPath(string sourceType, string? coverUrl, string? localCoverPath)
-	{
-		if (!string.IsNullOrWhiteSpace(localCoverPath))
-			return localCoverPath;
-
-		return IsLocalSourceType(sourceType) ? coverUrl : null;
-	}
-
-	private static string? ResolveLegacyCoverUrl(
-		string sourceType,
-		string? coverUrl,
-		string? remoteCoverUrl,
-		string? localCoverPath)
-	{
-		if (!string.IsNullOrWhiteSpace(coverUrl))
-			return coverUrl;
-
-		return IsLocalSourceType(sourceType)
-			? ResolveLocalCoverPath(sourceType, coverUrl, localCoverPath)
-			: ResolveRemoteCoverUrl(sourceType, coverUrl, remoteCoverUrl);
-	}
-
-	private bool HasColumn(string tableName, string columnName)
-	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"PRAGMA table_info({tableName});";
-		using var reader = cmd.ExecuteReader();
-		while (reader.Read())
-		{
-			if (reader.GetString(1) == columnName)
-				return true;
-		}
-
-		return false;
 	}
 }

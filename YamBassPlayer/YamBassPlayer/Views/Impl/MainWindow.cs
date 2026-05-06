@@ -1,10 +1,10 @@
-using Autofac;
+	using Autofac;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
-using YamBassPlayer.Extensions;
-using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
+using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
+using YamBassPlayer.Spectrum;
 
 namespace YamBassPlayer.Views.Impl;
 
@@ -12,103 +12,88 @@ public sealed class MainWindow : Window
 {
 	private const string YamBassPlayerTitle = "YamBassPlayer";
 
-	private readonly IPlaylistsPresenter _playlistsPresenter;
+	private readonly MainWindowCoordinator _coordinator;
 	private readonly ITracksPresenter _tracksPresenter;
-	private readonly IPlayStatusPresenter _playStatusPresenter;
-	private readonly IPlaybackCoordinator _playbackCoordinator;
 	private readonly IPlaybackQueue _playbackQueue;
-	private readonly ITrackInfoProvider _trackInfoProvider;
-	private readonly ITrackRepository _trackRepository;
-	private readonly IListenTimer _listenTimer;
 	private readonly IAudioPlayer _audioPlayer;
-	private readonly IEqualizerPresenter _equalizerPresenter;
-	private readonly ILocalSearchPresenter _localSearchPresenter;
-	private readonly IYandexSearchPresenter _yandexSearchPresenter;
-	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
-	private readonly INowPlayingPresenter _nowPlayingPresenter;
-	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
-	private readonly ITrackInfoPanelPresenter _trackInfoPanelPresenter;
-	private readonly IOnSameWavePresenter _onSameWavePresenter;
-	private readonly IMyWavePresenter _myWavePresenter;
-	private readonly IMyWaveWindowPresenter _myWaveWindowPresenter;
-	private readonly IRecommendationGraphPresenter _recommendationGraphPresenter;
+	private readonly IPlaylistsPresenter _playlistsPresenter;
+	private readonly TracksViewHost _tracksView;
 	private SplashScreenView? _splashScreen;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
 	private Button _spectrumFreqButton = null!;
+	private TextField _filterField = null!;
+	private MenuItem _tracksViewMenuItem = null!;
 	private int _freqPresetIndex = 4;
 	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
 	public MainWindow(
+		MainWindowCoordinator coordinator,
 		IPlaylistsPresenter playlistsPresenter,
 		ITracksPresenter tracksPresenter,
 		IPlayStatusPresenter playStatusPresenter,
-		IEqualizerPresenter equalizerPresenter,
-		ILocalSearchPresenter localSearchPresenter,
-		IYandexSearchPresenter yandexSearchPresenter,
-		IDatabaseStatisticsPresenter dbStatsPresenter,
-		INowPlayingPresenter nowPlayingPresenter,
-		ILargeTrackInfoPresenter largeTrackInfoPresenter,
-		IOnSameWavePresenter onSameWavePresenter,
-		IMyWavePresenter myWavePresenter,
-		IMyWaveWindowPresenter myWaveWindowPresenter,
-		IRecommendationGraphPresenter recommendationGraphPresenter,
 		ITrackInfoPanelPresenter trackInfoPanelPresenter,
-		IPlaybackCoordinator playbackCoordinator,
+		IPlaybackPresenter playbackCoordinator,
 		IPlaybackQueue playbackQueue,
-		ITrackInfoProvider trackInfoProvider,
-		ITrackRepository trackRepository,
-		IListenTimer listenTimer,
 		IAudioPlayer audioPlayer,
 		PlayStatusView playStatusView,
+		CommandInputView commandInputView,
+		CommandInputPresenter commandInputPresenter,
 		PlaylistsView playlistsView,
-		TracksTileView tracksView,
+		TracksViewHost tracksView,
 		TrackInfoPanelView trackInfoPanelView)
 		: base(YamBassPlayerTitle)
 	{
-		_playlistsPresenter = playlistsPresenter;
+		_coordinator = coordinator;
 		_tracksPresenter = tracksPresenter;
-		_playStatusPresenter = playStatusPresenter;
-		_equalizerPresenter = equalizerPresenter;
-		_localSearchPresenter = localSearchPresenter;
-		_yandexSearchPresenter = yandexSearchPresenter;
-		_dbStatsPresenter = dbStatsPresenter;
-		_nowPlayingPresenter = nowPlayingPresenter;
-		_largeTrackInfoPresenter = largeTrackInfoPresenter;
-		_trackInfoPanelPresenter = trackInfoPanelPresenter;
-		_onSameWavePresenter = onSameWavePresenter;
-		_myWavePresenter = myWavePresenter;
-		_myWaveWindowPresenter = myWaveWindowPresenter;
-		_recommendationGraphPresenter = recommendationGraphPresenter;
-		_playbackCoordinator = playbackCoordinator;
 		_playbackQueue = playbackQueue;
-		_trackInfoProvider = trackInfoProvider;
-		_trackRepository = trackRepository;
-		_listenTimer = listenTimer;
 		_audioPlayer = audioPlayer;
+		_playlistsPresenter = playlistsPresenter;
+		_tracksView = tracksView;
 
+		// ── Menu bar (pure UI composition) ─────────────────────────────
 		MenuBar menuBar = CreateMenuBar();
 		Application.Top.Add(menuBar);
 
+		// ── View layout ────────────────────────────────────────────────
 		playStatusView.X = 0;
-		playStatusView.Y = Pos.AnchorEnd(5);
+		playStatusView.Y = Pos.AnchorEnd(7);
 		playStatusView.Width = Dim.Fill();
 		playStatusView.Height = 5;
 
+		commandInputView.X = 0;
+		commandInputView.Y = Pos.AnchorEnd(2);
+		commandInputView.Width = Dim.Fill();
+		commandInputView.Height = 2;
+
 		playlistsView.X = 0;
 		playlistsView.Width = 30;
-		playlistsView.Height = Dim.Fill(20);
+		playlistsView.Height = Dim.Fill(22);
 
 		const int panelWidth = 38;
 
+		_filterField = new TextField("")
+		{
+			X = Pos.Right(playlistsView),
+			Y = 0,
+			Width = Dim.Fill(panelWidth),
+			Height = 1
+		};
+		_filterField.TextChanged += _ =>
+		{
+			var text = _filterField.Text?.ToString() ?? "";
+			tracksView.SetFilter(string.IsNullOrWhiteSpace(text) ? null : text.Trim());
+		};
+
 		tracksView.X = Pos.Right(playlistsView);
+		tracksView.Y = 1;
 		tracksView.Width = Dim.Fill(panelWidth);
-		tracksView.Height = Dim.Fill(5);
+		tracksView.Height = Dim.Fill(8);
 
 		trackInfoPanelView.X = Pos.Right(tracksView);
 		trackInfoPanelView.Y = 0;
 		trackInfoPanelView.Width = panelWidth;
-		trackInfoPanelView.Height = Dim.Fill(5);
+		trackInfoPanelView.Height = Dim.Fill(7);
 
 		_spectrum = new SpectrumView(bars: 29)
 		{
@@ -117,13 +102,21 @@ public sealed class MainWindow : Window
 			Width = 29,
 			Height = 14
 		};
+		_spectrum.AddRenderer(new BarsRenderer(29));
+		_spectrum.AddRenderer(new OscilloscopeRenderer());
+		_spectrum.AddRenderer(new PolarWaveformRenderer());
+		_spectrum.AddRenderer(new LissajousScopeRenderer());
+		_spectrum.AddRenderer(new WaterfallRenderer());
+		_spectrum.AddRenderer(new RingsRenderer());
+		_spectrum.AddRenderer(new Tunnel3DRenderer());
+		_spectrum.AddRenderer(new StereoPanScopeRenderer());
 
 		_spectrumModeButton = new Button
 		{
 			X = 0,
 			Y = Pos.Top(playStatusView) - 1,
 			Width = 14,
-			Text = "≋ FFT"
+			Text = _spectrum.ModeDisplayName
 		};
 		_spectrumModeButton.Clicked += ToggleSpectrumMode;
 
@@ -136,130 +129,46 @@ public sealed class MainWindow : Window
 		};
 		_spectrumFreqButton.Clicked += CycleSpectrumFreq;
 
-		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, tracksView, trackInfoPanelView, playStatusView);
+		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, _filterField, tracksView, trackInfoPanelView, playStatusView, commandInputView);
 
-		_playbackQueue.OnTrackChanged += OnTrackForPlaySelected;
-
-		_playStatusPresenter.OnStopClicked += _audioPlayer.Stop;
-		_playStatusPresenter.OnPlayClicked += () =>
-		{
-			if (_audioPlayer.IsPlayed)
-			{
-				_audioPlayer.Pause();
-				_listenTimer.OnPause();
-				return;
-			}
-
-			_audioPlayer.Resume();
-			_listenTimer.OnResume();
-		};
-		_playStatusPresenter.OnPrevClicked += _playbackQueue.Previous;
-		_playStatusPresenter.OnNextClicked += () =>
-		{
-			_playbackCoordinator.MarkMyWaveSkipPending();
-			_playbackQueue.Next();
-		};
-
-		_playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
-		_tracksPresenter.OnTrackChosen += track => _trackInfoPanelPresenter.OnTrackSelected(track);
-		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
-		{
-			if (_spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope)
-			{
-				_spectrum.SetWaveformData(_audioPlayer.GetWaveformData(512));
-			}
-			else
-			{
-				_spectrum.SetFftData(_audioPlayer.ChannelGetData());
-			}
-
-			return true;
-		});
-
+		// ── Wire presenter events via coordinator ──────────────────────
 		_splashScreen = new SplashScreenView();
 		Application.Top.Add(_splashScreen);
-		_playlistsPresenter.PlaylistChosen += PlaylistsPresenterOnPlaylistChosen;
+		_coordinator.SetWindow(this);
+		_coordinator.WireEvents(_splashScreen);
 
-		_playStatusPresenter.OnStopClicked += () => _listenTimer.OnTrackStopOrChange();
-		_playStatusPresenter.OnQueueClicked += ShowCurrentQueue;
-		_playStatusPresenter.OnPlaybackModeToggled += OnPlaybackModeToggled;
-		
-		_audioPlayer.OnPreloadRequested += OnPreloadNextTrack;
+		// Initialize playlists (fire-and-forget, was in PlaylistsPresenter constructor)
+		_ = _playlistsPresenter.InitializeAsync();
 
-		KeyPress += e =>
+		// Spectrum refresh timer (UI-only concern).
+		// Skips while playback is idle and while a modal (e.g. «Сейчас играет») has its
+		// own spectrum loop — otherwise two concurrent 16ms loops double the BASS polling
+		// and full-view repaints per frame.
+		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
-			if (e.KeyEvent.Key == Key.F5)
-			{
-				_nowPlayingPresenter.ShowNowPlaying();
-				e.Handled = true;
-			}
+			if (!ReferenceEquals(Application.Current, Application.Top) || !_audioPlayer.IsPlayed)
+				return true;
 
-			if (e.KeyEvent.Key == Key.F6)
-			{
-				ShowOnSameWave();
-				e.Handled = true;
-			}
-
-			if (e.KeyEvent.Key == Key.F7)
-			{
-				_recommendationGraphPresenter.ShowRecommendationGraph();
-				e.Handled = true;
-			}
-
-			if (e.KeyEvent.Key == Key.F8)
-			{
-				_largeTrackInfoPresenter.ShowLargeTrackInfo();
-				e.Handled = true;
-			}
-
-			if (e.KeyEvent.Key == Key.F9)
-			{
-				ShowMyWave();
-				e.Handled = true;
-			}
-		};
-
-	}
-
-	private async void OnTrackForPlaySelected(string trackId)
-	{
-		try
-		{
-			await _playbackCoordinator.PlaySelectedTrackAsync(trackId);
-		}
-		catch (Exception exception)
-		{
-			exception.Handle();
-		}
-	}
-
-	private async void OnPlaylistChosen(Playlist playlist)
-	{
-		_playbackCoordinator.SetPlaylistType(playlist.Type);
-		await _tracksPresenter.LoadTracksFor(playlist);
-		Title = $"{playlist.PlaylistName} : {playlist.Description}";
-	}
-
-	private async void OnPreloadNextTrack(object? sender, EventArgs e)
-	{
-		try
-		{
-			await _playbackCoordinator.PreloadNextTrackAsync();
-		}
-		catch (Exception ex)
-		{
-			ex.Handle();
-		}
+			_spectrum.SetData(
+				_spectrum.RequiredDataType == SpectrumDataType.Waveform
+					? _audioPlayer.GetWaveformData(512)
+					: _audioPlayer.ChannelGetData());
+			return true;
+		});
 	}
 
 	private MenuBar CreateMenuBar()
 	{
-		var menuBar = new MenuBar(new[]
+		_tracksViewMenuItem = new MenuItem(null, null, ToggleTracksViewMode)
+		{
+			Title = _tracksView.IsTilesActive ? "Вид треков: Плитки" : "Вид треков: Таблица"
+		};
+
+		return new MenuBar(new[]
 		{
 			new MenuBarItem("Файл", new[]
 			{
-				new MenuItem("Выход", "[Выход из программы]",
-					Stop)
+				new MenuItem("Выход", "[Выход из программы]", _coordinator.StopApplication)
 			}),
 			new MenuBarItem("Темы", new[]
 			{
@@ -273,41 +182,43 @@ public sealed class MainWindow : Window
 			}),
 			new MenuBarItem("Аудио", new[]
 			{
-				new MenuItem("Эквалайзер", "", () => _equalizerPresenter.ShowEqualizerDialog())
+				new MenuItem("Эквалайзер", "", _coordinator.ShowEqualizer)
 			}),
 			new MenuBarItem("Инструменты", new[]
 			{
-				new MenuItem("Локальный поиск", "", ShowLocalSearchDialog),
-				new MenuItem("Поиск по ЯМ", "", ShowYandexSearchDialog),
-				new MenuItem("Моя волна [F9]", "", ShowMyWave),
-				new MenuItem("Моя волна по треку", "", ShowMyWaveByTrack),
-				new MenuItem("На одной волне [F6]", "", ShowOnSameWave),
-				new MenuItem("Граф рекомендаций [F7]", "", () => _recommendationGraphPresenter.ShowRecommendationGraph()),
-				new MenuItem("Статистика БД", "", () => _dbStatsPresenter.ShowStatisticsDialog()),
+				new MenuItem("Локальный поиск", "", _coordinator.ShowLocalSearchDialog),
+				new MenuItem("Поиск по ЯМ", "", _coordinator.ShowYandexSearchDialog),
+				new MenuItem("Моя волна [F9]", "", _coordinator.ShowMyWave),
+				new MenuItem("Моя волна по треку", "", () => _coordinator.ShowMyWaveByTrack()),
+				new MenuItem("Статистика БД", "", _coordinator.ShowDbStats),
 				null,
-				new MenuItem("Добавить папку...", "", ShowAddLocalFolderDialog),
-				new MenuItem("Управление папками...", "", ShowLocalFolderManagerDialog),
-				new MenuItem("Сканировать библиотеку", "", ScanLocalLibrary)
+				new MenuItem("Добавить папку...", "", _coordinator.ShowAddLocalFolderDialog),
+				new MenuItem("Управление папками...", "", _coordinator.ShowLocalFolderManagerDialog),
+				new MenuItem("Сканировать библиотеку", "", _coordinator.ScanLocalLibrary)
 			}),
 			new MenuBarItem("Вид", new[]
 			{
-				new MenuItem("Визуализация [F5]", "", () => _nowPlayingPresenter.ShowNowPlaying()),
-				new MenuItem("Крупное инфо [F8]", "", () => _largeTrackInfoPresenter.ShowLargeTrackInfo()),
-new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpectrumMode)
+				new MenuItem("Визуализация [F5]", "", _coordinator.ShowNowPlaying),
+				new MenuItem("Крупное инфо [F8]", "", _coordinator.ShowLargeTrackInfo),
+				new MenuItem("≋ Переключить режим спектра", "", ToggleSpectrumMode),
+				null,
+				_tracksViewMenuItem
 			})
 		});
+	}
 
-		return menuBar;
+	private void ToggleTracksViewMode()
+	{
+		_tracksView.ToggleView();
+		_tracksViewMenuItem.Title = _tracksView.IsTilesActive
+			? "Вид треков: Плитки"
+			: "Вид треков: Таблица";
 	}
 
 	private void ToggleSpectrumMode()
 	{
-		_spectrum.Mode = _spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Bars
-			? YamBassPlayer.Enums.SpectrumMode.Oscilloscope
-			: YamBassPlayer.Enums.SpectrumMode.Bars;
-		_spectrumModeButton.Text = _spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope
-			? "〜 Осц."
-			: "≋ FFT";
+		_spectrum.CycleMode();
+		_spectrumModeButton.Text = _spectrum.ModeDisplayName;
 	}
 
 	private void CycleSpectrumFreq()
@@ -316,232 +227,5 @@ new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpect
 		int freq = FreqPresets[_freqPresetIndex];
 		_spectrum.MaxFrequencyHz = freq;
 		_spectrumFreqButton.Text = freq >= 22050 ? "▲ 22k" : $"▲ {freq / 1000}k";
-	}
-
-	private void Stop()
-	{
-		int result = MessageBox.Query("Выход", "Вы уверены, что хотите выйти?", "Да", "Нет");
-		if (result == 0)
-		{
-			_audioPlayer.Free();
-			Application.RequestStop();
-			Console.Clear();
-		}
-	}
-
-	private void OnPlaybackModeToggled()
-	{
-		_playbackQueue.Mode = _playbackQueue.Mode == PlaybackMode.Shuffle
-			? PlaybackMode.Sequential
-			: PlaybackMode.Shuffle;
-		_playStatusPresenter.SetPlaybackMode(_playbackQueue.Mode);
-	}
-
-	private async void ShowCurrentQueue()
-	{
-		try
-		{
-			var trackIds = _playbackQueue.TrackIds;
-			if (trackIds.Count == 0)
-			{
-				_playStatusPresenter.SetPlayStatus("Очередь воспроизведения пуста");
-				return;
-			}
-
-			_trackRepository.UpdateQueueCache(trackIds);
-
-			var queuePlaylist = new Playlist("Текущая очередь", Enums.PlaylistType.Queue)
-			{
-				Description = "Текущая очередь воспроизведения",
-				TrackCount = trackIds.Count
-			};
-
-			await _tracksPresenter.LoadTracksFor(queuePlaylist);
-			Title = $"{queuePlaylist.PlaylistName} : {queuePlaylist.Description}";
-			_playlistsPresenter.NotifyTransientPlaylistActive(queuePlaylist);
-		}
-		catch (Exception ex)
-		{
-			ex.Handle();
-		}
-	}
-
-	private void PlaylistsPresenterOnPlaylistChosen(Playlist obj)
-	{
-		Application.Top.Remove(_splashScreen);
-		_playlistsPresenter.PlaylistChosen -= PlaylistsPresenterOnPlaylistChosen;
-	}
-
-	private async void ShowYandexSearchDialog()
-	{
-		try
-		{
-			_yandexSearchPresenter.ShowYandexSearchDialog();
-
-			if (!_yandexSearchPresenter.WasCancelled())
-			{
-				var selectedTracks = _yandexSearchPresenter.GetSelectedTracks();
-				if (selectedTracks.Count > 0)
-				{
-					foreach (var track in selectedTracks)
-					{
-						await _trackInfoProvider.SaveAsync(track);
-					}
-
-					_trackRepository.UpdateYandexSearchCache(selectedTracks);
-
-					var yandexSearchPlaylist = new Playlist("Поиск по ЯМ", Enums.PlaylistType.YandexSearch)
-					{
-						Description = "Результаты поиска по Яндекс.Музыке",
-						TrackCount = selectedTracks.Count
-					};
-
-					await _trackRepository.SetPlaylist(yandexSearchPlaylist);
-					await _tracksPresenter.LoadTracksFor(yandexSearchPlaylist);
-					Title = $"{yandexSearchPlaylist.PlaylistName} : {yandexSearchPlaylist.Description}";
-					_playlistsPresenter.NotifyTransientPlaylistActive(yandexSearchPlaylist);
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			ex.Handle();
-		}
-	}
-
-	private async void ShowOnSameWave()
-	{
-		var playlist = await _onSameWavePresenter.ShowOnSameWaveAsync();
-		if (playlist is null) return;
-		_playbackCoordinator.SetPlaylistType(PlaylistType.OnSameWave);
-		Title = $"{playlist.PlaylistName} : {playlist.Description}";
-		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
-	}
-
-	private async void ShowMyWave()
-	{
-		var playlist = await _myWavePresenter.StartMyWaveAsync();
-		if (playlist is null) return;
-		_playbackCoordinator.SetPlaylistType(PlaylistType.MyWave);
-		Title = $"{playlist.PlaylistName} : {playlist.Description}";
-		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
-		_myWaveWindowPresenter.ShowWindow(playlist);
-	}
-
-	private async void ShowMyWaveByTrack()
-	{
-		var trackId = _playbackQueue.CurrentTrackId;
-		if (trackId == null)
-		{
-			_playStatusPresenter.SetPlayStatus("Сначала начните воспроизведение трека");
-			return;
-		}
-
-		var playlist = await _myWavePresenter.StartMyWaveFromTrackAsync(trackId);
-		if (playlist is null) return;
-		_playbackCoordinator.SetPlaylistType(PlaylistType.MyWave);
-		Title = $"{playlist.PlaylistName} : {playlist.Description}";
-		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
-		_myWaveWindowPresenter.ShowWindow(playlist);
-	}
-
-	private async void ShowLocalSearchDialog()
-	{
-		try
-		{
-			_localSearchPresenter.ShowLocalSearchDialog();
-
-			if (!_localSearchPresenter.WasCancelled())
-			{
-				var selectedTracks = _localSearchPresenter.GetSelectedTracks();
-				if (selectedTracks.Count > 0)
-				{
-					_trackRepository.UpdateLocalSearchCache(selectedTracks);
-
-					var localSearchPlaylist = new Playlist("Локальный поиск", Enums.PlaylistType.LocalSearch)
-					{
-						Description = "Результаты локального поиска",
-						TrackCount = selectedTracks.Count
-					};
-
-					await _trackRepository.SetPlaylist(localSearchPlaylist);
-					await _tracksPresenter.LoadTracksFor(localSearchPlaylist);
-					Title = $"{localSearchPlaylist.PlaylistName} : {localSearchPlaylist.Description}";
-					_playlistsPresenter.NotifyTransientPlaylistActive(localSearchPlaylist);
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			ex.Handle();
-		}
-	}
-
-	private void ShowAddLocalFolderDialog()
-	{
-		var od = new OpenDialog("Добавить папку", "Выберите папку с музыкой")
-		{
-			CanChooseDirectories = true,
-			CanChooseFiles = false
-		};
-		Application.Run(od);
-
-		if (!od.Canceled && od.FilePath != null)
-		{
-			string path = od.FilePath.ToString()!;
-			_ = Task.Run(async () =>
-			{
-				try
-				{
-					var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
-					await libraryService.AddFolderAsync(path);
-					Application.MainLoop.Invoke(RefreshPlaylistTree);
-				}
-				catch (Exception ex)
-				{
-					Application.MainLoop.Invoke(() => ex.Handle());
-				}
-			});
-		}
-	}
-
-	private async void ShowLocalFolderManagerDialog()
-	{
-		var presenter = ServicesProvider.Ioc.Resolve<ILocalFolderManagerPresenter>();
-		presenter.OnLibraryChanged += RefreshPlaylistTree;
-		try
-		{
-			await presenter.ShowAsync();
-		}
-		finally
-		{
-			presenter.OnLibraryChanged -= RefreshPlaylistTree;
-		}
-	}
-
-	private void ScanLocalLibrary()
-	{
-		_ = Task.Run(async () =>
-		{
-			try
-			{
-				var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
-				int count = await libraryService.ScanAllFoldersAsync();
-				Application.MainLoop.Invoke(() =>
-				{
-					RefreshPlaylistTree();
-					MessageBox.Query("Сканирование завершено", $"Найдено треков: {count}", "OK");
-				});
-			}
-			catch (Exception ex)
-			{
-				Application.MainLoop.Invoke(() => ex.Handle());
-			}
-		});
-	}
-
-	private void RefreshPlaylistTree()
-	{
-		_playlistsPresenter.LoadPlaylistTree();
 	}
 }

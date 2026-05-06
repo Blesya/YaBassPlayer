@@ -9,7 +9,7 @@ public class MyWavePresenter : IMyWavePresenter
 {
 	private readonly IYandexRadioService _radioService;
 	private readonly ITrackInfoProvider _trackInfoProvider;
-	private readonly ITrackRepository _trackRepository;
+	private readonly ITrackRepositoryCache _trackRepositoryCache;
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly IPlayStatusPresenter _playStatusPresenter;
@@ -17,14 +17,14 @@ public class MyWavePresenter : IMyWavePresenter
 	public MyWavePresenter(
 		IYandexRadioService radioService,
 		ITrackInfoProvider trackInfoProvider,
-		ITrackRepository trackRepository,
+		ITrackRepositoryCache trackRepositoryCache,
 		ITracksPresenter tracksPresenter,
 		IPlaybackQueue playbackQueue,
 		IPlayStatusPresenter playStatusPresenter)
 	{
 		_radioService = radioService;
 		_trackInfoProvider = trackInfoProvider;
-		_trackRepository = trackRepository;
+		_trackRepositoryCache = trackRepositoryCache;
 		_tracksPresenter = tracksPresenter;
 		_playbackQueue = playbackQueue;
 		_playStatusPresenter = playStatusPresenter;
@@ -78,7 +78,7 @@ public class MyWavePresenter : IMyWavePresenter
 			foreach (var track in tracks)
 				await _trackInfoProvider.SaveAsync(track);
 
-			_trackRepository.UpdateMyWaveCache(tracks);
+			_trackRepositoryCache.ReplaceMyWaveTracks(tracks);
 
 			var playlist = new Playlist(playlistName, PlaylistType.MyWave)
 			{
@@ -110,7 +110,7 @@ public class MyWavePresenter : IMyWavePresenter
 			foreach (var track in tracks)
 				await _trackInfoProvider.SaveAsync(track);
 
-			_trackRepository.AppendMyWaveCache(tracks);
+			_trackRepositoryCache.AppendMyWaveTracks(tracks);
 			_playbackQueue.AddToQueue(trackIds);
 		}
 		catch (Exception ex)

@@ -5,12 +5,16 @@ namespace YamBassPlayer.Views.Impl;
 
 public class YandexSearchView : Dialog, IYandexSearchView
 {
-	private const string DefaultResultsLabelText = "Результаты: выполните поиск. Пробел отмечает треки.";
+	private const string DefaultResultsLabelText = "Результаты: выполните поиск. Пробел отмечает элементы.";
 	private readonly TextField _searchField;
 	private readonly Button _searchButton;
-	private readonly ListView _resultsListView;
 	private readonly Label _resultsLabel;
-	private List<Track> _searchResults = new();
+	private readonly ListView _tracksListView;
+	private readonly ListView _artistsListView;
+	private readonly ListView _albumsListView;
+	private List<Track> _tracks = new();
+	private List<Artist> _artists = new();
+	private List<Album> _albums = new();
 
 	public event Action<string>? OnSearchClicked;
 	public event Action? OnOkClicked;
@@ -55,15 +59,20 @@ public class YandexSearchView : Dialog, IYandexSearchView
 			Width = Dim.Fill(1)
 		};
 
-		_resultsListView = new ListView
+		_tracksListView = CreateResultsList();
+		_artistsListView = CreateResultsList();
+		_albumsListView = CreateResultsList();
+
+		var tabView = new TabView
 		{
 			X = 1,
 			Y = 5,
 			Width = Dim.Fill(1),
-			Height = Dim.Fill(4),
-			AllowsMarking = true,
-			AllowsMultipleSelection = true
+			Height = Dim.Fill(4)
 		};
+		tabView.AddTab(new TabView.Tab("Треки", _tracksListView), false);
+		tabView.AddTab(new TabView.Tab("Исполнители", _artistsListView), false);
+		tabView.AddTab(new TabView.Tab("Альбомы", _albumsListView), false);
 
 		var okButton = new Button("OK")
 		{
@@ -79,40 +88,52 @@ public class YandexSearchView : Dialog, IYandexSearchView
 		};
 		cancelButton.Clicked += () => OnCancelClicked?.Invoke();
 
-		Add(searchLabel, _searchField, _searchButton, _resultsLabel, _resultsListView, okButton, cancelButton);
+		Add(searchLabel, _searchField, _searchButton, _resultsLabel, tabView, okButton, cancelButton);
 
 		_searchField.SetFocus();
 	}
 
-	public void SetSearchResults(IEnumerable<Track> tracks)
+	private static ListView CreateResultsList()
 	{
-		_searchResults = tracks.ToList();
+		return new ListView
+		{
+			Width = Dim.Fill(),
+			Height = Dim.Fill(),
+			AllowsMarking = true,
+			AllowsMultipleSelection = true
+		};
+	}
 
-		var displayList = _searchResults
+	public void SetSearchResults(SearchResult result)
+	{
+		_tracks = result.Tracks.ToList();
+		_artists = result.Artists.ToList();
+		_albums = result.Albums.ToList();
+
+		_tracksListView.SetSource(_tracks
 			.Select(t => $"{t.Artist} - {t.Title} ({t.Album})")
-			.ToList();
+			.ToList());
 
-		_resultsListView.SetSource(displayList);
+		_artistsListView.SetSource(_artists
+			.Select(a => a.Name)
+			.ToList());
+
+		_albumsListView.SetSource(_albums
+			.Select(a => $"{a.Title} ({a.Year?.ToString() ?? "год неизвестен"})")
+			.ToList());
+
 		UpdateResultsLabel();
 	}
 
-	public IReadOnlyList<Track> GetMarkedTracks()
+	public IReadOnlyList<SearchResultItem> GetMarkedItems()
 	{
-		if (_resultsListView.Source is null)
-		{
-			return [];
-		}
+		var markedItems = new List<SearchResultItem>();
 
-		var markedTracks = new List<Track>();
-		for (int i = 0; i < _searchResults.Count; i++)
-		{
-			if (_resultsListView.Source.IsMarked(i))
-			{
-				markedTracks.Add(_searchResults[i]);
-			}
-		}
+		AddMarkedTracks(_tracksListView, _tracks, markedItems);
+		AddMarkedArtists(_artistsListView, _artists, markedItems);
+		AddMarkedAlbums(_albumsListView, _albums, markedItems);
 
-		return markedTracks;
+		return markedItems;
 	}
 
 	public void SetLoading(bool isLoading)
@@ -142,8 +163,45 @@ public class YandexSearchView : Dialog, IYandexSearchView
 
 	private string GetResultsLabelText()
 	{
-		return _searchResults.Count == 0
+		int itemCount = _tracks.Count + _artists.Count + _albums.Count;
+		return itemCount == 0
 			? "Результаты: ничего не найдено."
-			: $"Результаты: {_searchResults.Count}. Пробел отмечает треки, OK добавляет отмеченные.";
+			: $"Результаты: {itemCount}. Отметьте элементы пробелом и нажмите OK.";
+	}
+
+	private static void AddMarkedTracks(ListView listView, IReadOnlyList<Track> tracks, List<SearchResultItem> markedItems)
+	{
+		if (listView.Source is null)
+			return;
+
+		for (int i = 0; i < tracks.Count; i++)
+		{
+			if (listView.Source.IsMarked(i))
+				markedItems.Add(new TrackItem(tracks[i]));
+		}
+	}
+
+	private static void AddMarkedArtists(ListView listView, IReadOnlyList<Artist> artists, List<SearchResultItem> markedItems)
+	{
+		if (listView.Source is null)
+			return;
+
+		for (int i = 0; i < artists.Count; i++)
+		{
+			if (listView.Source.IsMarked(i))
+				markedItems.Add(new ArtistItem(artists[i]));
+		}
+	}
+
+	private static void AddMarkedAlbums(ListView listView, IReadOnlyList<Album> albums, List<SearchResultItem> markedItems)
+	{
+		if (listView.Source is null)
+			return;
+
+		for (int i = 0; i < albums.Count; i++)
+		{
+			if (listView.Source.IsMarked(i))
+				markedItems.Add(new AlbumItem(albums[i]));
+		}
 	}
 }

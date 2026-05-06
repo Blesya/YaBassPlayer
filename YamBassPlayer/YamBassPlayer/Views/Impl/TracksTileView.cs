@@ -12,6 +12,7 @@ public sealed class TracksTileView : View, ITracksView
 	private readonly record struct TileData(string DisplayNumber, string Artist, string Title, string Album, string TrackId, string? Subtitle = null);
 
 	private readonly List<TileData> _tracks = [];
+	private readonly List<TileData> _allTiles = [];
 	private string? _playingTrackId;
 	private int _selectedIndex;
 	private int _scrollOffset;
@@ -19,6 +20,7 @@ public sealed class TracksTileView : View, ITracksView
 	private bool _isLoadingMore;
 	private int _revealedCount;
 	private object? _animationToken;
+	private string? _filterText;
 
 	private const int MarqueeIntervalMs = 250;
 	private const int MarqueePauseTicks = 4;
@@ -48,15 +50,16 @@ public sealed class TracksTileView : View, ITracksView
 		{
 			StopRevealAnimation();
 			StopMarqueeTimer();
-			_tracks.Clear();
+			_allTiles.Clear();
 			int number = 0;
 			foreach (Track track in tracks)
 			{
 				number++;
 				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
+				_allTiles.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
 			}
 
+			ApplyFilter();
 			_selectedIndex = 0;
 			_scrollOffset = 0;
 			_isLoadingMore = false;
@@ -70,14 +73,15 @@ public sealed class TracksTileView : View, ITracksView
 		Application.MainLoop.Invoke(() =>
 		{
 			int previousCount = _tracks.Count;
-			int number = previousCount;
+			int number = _allTiles.Count;
 			foreach (Track track in tracks)
 			{
 				number++;
 				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_tracks.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
+				_allTiles.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
 			}
 
+			ApplyFilter();
 			_isLoadingMore = false;
 			if (_animationToken == null)
 				StartRevealAnimation(previousCount);
@@ -91,12 +95,45 @@ public sealed class TracksTileView : View, ITracksView
 			StopRevealAnimation();
 			StopMarqueeTimer();
 			_revealedCount = 0;
+			_allTiles.Clear();
 			_tracks.Clear();
 			_selectedIndex = 0;
 			_scrollOffset = 0;
 			ResetMarqueeOffsets();
 			SetNeedsDisplay();
 		});
+	}
+
+	public void SetFilter(string? filter)
+	{
+		_filterText = filter;
+		ApplyFilter();
+		_selectedIndex = 0;
+		_scrollOffset = 0;
+		_revealedCount = _tracks.Count;
+		StopMarqueeTimer();
+		ResetMarqueeOffsets();
+		if (_tracks.Count > 0)
+			StartMarqueeTimer();
+		SetNeedsDisplay();
+	}
+
+	private void ApplyFilter()
+	{
+		if (string.IsNullOrWhiteSpace(_filterText))
+		{
+			_tracks.Clear();
+			_tracks.AddRange(_allTiles);
+		}
+		else
+		{
+			var lower = _filterText.ToLower();
+			_tracks.Clear();
+			_tracks.AddRange(_allTiles.Where(t =>
+				t.Artist.ToLower().Contains(lower) ||
+				t.Title.ToLower().Contains(lower) ||
+				t.Album.ToLower().Contains(lower)));
+		}
 	}
 
 	public void SetPlayingTrackId(string? trackId)

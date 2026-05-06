@@ -220,12 +220,12 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 	{
 		try
 		{
-			float[] fft = new float[128];
 			if (!IsStreamActive)
 			{
-				return fft;
+				return [];
 			}
 
+			float[] fft = new float[128];
 			Bass.ChannelGetData(_currentStream, fft, (int)DataFlags.FFT256);
 			return fft;
 		}
@@ -243,17 +243,17 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 	{
 		try
 		{
-			float[] buffer = new float[sampleCount];
 			if (!IsStreamActive)
-				return buffer;
+				return [];
 
+			float[] buffer = new float[sampleCount];
 			Bass.ChannelGetData(_currentStream, buffer, (int)DataFlags.Float | (sampleCount * 4));
 			return buffer;
 		}
 		catch (Exception ex)
 		{
 			ex.Handle();
-			return new float[sampleCount];
+			return [];
 		}
 	}
 }

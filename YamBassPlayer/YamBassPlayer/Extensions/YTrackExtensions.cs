@@ -42,7 +42,7 @@ public static class YTrackExtensions
 			CoverUrl = coverUrl,
 			RemoteCoverUrl = coverUrl,
 			Genres = genres,
-			SourceType = "yandex",
+			SourceType = SourceIds.Yandex,
 			Artists = artistObjects,
 			AlbumInfo = albumInfo,
 		};

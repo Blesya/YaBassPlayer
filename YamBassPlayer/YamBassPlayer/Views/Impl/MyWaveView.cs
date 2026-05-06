@@ -3,7 +3,7 @@ using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class MyWaveView : Window, IMyWaveView
+public sealed class MyWaveView : Window
 {
 	private const int CoverWidth = 100;
 	private const int CoverHeight = 55;

@@ -4,7 +4,7 @@ using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class DatabaseStatisticsView : Dialog, IDatabaseStatisticsView
+public sealed class DatabaseStatisticsView : Dialog
 {
 	private readonly Label[] _valueLabels = new Label[9];
 

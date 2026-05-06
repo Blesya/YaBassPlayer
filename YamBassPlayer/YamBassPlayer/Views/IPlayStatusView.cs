@@ -23,5 +23,6 @@ public interface IPlayStatusView
 	void SetYandexFavoriteEnabled(bool isEnabled);
 	event Action? OnQueueClicked;
 	event Action? OnPlaybackModeToggled;
+	event Action? OnRestartClicked;
 	void SetPlaybackMode(PlaybackMode mode);
 }

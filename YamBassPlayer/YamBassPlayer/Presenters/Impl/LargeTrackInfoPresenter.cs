@@ -3,6 +3,7 @@ using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Events;
 using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Presenters.Impl;
@@ -12,15 +13,19 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly ICoverProvider _coverProvider;
+	private readonly IEventBus _eventBus;
+	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
 	public LargeTrackInfoPresenter(
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
-		ICoverProvider coverProvider)
+		ICoverProvider coverProvider,
+		IEventBus eventBus)
 	{
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
 		_coverProvider = coverProvider;
+		_eventBus = eventBus;
 	}
 
 	public void ShowLargeTrackInfo()
@@ -36,13 +41,13 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 			LoadTrackInfo(view, currentTrackId);
 		}
 
-		Action<string> onTrackChanged = trackId =>
+		_onTrackChangedHandler = e =>
 			Application.MainLoop.Invoke(() =>
 			{
-				view.SetCurrentTrackId(trackId);
-				LoadTrackInfo(view, trackId);
+				view.SetCurrentTrackId(e.TrackId);
+				LoadTrackInfo(view, e.TrackId);
 			});
-		_playbackQueue.OnTrackChanged += onTrackChanged;
+		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		view.OnTrackActivated = trackId =>
 		{
@@ -62,7 +67,11 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 
 		view.OnClose = () =>
 		{
-			_playbackQueue.OnTrackChanged -= onTrackChanged;
+			if (_onTrackChangedHandler is not null)
+			{
+				_eventBus.Unsubscribe(_onTrackChangedHandler);
+				_onTrackChangedHandler = null;
+			}
 			view.OnTrackActivated = null;
 		};
 		view.Show();

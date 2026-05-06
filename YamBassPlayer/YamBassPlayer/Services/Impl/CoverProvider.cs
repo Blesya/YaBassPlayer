@@ -1,6 +1,7 @@
 using System.Net.Http;
 using Microsoft.Data.Sqlite;
 using YamBassPlayer.Extensions;
+using YamBassPlayer.Models;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
 using Yandex.Music.Api.Models.Track;
@@ -188,7 +189,7 @@ public sealed class CoverProvider : ICoverProvider
 	}
 
 	private static bool IsLocalSourceType(string sourceType)
-		=> string.Equals(sourceType, "local", StringComparison.OrdinalIgnoreCase);
+		=> string.Equals(sourceType, SourceIds.Local, StringComparison.OrdinalIgnoreCase);
 
 	private static string NormalizeCoverUrl(string rawUrl)
 	{

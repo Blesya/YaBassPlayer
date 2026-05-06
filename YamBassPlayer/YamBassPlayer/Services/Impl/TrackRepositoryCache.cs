@@ -9,14 +9,12 @@ public sealed class TrackRepositoryCache : ITrackRepositoryCache
 	private readonly List<string> _localSearchTrackIds = [];
 	private readonly List<string> _yandexSearchTrackIds = [];
 	private readonly List<string> _queueTrackIds = [];
-	private readonly List<Track> _onSameWaveTracks = [];
 	private readonly List<Track> _myWaveTracks = [];
 
 	public IReadOnlyList<string> FavoriteTrackIds => _favoriteTrackIds;
 	public IReadOnlyList<string> LocalSearchTrackIds => _localSearchTrackIds;
 	public IReadOnlyList<string> YandexSearchTrackIds => _yandexSearchTrackIds;
 	public IReadOnlyList<string> QueueTrackIds => _queueTrackIds;
-	public IReadOnlyList<Track> OnSameWaveTracks => _onSameWaveTracks;
 	public IReadOnlyList<Track> MyWaveTracks => _myWaveTracks;
 
 	public void ReplaceFavoriteTrackIds(IEnumerable<string> trackIds)
@@ -58,18 +56,19 @@ public sealed class TrackRepositoryCache : ITrackRepositoryCache
 		_queueTrackIds.AddRange(trackIds);
 	}
 
-	public void ReplaceOnSameWaveTracks(IEnumerable<Track> tracks)
-	{
-		_onSameWaveTracks.Clear();
-		_onSameWaveTracks.AddRange(tracks);
-	}
+	public event Action? MyWaveReplaced;
+	public event Action? MyWaveAppended;
 
 	public void ReplaceMyWaveTracks(IEnumerable<Track> tracks)
 	{
 		_myWaveTracks.Clear();
 		_myWaveTracks.AddRange(tracks);
+		MyWaveReplaced?.Invoke();
 	}
 
 	public void AppendMyWaveTracks(IEnumerable<Track> tracks)
-		=> _myWaveTracks.AddRange(tracks);
+	{
+		_myWaveTracks.AddRange(tracks);
+		MyWaveAppended?.Invoke();
+	}
 }

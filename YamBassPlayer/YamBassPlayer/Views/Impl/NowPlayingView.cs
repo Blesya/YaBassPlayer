@@ -1,10 +1,11 @@
 using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
+using YamBassPlayer.Spectrum;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class NowPlayingView : Window, INowPlayingView
+public sealed class NowPlayingView : Window
 {
 	private readonly Label _artistTitleLabel;
 	private readonly Label _albumLabel;
@@ -14,7 +15,7 @@ public sealed class NowPlayingView : Window, INowPlayingView
 	private int _freqPresetIndex = 4;
 	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
-	public SpectrumMode Mode => _spectrum.Mode;
+	public SpectrumDataType SpectrumDataType => _spectrum.RequiredDataType;
 
 	public Action? OnClose;
 
@@ -67,6 +68,22 @@ public sealed class NowPlayingView : Window, INowPlayingView
 			AutoSize = false
 		};
 
+		_spectrum = new SpectrumView(bars: 300)
+		{
+			X = 0,
+			Y = 4,
+			Width = Dim.Fill(),
+			Height = Dim.Fill(6)
+		};
+		_spectrum.AddRenderer(new BarsRenderer(300) { BarWidth = 4, BarGap = 1 });
+		_spectrum.AddRenderer(new OscilloscopeRenderer());
+		_spectrum.AddRenderer(new PolarWaveformRenderer());
+		_spectrum.AddRenderer(new LissajousScopeRenderer());
+		_spectrum.AddRenderer(new WaterfallRenderer());
+		_spectrum.AddRenderer(new RingsRenderer());
+		_spectrum.AddRenderer(new Tunnel3DRenderer());
+		_spectrum.AddRenderer(new StereoPanScopeRenderer());
+
 		var closeButton = new Button
 		{
 			X = Pos.AnchorEnd(15),
@@ -79,7 +96,7 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		{
 			X = 0,
 			Y = Pos.AnchorEnd(6),
-			Text = "≋ FFT"
+			Text = _spectrum.ModeDisplayName
 		};
 		_modeButton.Clicked += ToggleMode;
 
@@ -90,16 +107,6 @@ public sealed class NowPlayingView : Window, INowPlayingView
 			Text = "▲ 22k"
 		};
 		_freqButton.Clicked += CycleFreq;
-
-		_spectrum = new SpectrumView(bars: 300)
-		{
-			X = 0,
-			Y = 4,
-			Width = Dim.Fill(),
-			Height = Dim.Fill(6),
-			BarWidth = 4,
-			BarGap = 1
-		};
 
 		Add(sepTop, _artistTitleLabel, _albumLabel, sepBottom,
 			_spectrum, _modeButton, _freqButton, closeButton);
@@ -123,26 +130,17 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		});
 	}
 
-	public void SetFftData(float[] fft)
+	public void SetSpectrumData(float[] data)
 	{
-		_spectrum.SetFftData(fft);
-	}
-
-	public void SetWaveformData(float[] samples)
-	{
-		_spectrum.SetWaveformData(samples);
+		_spectrum.SetData(data);
 	}
 
 	public void SetListenCount(int count) { }
 
 	private void ToggleMode()
 	{
-		_spectrum.Mode = _spectrum.Mode == SpectrumMode.Bars
-			? SpectrumMode.Oscilloscope
-			: SpectrumMode.Bars;
-		_modeButton.Text = _spectrum.Mode == SpectrumMode.Oscilloscope
-			? "〜 Осц."
-			: "≋ FFT";
+		_spectrum.CycleMode();
+		_modeButton.Text = _spectrum.ModeDisplayName;
 	}
 
 	private void CycleFreq()

@@ -13,6 +13,13 @@ public interface ILocalLibraryService
 	Task<IReadOnlyList<Track>> SearchTracksAsync(string query);
 
 	/// <summary>
+	/// Builds a <see cref="Track"/> from a local audio file path by reading embedded ID3 tags
+	/// (falling back to filename heuristics), including embedded/folder cover extraction.
+	/// The single owner of local file → <see cref="Track"/> parsing.
+	/// </summary>
+	Track ParseTrackFromFile(string filePath);
+
+	/// <summary>
 	/// Returns all distinct artists found in the local library, with their track counts,
 	/// ordered alphabetically. Tracks with no artist tag are grouped under "Неизвестный исполнитель".
 	/// Optionally filtered to a single registered folder.

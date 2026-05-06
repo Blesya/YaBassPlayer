@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Services.Impl;
 
@@ -6,7 +7,7 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 {
 	private readonly SqliteConnection _connection;
 	private readonly HashSet<string> _favoriteTrackIds = new();
-	public string SourceId => "local";
+	public string SourceId => SourceIds.Local;
 
 	public event Action<string>? OnFavoriteAdded;
 	public event Action<string>? OnFavoriteRemoved;
@@ -53,8 +54,12 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 
 	public async Task AddToFavorites(string trackId)
 	{
-		if (_favoriteTrackIds.Contains(trackId))
-			return;
+		lock (_favoriteTrackIds)
+		{
+			if (_favoriteTrackIds.Contains(trackId))
+				return;
+			_favoriteTrackIds.Add(trackId);
+		}
 
 		await Task.Run(() =>
 		{
@@ -71,15 +76,17 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 			cmd.ExecuteNonQuery();
 		});
 
-		lock (_favoriteTrackIds)
-			_favoriteTrackIds.Add(trackId);
 		OnFavoriteAdded?.Invoke(trackId);
 	}
 
 	public async Task RemoveFromFavorites(string trackId)
 	{
-		if (!_favoriteTrackIds.Contains(trackId))
-			return;
+		lock (_favoriteTrackIds)
+		{
+			if (!_favoriteTrackIds.Contains(trackId))
+				return;
+			_favoriteTrackIds.Remove(trackId);
+		}
 
 		await Task.Run(() =>
 		{
@@ -91,8 +98,6 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 			cmd.ExecuteNonQuery();
 		});
 
-		lock (_favoriteTrackIds)
-			_favoriteTrackIds.Remove(trackId);
 		OnFavoriteRemoved?.Invoke(trackId);
 	}
 
