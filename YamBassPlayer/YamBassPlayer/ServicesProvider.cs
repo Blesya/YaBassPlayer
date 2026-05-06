@@ -28,25 +28,23 @@ public static class ServicesProvider
 		builder.RegisterInstance(authService.Storage).As<AuthStorage>().SingleInstance();
 
 		// Регистрация сервисов
-		builder.RegisterType<AudioPlayerService>().As<IAudioPlayer>().SingleInstance();
-		builder.RegisterType<BassEqualizer>().As<IBassEqualizer>().SingleInstance();
-		builder.RegisterType<DatabaseProvider>().As<IDatabaseProvider>().SingleInstance();
-		builder.RegisterType<DbWriteLock>().As<IDbWriteLock>().SingleInstance();
-		builder.RegisterType<YandexRadioService>().As<IYandexRadioService>().SingleInstance();
+		builder.RegisterSingleton<IAudioPlayer, AudioPlayerService>();
+		builder.RegisterSingleton<IBassEqualizer, BassEqualizer>();
+		builder.RegisterSingleton<IDatabaseProvider, DatabaseProvider>();
+		builder.RegisterSingleton<IDbWriteLock, DbWriteLock>();
+		builder.RegisterSingleton<IYandexRadioService, YandexRadioService>();
 			
-		builder.Register(c => c.Resolve<IDatabaseProvider>().Connection)
-			.As<SqliteConnection>()
-			.SingleInstance();
+		builder.RegisterSingleton<SqliteConnection>(c => c.Resolve<IDatabaseProvider>().Connection);
 			
-		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
-		builder.Register(c => new LocalLibraryService(
+		builder.RegisterSingleton<IHistoryService, HistoryService>();
+		builder.RegisterSingleton<ILocalLibraryService>(c => new LocalLibraryService(
 			c.Resolve<SqliteConnection>(),
 			CoversFolder,
 			c.Resolve<IDbWriteLock>()
-		)).As<ILocalLibraryService>().SingleInstance();
-		builder.RegisterType<RecommendationService>().As<IRecommendationService>().SingleInstance();
-		builder.RegisterType<TrackRepositoryCache>().As<ITrackRepositoryCache>().SingleInstance();
-		builder.RegisterType<PlaybackCoordinator>().As<IPlaybackCoordinator>().SingleInstance();
+		));
+		builder.RegisterSingleton<IRecommendationService, RecommendationService>();
+		builder.RegisterSingleton<ITrackRepositoryCache, TrackRepositoryCache>();
+		builder.RegisterSingleton<IPlaybackCoordinator, PlaybackCoordinator>();
 		builder.RegisterType<LocalFavoriteService>()
 			.As<ILocalFavoriteService>()
 			.As<ITrackFavoriteSourceService>()
@@ -55,34 +53,34 @@ public static class ServicesProvider
 			.As<IYandexFavoriteService>()
 			.As<ITrackFavoriteSourceService>()
 			.SingleInstance();
-		builder.RegisterType<TrackFavoriteService>().As<ITrackFavoriteService>().SingleInstance();
-		builder.RegisterType<ListenTimer>().As<IListenTimer>().SingleInstance();
-		builder.RegisterType<PlaybackQueue>().As<IPlaybackQueue>().SingleInstance();
+		builder.RegisterSingleton<ITrackFavoriteService, TrackFavoriteService>();
+		builder.RegisterSingleton<IListenTimer, ListenTimer>();
+		builder.RegisterSingleton<IPlaybackQueue, PlaybackQueue>();
 			
-		builder.Register(c => new TrackFileProvider(
+		builder.RegisterSingleton<ITrackFileProvider>(c => new TrackFileProvider(
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
 			TracksFolder
-		)).As<ITrackFileProvider>().SingleInstance();
+		));
 
-		builder.Register(c => new CoverProvider(
+		builder.RegisterSingleton<ICoverProvider>(c => new CoverProvider(
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
 			CoversFolder,
 			c.Resolve<SqliteConnection>()
-		)).As<ICoverProvider>().SingleInstance();
+		));
 			
-		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
-		builder.RegisterType<SourceSearchService>().As<ISourceSearchService>().SingleInstance();
-		builder.RegisterType<LyricsService>().As<ILyricsService>().SingleInstance();
-		builder.RegisterType<PlaylistTreeComposer>().As<IPlaylistTreeComposer>().SingleInstance();
+		builder.RegisterSingleton<ITrackInfoProvider, TrackInfoProvider>();
+		builder.RegisterSingleton<ISourceSearchService, SourceSearchService>();
+		builder.RegisterSingleton<ILyricsService, LyricsService>();
+		builder.RegisterSingleton<IPlaylistTreeComposer, PlaylistTreeComposer>();
 		
-		builder.Register(c => new DatabaseStatisticsService(
+		builder.RegisterSingleton<IDatabaseStatisticsService>(c => new DatabaseStatisticsService(
 			c.Resolve<SqliteConnection>(),
 			TracksFolder
-		)).As<IDatabaseStatisticsService>().SingleInstance();
+		));
 			
-		builder.Register(c => new TrackRepository(
+		builder.RegisterSingleton<ITrackRepository>(c => new TrackRepository(
 			c.Resolve<IMusicSourceRegistry>(),
 			c.Resolve<ITrackInfoProvider>(),
 			TracksFolder,
@@ -91,17 +89,17 @@ public static class ServicesProvider
 			c.Resolve<IYandexFavoriteService>(),
 			c.Resolve<ITrackRepositoryCache>(),
 			c.Resolve<ILocalLibraryService>()
-		)).As<ITrackRepository>().SingleInstance();
+		));
 
 		// Регистрация источников музыки
-		builder.RegisterType<MusicSourceRegistry>().As<IMusicSourceRegistry>().SingleInstance();
+		builder.RegisterSingleton<IMusicSourceRegistry, MusicSourceRegistry>();
 
-		builder.Register(c => new YandexMusicSource(
+		builder.RegisterNamedSingleton<IMusicSource>("yandex", c => new YandexMusicSource(
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
 			TracksFolder,
 			CoversFolder
-		)).Named<IMusicSource>("yandex").As<IMusicSource>().SingleInstance();
+		));
 
 		builder.RegisterType<LocalMusicSource>().Named<IMusicSource>("local").As<IMusicSource>().SingleInstance();
 
@@ -113,27 +111,27 @@ public static class ServicesProvider
 		builder.RegisterType<LocalSearchView>().As<ILocalSearchView>();
 		builder.RegisterType<YandexSearchView>().As<IYandexSearchView>();
 		builder.RegisterType<LargeTrackInfoView>().As<ILargeTrackInfoView>();
-		builder.RegisterType<LocalFolderManagerView>().As<ILocalFolderManagerView>().SingleInstance();
+		builder.RegisterSingleton<ILocalFolderManagerView, LocalFolderManagerView>();
 
 		// Регистрация Presenters
-		builder.RegisterType<PlayStatusPresenter>().As<IPlayStatusPresenter>().SingleInstance();
-		builder.RegisterType<PlaylistsPresenter>().As<IPlaylistsPresenter>().SingleInstance();
-		builder.RegisterType<TracksPresenter>().As<ITracksPresenter>().SingleInstance();
-		builder.RegisterType<TrackInfoPanelPresenter>().As<ITrackInfoPanelPresenter>().SingleInstance();
-		builder.RegisterType<EqualizerPresenter>().As<IEqualizerPresenter>().SingleInstance();
-		builder.RegisterType<LocalSearchPresenter>().As<ILocalSearchPresenter>().SingleInstance();
-		builder.RegisterType<YandexSearchPresenter>().As<IYandexSearchPresenter>().SingleInstance();
-		builder.RegisterType<DatabaseStatisticsPresenter>().As<IDatabaseStatisticsPresenter>().SingleInstance();
-		builder.RegisterType<NowPlayingPresenter>().As<INowPlayingPresenter>().SingleInstance();
-		builder.RegisterType<LargeTrackInfoPresenter>().As<ILargeTrackInfoPresenter>().SingleInstance();
-		builder.RegisterType<OnSameWavePresenter>().As<IOnSameWavePresenter>().SingleInstance();
-		builder.RegisterType<RecommendationGraphPresenter>().As<IRecommendationGraphPresenter>().SingleInstance();
-		builder.RegisterType<MyWavePresenter>().As<IMyWavePresenter>().SingleInstance();
-		builder.RegisterType<MyWaveWindowPresenter>().As<IMyWaveWindowPresenter>().SingleInstance();
-		builder.RegisterType<LocalFolderManagerPresenter>().As<ILocalFolderManagerPresenter>().SingleInstance();
+		builder.RegisterSingleton<IPlayStatusPresenter, PlayStatusPresenter>();
+		builder.RegisterSingleton<IPlaylistsPresenter, PlaylistsPresenter>();
+		builder.RegisterSingleton<ITracksPresenter, TracksPresenter>();
+		builder.RegisterSingleton<ITrackInfoPanelPresenter, TrackInfoPanelPresenter>();
+		builder.RegisterSingleton<IEqualizerPresenter, EqualizerPresenter>();
+		builder.RegisterSingleton<ILocalSearchPresenter, LocalSearchPresenter>();
+		builder.RegisterSingleton<IYandexSearchPresenter, YandexSearchPresenter>();
+		builder.RegisterSingleton<IDatabaseStatisticsPresenter, DatabaseStatisticsPresenter>();
+		builder.RegisterSingleton<INowPlayingPresenter, NowPlayingPresenter>();
+		builder.RegisterSingleton<ILargeTrackInfoPresenter, LargeTrackInfoPresenter>();
+		builder.RegisterSingleton<IOnSameWavePresenter, OnSameWavePresenter>();
+		builder.RegisterSingleton<IRecommendationGraphPresenter, RecommendationGraphPresenter>();
+		builder.RegisterSingleton<IMyWavePresenter, MyWavePresenter>();
+		builder.RegisterSingleton<IMyWaveWindowPresenter, MyWaveWindowPresenter>();
+		builder.RegisterSingleton<ILocalFolderManagerPresenter, LocalFolderManagerPresenter>();
 
 		// Регистрация MainWindow
-		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();
+		builder.RegisterSingletonSelf<MainWindow>();
 
 		Ioc = builder.Build();
 	}
