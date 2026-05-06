@@ -35,6 +35,9 @@ public sealed class MainWindow : Window
 	private SplashScreenView? _splashScreen;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
+	private Button _spectrumFreqButton = null!;
+	private int _freqPresetIndex = 4;
+	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
 	public MainWindow(
 		IPlaylistsPresenter playlistsPresenter,
@@ -119,12 +122,21 @@ public sealed class MainWindow : Window
 		{
 			X = 0,
 			Y = Pos.Top(playStatusView) - 1,
-			Width = 29,
+			Width = 14,
 			Text = "≋ FFT"
 		};
 		_spectrumModeButton.Clicked += ToggleSpectrumMode;
 
-		Add(playlistsView, _spectrum, _spectrumModeButton, tracksView, trackInfoPanelView, playStatusView);
+		_spectrumFreqButton = new Button
+		{
+			X = Pos.Right(_spectrumModeButton),
+			Y = Pos.Top(playStatusView) - 1,
+			Width = 15,
+			Text = "▲ 22k"
+		};
+		_spectrumFreqButton.Clicked += CycleSpectrumFreq;
+
+		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, tracksView, trackInfoPanelView, playStatusView);
 
 		_playbackQueue.OnTrackChanged += OnTrackForPlaySelected;
 
@@ -296,6 +308,14 @@ new MenuItem("≋ Спектр: FFT / Осциллограмм", "", ToggleSpect
 		_spectrumModeButton.Text = _spectrum.Mode == YamBassPlayer.Enums.SpectrumMode.Oscilloscope
 			? "〜 Осц."
 			: "≋ FFT";
+	}
+
+	private void CycleSpectrumFreq()
+	{
+		_freqPresetIndex = (_freqPresetIndex + 1) % FreqPresets.Length;
+		int freq = FreqPresets[_freqPresetIndex];
+		_spectrum.MaxFrequencyHz = freq;
+		_spectrumFreqButton.Text = freq >= 22050 ? "▲ 22k" : $"▲ {freq / 1000}k";
 	}
 
 	private void Stop()

@@ -29,114 +29,10 @@ public sealed class HistoryService : IHistoryService
 				id               INTEGER PRIMARY KEY AUTOINCREMENT,
 				trackId          TEXT    NOT NULL,
 				utcTime          TEXT    NOT NULL,
-				utcOffsetMinutes INTEGER NOT NULL
+				utcOffsetMinutes INTEGER NOT NULL,
+				source           TEXT    NOT NULL DEFAULT 'Regular'
 			);
-			""";
-		createCmd.ExecuteNonQuery();
 
-		ApplyMigrations();
-	}
-
-	private void ApplyMigrations()
-	{
-		int schemaVersion = GetSchemaVersion();
-
-		if (schemaVersion < 1)
-		{
-			MigrateToVersion1();
-			SetSchemaVersion(1);
-			schemaVersion = 1;
-		}
-
-		if (schemaVersion < 2)
-		{
-			MigrateToVersion2();
-			SetSchemaVersion(2);
-			schemaVersion = 2;
-		}
-
-		if (schemaVersion < 3)
-		{
-			MigrateToVersion3();
-			SetSchemaVersion(3);
-			schemaVersion = 3;
-		}
-
-		if (schemaVersion < 4)
-		{
-			MigrateToVersion4();
-			SetSchemaVersion(4);
-			schemaVersion = 4;
-		}
-
-		if (schemaVersion < 5)
-		{
-			MigrateToVersion5();
-			SetSchemaVersion(5);
-			schemaVersion = 5;
-		}
-
-		if (schemaVersion != CurrentSchemaVersion)
-		{
-			throw new InvalidOperationException(
-				$"Unsupported listensHistory schema version: {schemaVersion}. Expected {CurrentSchemaVersion}.");
-		}
-	}
-
-	private int GetSchemaVersion()
-	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = "PRAGMA user_version;";
-		return Convert.ToInt32(cmd.ExecuteScalar());
-	}
-
-	private void SetSchemaVersion(int version)
-	{
-		using var cmd = _connection.CreateCommand();
-		cmd.CommandText = $"PRAGMA user_version = {version};";
-		cmd.ExecuteNonQuery();
-	}
-
-	private void MigrateToVersion1()
-	{
-		if (HasColumn("listensHistory", "source"))
-			return;
-
-		using var alterCmd = _connection.CreateCommand();
-		alterCmd.CommandText =
-			"""
-			ALTER TABLE listensHistory ADD COLUMN source TEXT NOT NULL DEFAULT 'Regular';
-			""";
-		alterCmd.ExecuteNonQuery();
-	}
-
-	private void MigrateToVersion2()
-	{
-		// Extend Tracks table with new columns — guard each with HasColumn to survive re-runs.
-		var newTrackColumns = new[]
-		{
-			("DurationMs", "INTEGER"),
-			("Year",        "INTEGER"),
-			("CoverUrl",    "TEXT"),
-			("Genres",      "TEXT"),
-			("AlbumId",     "TEXT"),
-			("SourceType",  "TEXT DEFAULT 'yandex'"),
-		};
-
-		foreach (var (column, definition) in newTrackColumns)
-		{
-			if (HasColumn("Tracks", column))
-				continue;
-
-			using var alterCmd = _connection.CreateCommand();
-			alterCmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {column} {definition};";
-			alterCmd.ExecuteNonQuery();
-		}
-
-		// New tables — IF NOT EXISTS guards make these idempotent.
-		using var createCmd = _connection.CreateCommand();
-		createCmd.CommandText =
-			"""
 			CREATE TABLE IF NOT EXISTS Artists (
 				Id          TEXT PRIMARY KEY,
 				Name        TEXT NOT NULL,
@@ -160,16 +56,7 @@ public sealed class HistoryService : IHistoryService
 				ArtistId TEXT NOT NULL,
 				PRIMARY KEY (TrackId, ArtistId)
 			);
-			""";
-		createCmd.ExecuteNonQuery();
-	}
 
-	private void MigrateToVersion3()
-	{
-		// New table for locally scanned music folders.
-		using var createCmd = _connection.CreateCommand();
-		createCmd.CommandText =
-			"""
 			CREATE TABLE IF NOT EXISTS LocalFolders (
 			    Id           INTEGER PRIMARY KEY AUTOINCREMENT,
 			    Path         TEXT    UNIQUE NOT NULL,
@@ -180,95 +67,14 @@ public sealed class HistoryService : IHistoryService
 			""";
 		createCmd.ExecuteNonQuery();
 
-		// Link each track back to its source folder.
-		if (!HasColumn("Tracks", "FolderId"))
-		{
-			using var alterCmd = _connection.CreateCommand();
-			alterCmd.CommandText = "ALTER TABLE Tracks ADD COLUMN FolderId INTEGER;";
-			alterCmd.ExecuteNonQuery();
-		}
+		SetSchemaVersion(CurrentSchemaVersion);
 	}
 
-	private void MigrateToVersion4()
+	private void SetSchemaVersion(int version)
 	{
-		var newTrackColumns = new[]
-		{
-			("SourceTrackId", "TEXT"),
-			("LocalFilePath", "TEXT"),
-		};
-
-		foreach (var (column, definition) in newTrackColumns)
-		{
-			if (HasColumn("Tracks", column))
-				continue;
-
-			using var alterCmd = _connection.CreateCommand();
-			alterCmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {column} {definition};";
-			alterCmd.ExecuteNonQuery();
-		}
-
-		using var backfillCmd = _connection.CreateCommand();
-		backfillCmd.CommandText =
-			"""
-			UPDATE Tracks
-			SET SourceTrackId = COALESCE(NULLIF(SourceTrackId, ''), TrackId);
-
-			UPDATE Tracks
-			SET LocalFilePath = TrackId
-			WHERE COALESCE(SourceType, 'yandex') = 'local'
-			  AND (LocalFilePath IS NULL OR LocalFilePath = '');
-			""";
-		backfillCmd.ExecuteNonQuery();
-	}
-
-	private void MigrateToVersion5()
-	{
-		var newTrackColumns = new[]
-		{
-			("RemoteCoverUrl", "TEXT"),
-			("LocalCoverPath", "TEXT"),
-		};
-
-		foreach (var (column, definition) in newTrackColumns)
-		{
-			if (HasColumn("Tracks", column))
-				continue;
-
-			using var alterCmd = _connection.CreateCommand();
-			alterCmd.CommandText = $"ALTER TABLE Tracks ADD COLUMN {column} {definition};";
-			alterCmd.ExecuteNonQuery();
-		}
-
-		using var backfillCmd = _connection.CreateCommand();
-		backfillCmd.CommandText =
-			"""
-			UPDATE Tracks
-			SET RemoteCoverUrl = COALESCE(NULLIF(RemoteCoverUrl, ''), CoverUrl)
-			WHERE COALESCE(SourceType, 'yandex') <> 'local'
-			  AND CoverUrl IS NOT NULL
-			  AND CoverUrl <> '';
-
-			UPDATE Tracks
-			SET LocalCoverPath = COALESCE(NULLIF(LocalCoverPath, ''), CoverUrl)
-			WHERE COALESCE(SourceType, 'yandex') = 'local'
-			  AND CoverUrl IS NOT NULL
-			  AND CoverUrl <> '';
-			""";
-		backfillCmd.ExecuteNonQuery();
-	}
-
-	private bool HasColumn(string tableName, string columnName)
-	{
-		using var checkCmd = _connection.CreateCommand();
-		checkCmd.CommandText = $"PRAGMA table_info({tableName});";
-		using var reader = checkCmd.ExecuteReader();
-		while (reader.Read())
-		{
-			if (reader.GetString(1) == columnName)
-				return true;
-		}
-
-		return false;
+		using var cmd = _connection.CreateCommand();
+		cmd.CommandText = $"PRAGMA user_version = {version};";
+		cmd.ExecuteNonQuery();
 	}
 
 	public void LogListen(string trackId, ListenSource source)

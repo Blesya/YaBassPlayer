@@ -10,6 +10,9 @@ public sealed class NowPlayingView : Window, INowPlayingView
 	private readonly Label _albumLabel;
 	private readonly SpectrumView _spectrum;
 	private readonly Button _modeButton;
+	private readonly Button _freqButton;
+	private int _freqPresetIndex = 4;
+	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
 	public SpectrumMode Mode => _spectrum.Mode;
 
@@ -80,6 +83,14 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		};
 		_modeButton.Clicked += ToggleMode;
 
+		_freqButton = new Button
+		{
+			X = Pos.Right(_modeButton) + 1,
+			Y = Pos.AnchorEnd(6),
+			Text = "▲ 22k"
+		};
+		_freqButton.Clicked += CycleFreq;
+
 		_spectrum = new SpectrumView(bars: 300)
 		{
 			X = 0,
@@ -91,7 +102,7 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		};
 
 		Add(sepTop, _artistTitleLabel, _albumLabel, sepBottom,
-			_spectrum, _modeButton, closeButton);
+			_spectrum, _modeButton, _freqButton, closeButton);
 
 		KeyPress += e =>
 		{
@@ -132,6 +143,14 @@ public sealed class NowPlayingView : Window, INowPlayingView
 		_modeButton.Text = _spectrum.Mode == SpectrumMode.Oscilloscope
 			? "〜 Осц."
 			: "≋ FFT";
+	}
+
+	private void CycleFreq()
+	{
+		_freqPresetIndex = (_freqPresetIndex + 1) % FreqPresets.Length;
+		int freq = FreqPresets[_freqPresetIndex];
+		_spectrum.MaxFrequencyHz = freq;
+		_freqButton.Text = freq >= 22050 ? "▲ 22k" : $"▲ {freq / 1000}k";
 	}
 
 	public void Show()

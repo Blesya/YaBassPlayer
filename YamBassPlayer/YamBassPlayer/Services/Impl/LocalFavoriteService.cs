@@ -15,7 +15,7 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 	{
 		_connection = connection;
 		EnsureSchema();
-		LoadFavorites();
+		Task.Run(LoadFavorites);
 	}
 
 	private void EnsureSchema()
@@ -40,13 +40,15 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 		using var reader = cmd.ExecuteReader();
 		while (reader.Read())
 		{
-			_favoriteTrackIds.Add(reader.GetString(0));
+			lock (_favoriteTrackIds)
+				_favoriteTrackIds.Add(reader.GetString(0));
 		}
 	}
 
 	public bool IsTrackFavorite(string trackId)
 	{
-		return _favoriteTrackIds.Contains(trackId);
+		lock (_favoriteTrackIds)
+			return _favoriteTrackIds.Contains(trackId);
 	}
 
 	public async Task AddToFavorites(string trackId)
@@ -69,7 +71,8 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 			cmd.ExecuteNonQuery();
 		});
 
-		_favoriteTrackIds.Add(trackId);
+		lock (_favoriteTrackIds)
+			_favoriteTrackIds.Add(trackId);
 		OnFavoriteAdded?.Invoke(trackId);
 	}
 
@@ -88,7 +91,8 @@ public sealed class LocalFavoriteService : ILocalFavoriteService
 			cmd.ExecuteNonQuery();
 		});
 
-		_favoriteTrackIds.Remove(trackId);
+		lock (_favoriteTrackIds)
+			_favoriteTrackIds.Remove(trackId);
 		OnFavoriteRemoved?.Invoke(trackId);
 	}
 

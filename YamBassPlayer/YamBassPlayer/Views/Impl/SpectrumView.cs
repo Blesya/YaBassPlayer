@@ -10,6 +10,7 @@ public sealed class SpectrumView : View
     public int BarWidth { get; set; } = 1;
     public int BarGap { get; set; } = 0;
     public SpectrumMode Mode { get; set; } = SpectrumMode.Bars;
+    public int MaxFrequencyHz { get; set; } = 22050;
 
     private float[] _fft = new float[128];
     private float[] _waveform = [];
@@ -73,7 +74,8 @@ public sealed class SpectrumView : View
             driver.AddRune('─');
         }
 
-        float[] smoothed = SmoothSamples(_waveform, width, windowSize: 5);
+        float[] filtered = ApplyLowPass(_waveform, MaxFrequencyHz);
+        float[] smoothed = SmoothSamples(filtered, width, windowSize: 5);
 
         // Работаем в пространстве полу-строк (0..halfHeight*2-1), чтобы
         // DrawVerticalSegment мог корректно делить на 2 для символьных строк.
@@ -139,6 +141,20 @@ public sealed class SpectrumView : View
         return result;
     }
 
+    // Простой однополюсный low-pass фильтр для ограничения частотного диапазона осциллограммы.
+    private static float[] ApplyLowPass(float[] samples, int maxFreqHz)
+    {
+        if (maxFreqHz >= 22050)
+            return samples;
+
+        float alpha = Math.Clamp(maxFreqHz / 22050f, 0.01f, 1f);
+        float[] output = new float[samples.Length];
+        output[0] = samples[0];
+        for (int i = 1; i < samples.Length; i++)
+            output[i] = output[i - 1] + alpha * (samples[i] - output[i - 1]);
+        return output;
+    }
+
     // Рисует вертикальный отрезок в столбце x от yTop до yBottom используя
     // полу-блочные символы (▀/▄/█) для двойного вертикального разрешения.
     private void DrawVerticalSegment(ConsoleDriver driver, int x, int yTop, int yBottom, int height, Color color)
@@ -194,13 +210,15 @@ public sealed class SpectrumView : View
 
         if (numBars <= 0) return;
 
-        float fftStepF = (float)_fft.Length / numBars;
+        float ratio = Math.Clamp(MaxFrequencyHz / 22050f, 0.05f, 1f);
+        int usableBins = Math.Max(1, (int)(_fft.Length * ratio));
+        float fftStepF = (float)usableBins / numBars;
 
         for (int i = 0; i < numBars; i++)
         {
             int start = (int)(i * fftStepF);
             int end = Math.Max(start + 1, (int)((i + 1) * fftStepF));
-            end = Math.Min(end, _fft.Length);
+            end = Math.Min(end, usableBins);
 
             var rawValue = 0f;
             for (int j = start; j < end; j++)
