@@ -18,6 +18,7 @@
         <PackageReference Include="TagLibSharp" Version="2.3.0" />
         <PackageReference Include="Terminal.Gui" Version="1.19.0" />
         <PackageReference Include="Autofac" Version="8.1.1" />
+        <PackageReference Include="Microsoft.ML" Version="5.0.0" />
     </ItemGroup>
 
     <ItemGroup>

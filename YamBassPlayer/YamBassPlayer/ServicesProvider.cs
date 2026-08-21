@@ -88,6 +88,12 @@ public static class ServicesProvider
 		builder.RegisterType<GlobalArtistsBranchBuilder>().As<ITreeBranchBuilder>().SingleInstance();
 		builder.RegisterType<PlaylistTreeComposer>().As<IPlaylistTreeComposer>().SingleInstance();
 		builder.RegisterType<TrackSourceDetector>().As<ITrackSourceDetector>().SingleInstance();
+
+		var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+		builder.Register(c => new NextTrackPredictor(
+			Path.Combine(baseDirectory, "next_model.zip"),
+			Path.Combine(baseDirectory, "next_key_map.txt")
+		)).As<INextTrackPredictor>().SingleInstance();
 		
 		builder.Register(c => new DatabaseStatisticsService(
 			c.Resolve<SqliteConnection>(),

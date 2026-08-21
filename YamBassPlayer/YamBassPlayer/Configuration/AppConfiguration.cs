@@ -110,6 +110,38 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>Возвращает сохранённый индекс визуализации (режима спектра). -1 — не сохранялся (по умолчанию).</summary>
+	public static int GetSpectrumMode()
+	{
+		try { return LoadJsonNode()["Spectrum"]?["Mode"]?.GetValue<int>() ?? -1; }
+		catch { return -1; }
+	}
+
+	public static void SaveSpectrumMode(int modeIndex)
+	{
+		var root = LoadJsonNode();
+		var section = root["Spectrum"]?.AsObject() ?? new JsonObject();
+		section["Mode"] = modeIndex;
+		root["Spectrum"] = section;
+		SaveJsonNode(root);
+	}
+
+	/// <summary>Возвращает сохранённую частоту визуализации (Гц). 0 — не сохранялась (по умолчанию 22050).</summary>
+	public static int GetSpectrumFrequency()
+	{
+		try { return LoadJsonNode()["Spectrum"]?["Frequency"]?.GetValue<int>() ?? 0; }
+		catch { return 0; }
+	}
+
+	public static void SaveSpectrumFrequency(int frequencyHz)
+	{
+		var root = LoadJsonNode();
+		var section = root["Spectrum"]?.AsObject() ?? new JsonObject();
+		section["Frequency"] = frequencyHz;
+		root["Spectrum"] = section;
+		SaveJsonNode(root);
+	}
+
 	/// <summary>
 	/// Returns the list of local music folders from configuration.
 	/// Reads <c>LocalMusic:Folders</c> as a JSON string array, or a single

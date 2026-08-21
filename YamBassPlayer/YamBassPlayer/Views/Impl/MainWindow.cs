@@ -2,6 +2,7 @@
 using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Presenters;
+using YamBassPlayer.Configuration;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
 using YamBassPlayer.Spectrum;
@@ -129,6 +130,8 @@ public sealed class MainWindow : Window
 		};
 		_spectrumFreqButton.Clicked += CycleSpectrumFreq;
 
+		RestoreSpectrumSettings();
+
 		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, _filterField, tracksView, trackInfoPanelView, playStatusView, commandInputView);
 
 		// ── Wire presenter events via coordinator ──────────────────────
@@ -182,7 +185,9 @@ public sealed class MainWindow : Window
 			}),
 			new MenuBarItem("Аудио", new[]
 			{
-				new MenuItem("Эквалайзер", "", _coordinator.ShowEqualizer)
+				new MenuItem("Эквалайзер", "", _coordinator.ShowEqualizer),
+				null,
+				new MenuItem("Рекомендовать следующий", "", _coordinator.RecommendNextTrack)
 			}),
 			new MenuBarItem("Инструменты", new[]
 			{
@@ -215,10 +220,30 @@ public sealed class MainWindow : Window
 			: "Вид треков: Таблица";
 	}
 
+	private void RestoreSpectrumSettings()
+	{
+		int savedMode = AppConfiguration.GetSpectrumMode();
+		if (savedMode >= 0)
+			_spectrum.SelectMode(savedMode);
+
+		int savedFreq = AppConfiguration.GetSpectrumFrequency();
+		if (savedFreq > 0)
+		{
+			_freqPresetIndex = Math.Max(0, Array.IndexOf(FreqPresets, savedFreq));
+			_spectrum.MaxFrequencyHz = savedFreq;
+		}
+
+		_spectrumModeButton.Text = _spectrum.ModeDisplayName;
+		_spectrumFreqButton.Text = _spectrum.MaxFrequencyHz >= 22050
+			? "▲ 22k"
+			: $"▲ {_spectrum.MaxFrequencyHz / 1000}k";
+	}
+
 	private void ToggleSpectrumMode()
 	{
 		_spectrum.CycleMode();
 		_spectrumModeButton.Text = _spectrum.ModeDisplayName;
+		AppConfiguration.SaveSpectrumMode(_spectrum.CurrentModeIndex);
 	}
 
 	private void CycleSpectrumFreq()
@@ -227,5 +252,6 @@ public sealed class MainWindow : Window
 		int freq = FreqPresets[_freqPresetIndex];
 		_spectrum.MaxFrequencyHz = freq;
 		_spectrumFreqButton.Text = freq >= 22050 ? "▲ 22k" : $"▲ {freq / 1000}k";
+		AppConfiguration.SaveSpectrumFrequency(freq);
 	}
 }

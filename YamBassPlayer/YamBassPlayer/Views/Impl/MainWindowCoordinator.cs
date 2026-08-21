@@ -44,6 +44,9 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly ITrackSourceDetector _trackSourceDetector;
 	private CancellationTokenSource? _startupCts;
 	private Window _window = null!; // Set later via SetWindow()
+	private string? _currentTrackId;
+	private string? _previousTrackId;
+	private string? _previous2Id;
 
 	public MainWindowCoordinator(
 		IPlaylistsPresenter playlistsPresenter,
@@ -122,6 +125,13 @@ public sealed class MainWindowCoordinator : IDisposable
 		_playStatusPresenter.OnRestartClicked += RestartTrack;
 
 		_playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
+
+		_playbackQueue.OnTrackChanged += trackId =>
+		{
+			_previous2Id = _previousTrackId;
+			_previousTrackId = _currentTrackId;
+			_currentTrackId = trackId;
+		};
 
 		_playlistsPresenter.PlaylistChosen += _ =>
 		{
@@ -552,6 +562,48 @@ public sealed class MainWindowCoordinator : IDisposable
 		=> _playlistsPresenter.LoadPlaylistTree();
 
 	// ── Menu actions forwarded ────────────────────────────────────────────
+
+	public void RecommendNextTrack()
+	{
+		try
+		{
+			if (_currentTrackId == null)
+			{
+				_playStatusPresenter.SetPlayStatus("Сначала начните воспроизведение трека");
+				return;
+			}
+
+			var predictor = ServicesProvider.Ioc.Resolve<INextTrackPredictor>();
+			if (!predictor.IsReady)
+			{
+				_playStatusPresenter.SetPlayStatus("Модель рекомендаций недоступна (нет файлов модели)");
+				return;
+			}
+
+			var result = predictor.GetNext(
+				_previousTrackId ?? "",
+				_currentTrackId,
+				_previous2Id ?? "");
+			if (!result.IsSuccess)
+			{
+				HelpDialog.Show("Рекомендация следующего трека", result.Message);
+				return;
+			}
+
+			// Ставим рекомендованный трек текущим в очереди. SetQueue поднимет
+			// OnTrackChanged → обновятся prev/current и запустится воспроизведение.
+			var trackIds = _playbackQueue.TrackIds.ToList();
+			if (!trackIds.Contains(result.TrackId!))
+				trackIds.Add(result.TrackId!);
+			int index = trackIds.IndexOf(result.TrackId!);
+			_playbackQueue.SetQueue(trackIds, index);
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+			_playStatusPresenter.SetPlayStatus("Не удалось получить рекомендацию");
+		}
+	}
 
 	public void ShowEqualizer() => _equalizerPresenter.ShowEqualizerDialog();
 	public void ShowDbStats() => _dbStatsPresenter.ShowStatisticsDialog();

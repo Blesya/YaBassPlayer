@@ -16,6 +16,7 @@ public sealed class SpectrumView : View
     public SpectrumDataType RequiredDataType => CurrentRenderer.DataType;
     public string ModeDisplayName => CurrentRenderer.DisplayName;
     public int ModeCount => _renderers.Count;
+    public int CurrentModeIndex => _currentIndex;
 
     public SpectrumView(int bars = 25)
     {
@@ -38,6 +39,13 @@ public sealed class SpectrumView : View
     {
         if (_renderers.Count == 0) return;
         _currentIndex = (_currentIndex + 1) % _renderers.Count;
+        CurrentRenderer.Reset();
+    }
+
+    public void SelectMode(int index)
+    {
+        if (_renderers.Count == 0) return;
+        _currentIndex = ((index % _renderers.Count) + _renderers.Count) % _renderers.Count;
         CurrentRenderer.Reset();
     }
 
