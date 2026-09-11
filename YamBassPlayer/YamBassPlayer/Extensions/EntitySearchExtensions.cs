@@ -14,7 +14,7 @@ public static class EntitySearchExtensions
 	public static Album ToAlbum(this YSearchAlbumModel album)
 	{
 		string? coverUrl = album.CoverUri is { } uri
-			? NormalizeCoverUrl(uri)
+			? CoverUrl.Normalize(uri)
 			: null;
 
 		return new Album(album.Id, album.Title)
@@ -25,18 +25,5 @@ public static class EntitySearchExtensions
 			TrackCount = album.TrackCount,
 			ArtistIds = album.Artists?.Select(a => a.Id).ToList(),
 		};
-	}
-
-	private static string NormalizeCoverUrl(string rawUrl)
-	{
-		string normalized = rawUrl.Replace("%%", "400x400");
-
-		if (normalized.StartsWith("//"))
-			return $"https:{normalized}";
-
-		if (!normalized.StartsWith("http://") && !normalized.StartsWith("https://"))
-			return $"https://{normalized.TrimStart('/')}";
-
-		return normalized;
 	}
 }

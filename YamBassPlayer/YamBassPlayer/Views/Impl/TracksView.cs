@@ -23,6 +23,9 @@ public sealed class TracksView : View, ITracksView
 	private int _scrollOffset;
 	private bool _isLoadingMore;
 
+	private string _blankLine = "";
+	private int _blankLineWidth = -1;
+
 	private object? _marqueeToken;
 	private int _marqueeOffset;
 	private int _marqueePause;
@@ -121,10 +124,10 @@ public sealed class TracksView : View, ITracksView
 			return;
 		}
 
-		string f = _filterText.ToLower();
+		string f = _filterText;
 		_rows.AddRange(_allRows.Where(r =>
-			(r.Track.Artist ?? "").ToLower().Contains(f) ||
-			(r.Track.Title ?? "").ToLower().Contains(f)));
+			(r.Track.Artist ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) ||
+			(r.Track.Title ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)));
 	}
 
 	private static string PadNumber(int n, bool isCached)
@@ -144,11 +147,12 @@ public sealed class TracksView : View, ITracksView
 		base.Redraw(bounds);
 
 		int width = bounds.Width;
+		string blankLine = GetBlankLine(width);
 		Driver.SetAttribute(ColorScheme.Normal);
 		for (int y = 0; y < bounds.Height; y++)
 		{
 			Move(0, y);
-			Driver.AddStr(new string(' ', width));
+			Driver.AddStr(blankLine);
 		}
 
 		if (_rows.Count == 0)
@@ -176,6 +180,17 @@ public sealed class TracksView : View, ITracksView
 			Move(0, row);
 			Driver.AddStr(render.Length > width ? render[..width] : render);
 		}
+	}
+
+	private string GetBlankLine(int width)
+	{
+		if (_blankLineWidth != width)
+		{
+			_blankLine = new string(' ', width);
+			_blankLineWidth = width;
+		}
+
+		return _blankLine;
 	}
 
 	private static string PadOrTruncate(string text, int width)

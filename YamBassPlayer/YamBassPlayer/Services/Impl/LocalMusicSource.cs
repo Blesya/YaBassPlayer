@@ -38,21 +38,21 @@ public sealed class LocalMusicSource : IMusicSource
         var result = new List<Playlist>();
         foreach (var folder in folders)
         {
-            var folderTracks = await _localLibraryService.GetTracksAsync(folder.Id);
+            int folderTrackCount = await _localLibraryService.GetTrackCountAsync(folder.Id);
             result.Add(new Playlist(folder.Name, PlaylistType.LocalFolder)
             {
                 // Encode the folder id in Description so GetPlaylistTracksAsync can route correctly.
                 Description = folder.Id.ToString(),
-                TrackCount = folderTracks.Count,
+                TrackCount = folderTrackCount,
             });
         }
 
         if (result.Count > 0)
         {
-            var allTracks = await _localLibraryService.GetTracksAsync(null);
+            int allTrackCount = await _localLibraryService.GetTrackCountAsync(null);
             result.Add(new Playlist("Вся локальная музыка", PlaylistType.LocalSearch)
             {
-                TrackCount = allTracks.Count,
+                TrackCount = allTrackCount,
                 Description = string.Empty,
             });
         }

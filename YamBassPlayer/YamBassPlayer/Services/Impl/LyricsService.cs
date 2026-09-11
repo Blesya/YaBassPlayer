@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
 using Yandex.Music.Api.Models.Track;
@@ -11,17 +10,15 @@ public sealed class LyricsService : ILyricsService
 {
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
-	private readonly SqliteConnection _connection;
+	private readonly IDbConnectionFactory _connectionFactory;
 	private readonly IDbWriteLock _writeLock;
 
-	public LyricsService(YandexMusicApi api, AuthStorage storage, SqliteConnection connection, IDbWriteLock writeLock)
+	public LyricsService(YandexMusicApi api, AuthStorage storage, IDbConnectionFactory connectionFactory, IDbWriteLock writeLock)
 	{
 		_api = api;
 		_storage = storage;
-		_connection = connection;
+		_connectionFactory = connectionFactory;
 		_writeLock = writeLock;
-
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Lyrics", "TEXT");
 	}
 
 	public async Task<string?> GetLyricsAsync(Track track)
@@ -57,7 +54,8 @@ public sealed class LyricsService : ILyricsService
 	{
 		try
 		{
-			using var cmd = _connection.CreateCommand();
+			using var connection = _connectionFactory.Create();
+			using var cmd = connection.CreateCommand();
 			cmd.CommandText = "SELECT Lyrics FROM Tracks WHERE TrackId = @id LIMIT 1";
 			cmd.Parameters.AddWithValue("@id", trackId);
 
@@ -76,7 +74,8 @@ public sealed class LyricsService : ILyricsService
 		try
 		{
 			using var lockHandle = await _writeLock.AcquireAsync();
-			using var cmd = _connection.CreateCommand();
+			using var connection = _connectionFactory.Create();
+			using var cmd = connection.CreateCommand();
 			cmd.CommandText =
 				"""
 				UPDATE Tracks

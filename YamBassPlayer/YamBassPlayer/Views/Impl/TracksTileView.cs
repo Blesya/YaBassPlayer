@@ -22,8 +22,12 @@ public sealed class TracksTileView : View, ITracksView
 	private object? _animationToken;
 	private string? _filterText;
 
+	private string _blankLine = "";
+	private int _blankLineWidth = -1;
+
 	private const int MarqueeIntervalMs = 250;
 	private const int MarqueePauseTicks = 4;
+	private const int RevealBatchSize = 25;
 
 	private int _marqueeArtistOffset;
 	private int _marqueeTitleOffset;
@@ -127,12 +131,12 @@ public sealed class TracksTileView : View, ITracksView
 		}
 		else
 		{
-			var lower = _filterText.ToLower();
+			string filter = _filterText;
 			_tracks.Clear();
 			_tracks.AddRange(_allTiles.Where(t =>
-				t.Artist.ToLower().Contains(lower) ||
-				t.Title.ToLower().Contains(lower) ||
-				t.Album.ToLower().Contains(lower)));
+				t.Artist.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+				t.Title.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+				t.Album.Contains(filter, StringComparison.OrdinalIgnoreCase)));
 		}
 	}
 
@@ -153,11 +157,12 @@ public sealed class TracksTileView : View, ITracksView
 		int visibleRows = Math.Max(1, bounds.Height / TileHeight);
 
 		// Clear background
+		string blankLine = GetBlankLine(bounds.Width);
 		Driver.SetAttribute(ColorScheme.Normal);
 		for (int y = 0; y < bounds.Height; y++)
 		{
 			Move(0, y);
-			Driver.AddStr(new string(' ', bounds.Width));
+			Driver.AddStr(blankLine);
 		}
 
 		if (_tracks.Count == 0)
@@ -233,6 +238,17 @@ public sealed class TracksTileView : View, ITracksView
 
 		Move(x, y);
 		Driver.AddStr(text.Length > maxLen ? text[..maxLen] : text);
+	}
+
+	private string GetBlankLine(int width)
+	{
+		if (_blankLineWidth != width)
+		{
+			_blankLine = new string(' ', width);
+			_blankLineWidth = width;
+		}
+
+		return _blankLine;
 	}
 
 	private static string PadOrTruncate(string text, int width)
@@ -408,7 +424,7 @@ public sealed class TracksTileView : View, ITracksView
 
 		_animationToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
-			_revealedCount++;
+			_revealedCount = Math.Min(_revealedCount + RevealBatchSize, _tracks.Count);
 			SetNeedsDisplay();
 
 			if (_revealedCount >= _tracks.Count)
@@ -437,6 +453,10 @@ public sealed class TracksTileView : View, ITracksView
 
 		_marqueeToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(MarqueeIntervalMs), _ =>
 		{
+			// Скрытая вью не должна крутить бегущую строку: таймер простаивает без перерисовки.
+			if (!Visible)
+				return true;
+
 			if (_tracks.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _tracks.Count)
 				return true;
 

@@ -20,19 +20,21 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		".mp3", ".flac", ".ogg", ".wav", ".m4a"
 	};
 
-	private readonly SqliteConnection _connection;
+	private readonly IDbConnectionFactory _connectionFactory;
 	private readonly string _coversFolder;
 	private IDbWriteLock _writeLock;
-	private bool _columnsEnsured;
+
+	// Reporting progress on every scanned file floods the UI; report every N-th file instead.
+	private const int ProgressEveryNFiles = 20;
 
 	public event Action<string>? OnScanProgress;
 	public event Action<int>? OnScanCompleted;
 
-	public LocalLibraryService(SqliteConnection connection, string coversFolder, IDbWriteLock writeLock)
+	public LocalLibraryService(IDbConnectionFactory connectionFactory, string coversFolder, IDbWriteLock writeLock)
 	{
-		ArgumentNullException.ThrowIfNull(connection);
+		ArgumentNullException.ThrowIfNull(connectionFactory);
 		ArgumentNullException.ThrowIfNull(coversFolder);
-		_connection = connection;
+		_connectionFactory = connectionFactory;
 		_coversFolder = coversFolder;
 		_writeLock = writeLock;
 
@@ -40,61 +42,11 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			Directory.CreateDirectory(_coversFolder);
 	}
 
-	/// <summary>
-	/// Ensures all required columns exist in the Tracks table.
-	/// Called lazily before the first query to avoid issues with constructor ordering
-	/// (TrackInfoProvider / HistoryService may not have created/migrated the table yet).
-	/// </summary>
-	private void EnsureColumnsInitialized()
-	{
-		if (_columnsEnsured)
-			return;
-		_columnsEnsured = true;
-
-		// Columns normally added by HistoryService.MigrateToVersion2 — ensure they exist
-		// in case LocalLibraryService is resolved before HistoryService.
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "DurationMs", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Year", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "CoverUrl", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Genres", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "AlbumId", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "SourceType", "TEXT DEFAULT 'yandex'");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "FolderId", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "TrackNumber", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "RemoteCoverUrl", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "LocalCoverPath", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Lyrics", "TEXT");
-		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_source_folder", "Tracks", "SourceType, FolderId");
-		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_artist", "Tracks", "Artist");
-		BackfillLocalSourceType();
-		SqliteSchemaHelper.BackfillTrackCoverMetadataColumns(_connection);
-	}
-
-	/// <summary>
-	/// Marks tracks whose TrackId looks like a file path as SourceType='local'.
-	/// This handles the case when SourceType column was just added with DEFAULT 'yandex'
-	/// but some tracks were originally inserted by local library scanning (TrackId = file path).
-	/// </summary>
-	private void BackfillLocalSourceType()
-	{
-		if (!SqliteSchemaHelper.HasTable(_connection, "Tracks") || !SqliteSchemaHelper.HasColumn(_connection, "Tracks", "SourceType"))
-			return;
-
-		using var cmd = _connection.CreateCommand();
-		// Local tracks use file path as TrackId: on Windows "X:\..." , on Unix "/..."
-		cmd.CommandText = """
-			UPDATE Tracks
-			SET SourceType = 'local'
-			WHERE (SourceType IS NULL OR SourceType = 'yandex')
-			  AND (TrackId LIKE '_:\%' OR TrackId LIKE '/%')
-			""";
-		cmd.ExecuteNonQuery();
-	}
-
 	/// <summary>Returns all registered local folders ordered by name.</summary>
 	public async Task<IReadOnlyList<LocalFolder>> GetFoldersAsync()
 	{
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = "SELECT Id, Path, Name, AddedAt, LastScannedAt FROM LocalFolders ORDER BY Name";
 
 		var folders = new List<LocalFolder>();
@@ -126,25 +78,28 @@ public sealed class LocalLibraryService : ILocalLibraryService
 
 		long addedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-		using (var cmd = _connection.CreateCommand())
-		{
-			cmd.CommandText = "INSERT OR IGNORE INTO LocalFolders (Path, Name, AddedAt) VALUES (@path, @name, @addedAt)";
-			cmd.Parameters.AddWithValue("@path", path);
-			cmd.Parameters.AddWithValue("@name", name);
-			cmd.Parameters.AddWithValue("@addedAt", addedAt);
-			await cmd.ExecuteNonQueryAsync();
-		}
-
-		// Fetch the row (inserted or already-existing)
 		LocalFolder folder;
-		using (var cmd = _connection.CreateCommand())
+		using (var connection = _connectionFactory.Create())
 		{
-			cmd.CommandText = "SELECT Id, Path, Name, AddedAt, LastScannedAt FROM LocalFolders WHERE Path = @path";
-			cmd.Parameters.AddWithValue("@path", path);
-			using var reader = await cmd.ExecuteReaderAsync();
-			if (!await reader.ReadAsync())
-				throw new InvalidOperationException($"Failed to retrieve folder row after insert: {path}");
-			folder = ReadLocalFolder(reader);
+			using (var cmd = connection.CreateCommand())
+			{
+				cmd.CommandText = "INSERT OR IGNORE INTO LocalFolders (Path, Name, AddedAt) VALUES (@path, @name, @addedAt)";
+				cmd.Parameters.AddWithValue("@path", path);
+				cmd.Parameters.AddWithValue("@name", name);
+				cmd.Parameters.AddWithValue("@addedAt", addedAt);
+				await cmd.ExecuteNonQueryAsync();
+			}
+
+			// Fetch the row (inserted or already-existing)
+			using (var cmd = connection.CreateCommand())
+			{
+				cmd.CommandText = "SELECT Id, Path, Name, AddedAt, LastScannedAt FROM LocalFolders WHERE Path = @path";
+				cmd.Parameters.AddWithValue("@path", path);
+				using var reader = await cmd.ExecuteReaderAsync();
+				if (!await reader.ReadAsync())
+					throw new InvalidOperationException($"Failed to retrieve folder row after insert: {path}");
+				folder = ReadLocalFolder(reader);
+			}
 		}
 
 		await ScanFolderAsync(folder.Id);
@@ -158,11 +113,12 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	public async Task RemoveFolderAsync(int folderId)
 	{
 		using var writeLock = await _writeLock.AcquireAsync();
+		using var connection = _connectionFactory.Create();
 
-		using var transaction = _connection.BeginTransaction();
+		using var transaction = connection.BeginTransaction();
 
 		// Delete artist links first while Tracks rows still exist for the subquery.
-		using (var cmd = _connection.CreateCommand())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.Transaction = transaction;
 			cmd.CommandText = @"
@@ -174,7 +130,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			await cmd.ExecuteNonQueryAsync();
 		}
 
-		using (var cmd = _connection.CreateCommand())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.Transaction = transaction;
 			cmd.CommandText = "DELETE FROM Tracks WHERE FolderId = @folderId AND SourceType = 'local'";
@@ -182,7 +138,7 @@ public sealed class LocalLibraryService : ILocalLibraryService
 			await cmd.ExecuteNonQueryAsync();
 		}
 
-		using (var cmd = _connection.CreateCommand())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.Transaction = transaction;
 			cmd.CommandText = "DELETE FROM LocalFolders WHERE Id = @folderId";
@@ -201,9 +157,10 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// <exception cref="InvalidOperationException">Thrown when <paramref name="folderId"/> is not found.</exception>
 	public async Task<int> ScanFolderAsync(int folderId, IProgress<string>? progress = null)
 	{
-		EnsureColumnsInitialized();
+		using var connection = _connectionFactory.Create();
+
 		string? folderPath;
-		using (var cmd = _connection.CreateCommand())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.CommandText = "SELECT Path FROM LocalFolders WHERE Id = @id";
 			cmd.Parameters.AddWithValue("@id", folderId);
@@ -215,8 +172,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 
 		if (!Directory.Exists(folderPath))
 		{
-			await RemoveMissingLocalTracksAsync(folderId, []);
-			await UpdateFolderLastScannedAtAsync(folderId);
+			await RemoveMissingLocalTracksAsync(connection, folderId, []);
+			await UpdateFolderLastScannedAtAsync(connection, folderId);
 			OnScanCompleted?.Invoke(0);
 			return 0;
 		}
@@ -228,19 +185,31 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		long updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 		int count = 0;
 
-		foreach (string filePath in audioFiles)
+		// One transaction for the whole folder plus reusable prepared commands: creating a
+		// transaction and re-parsing SQL per file dominates scan time on large libraries.
+		using (var transaction = connection.BeginTransaction())
+		using (var writer = new LocalTrackWriter(connection, transaction))
 		{
-			string fileName = Path.GetFileName(filePath);
-			progress?.Report(fileName);
-			OnScanProgress?.Invoke(fileName);
+			foreach (string filePath in audioFiles)
+			{
+				// Progress is throttled: reporting every file floods the UI with repaints.
+				if (count % ProgressEveryNFiles == 0)
+				{
+					string fileName = Path.GetFileName(filePath);
+					progress?.Report(fileName);
+					OnScanProgress?.Invoke(fileName);
+				}
 
-			Track track = ParseTrackFromFile(filePath);
-			await SaveLocalTrackAsync(track, folderId, updatedAt);
-			count++;
+				Track track = ParseTrackFromFile(filePath);
+				writer.Save(track, folderId, updatedAt);
+				count++;
+			}
+
+			transaction.Commit();
 		}
 
-		await RemoveMissingLocalTracksAsync(folderId, audioFiles);
-		await UpdateFolderLastScannedAtAsync(folderId);
+		await RemoveMissingLocalTracksAsync(connection, folderId, audioFiles);
+		await UpdateFolderLastScannedAtAsync(connection, folderId);
 
 		OnScanCompleted?.Invoke(count);
 		return count;
@@ -265,8 +234,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksAsync(int? folderId = null)
 	{
-		EnsureColumnsInitialized();
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 
 		if (folderId.HasValue)
 		{
@@ -295,16 +264,39 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	}
 
 	/// <summary>
+	/// Returns the number of local tracks, optionally filtered by <paramref name="folderId"/>.
+	/// Cheaper than loading full track rows when only a count is needed.
+	/// </summary>
+	public async Task<int> GetTrackCountAsync(int? folderId = null)
+	{
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
+
+		if (folderId.HasValue)
+		{
+			cmd.CommandText = "SELECT COUNT(*) FROM Tracks WHERE SourceType = 'local' AND FolderId = @folderId";
+			cmd.Parameters.AddWithValue("@folderId", folderId.Value);
+		}
+		else
+		{
+			cmd.CommandText = "SELECT COUNT(*) FROM Tracks WHERE SourceType = 'local'";
+		}
+
+		object? result = await cmd.ExecuteScalarAsync();
+		return result is long count ? (int)count : 0;
+	}
+
+	/// <summary>
 	/// Searches local tracks by title, artist, or album (case-insensitive LIKE substring match).
 	/// Returns at most 100 results ordered by Artist, Title.
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> SearchTracksAsync(string query)
 	{
-		EnsureColumnsInitialized();
 		if (string.IsNullOrWhiteSpace(query))
 			return [];
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = @"
 			SELECT " + TrackProjection + @"
 			FROM Tracks
@@ -332,8 +324,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<(string artistName, int trackCount)>> GetLocalArtistsAsync(int? folderId = null)
 	{
-		EnsureColumnsInitialized();
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 
 		string folderFilter = folderId.HasValue ? " AND FolderId = @folderId" : "";
 		cmd.CommandText = $@"
@@ -362,10 +354,10 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksByArtistAsync(string artistName, int? folderId = null)
 	{
-		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(artistName);
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 
 		bool isUnknown = artistName == "Неизвестный исполнитель";
 		string artistFilter = isUnknown
@@ -399,10 +391,10 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<(string albumName, int trackCount)>> GetLocalAlbumsAsync(string artistName, int? folderId = null)
 	{
-		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(artistName);
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		bool isUnknown = artistName == "Неизвестный исполнитель";
 		string artistFilter = isUnknown ? "(Artist IS NULL OR Artist = '')" : "Artist = @artist";
 		string folderFilter = folderId.HasValue ? " AND FolderId = @folderId" : "";
@@ -432,11 +424,11 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksByAlbumAsync(string artistName, string albumName, int? folderId = null)
 	{
-		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(artistName);
 		ArgumentNullException.ThrowIfNull(albumName);
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		bool isUnknownArtist = artistName == "Неизвестный исполнитель";
 		bool isUnknownAlbum = albumName == "Без альбома";
 		string artistFilter = isUnknownArtist ? "(Artist IS NULL OR Artist = '')" : "Artist = @artist";
@@ -469,8 +461,8 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<(string albumName, int trackCount)>> GetAllLocalAlbumsAsync(int? folderId = null)
 	{
-		EnsureColumnsInitialized();
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		string folderFilter = folderId.HasValue ? " AND FolderId = @folderId" : "";
 		cmd.CommandText = $@"
 			SELECT COALESCE(NULLIF(Album, ''), 'Без альбома') AS AlbumName, COUNT(*) AS TrackCount
@@ -497,10 +489,10 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// </summary>
 	public async Task<IReadOnlyList<Track>> GetTracksByAlbumTitleAsync(string albumName, int? folderId = null)
 	{
-		EnsureColumnsInitialized();
 		ArgumentNullException.ThrowIfNull(albumName);
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		bool isUnknown = albumName == "Без альбома";
 		string albumFilter = isUnknown ? "(Album IS NULL OR Album = '')" : "Album = @album";
 		string folderFilter = folderId.HasValue ? " AND FolderId = @folderId" : "";
@@ -632,83 +624,114 @@ public sealed class LocalLibraryService : ILocalLibraryService
 	/// This step keeps TrackId compatible with existing playback while also persisting
 	/// explicit source-aware fields for future storage work.
 	/// </summary>
-	private async Task SaveLocalTrackAsync(Track track, int folderId, long updatedAt)
+	private sealed class LocalTrackWriter : IDisposable
 	{
-		string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
-		string localFilePath = track.LocalFilePath ?? track.Id;
-		string? localCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath);
-		string? coverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, localCoverPath);
+		private readonly SqliteCommand _upsertTrack;
+		private readonly SqliteCommand _clearArtistLinks;
+		private readonly SqliteCommand _upsertArtist;
+		private readonly SqliteCommand _linkArtist;
 
-		using var transaction = _connection.BeginTransaction();
-
-		using (var cmd = _connection.CreateCommand())
+		public LocalTrackWriter(SqliteConnection connection, SqliteTransaction transaction)
 		{
-			cmd.Transaction = transaction;
-			cmd.CommandText = @"
+			_upsertTrack = connection.CreateCommand();
+			_upsertTrack.Transaction = transaction;
+			_upsertTrack.CommandText = @"
 				INSERT OR REPLACE INTO Tracks
 					(TrackId, Artist, Title, Album, DurationMs, Year, TrackNumber, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, SourceTrackId, LocalFilePath, FolderId, UpdatedAt)
 				VALUES
 					(@trackId, @artist, @title, @album, @durationMs, @year, @trackNumber, @coverUrl, @remoteCoverUrl, @localCoverPath, @genres, @albumId, 'local', @sourceTrackId, @localFilePath, @folderId, @updatedAt)";
-			cmd.Parameters.AddWithValue("@trackId", track.Id);
-			cmd.Parameters.AddWithValue("@artist", track.Artist);
-			cmd.Parameters.AddWithValue("@title", track.Title);
-			cmd.Parameters.AddWithValue("@album", track.Album);
-			cmd.Parameters.AddWithValue("@durationMs", (object?)track.DurationMs ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@year", (object?)track.Year ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@trackNumber", (object?)track.TrackNumber ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@coverUrl", (object?)coverUrl ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@remoteCoverUrl", DBNull.Value);
-			cmd.Parameters.AddWithValue("@localCoverPath", (object?)localCoverPath ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@genres", (object?)genresJson ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@albumId", (object?)track.AlbumInfo?.Id ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@sourceTrackId", track.SourceTrackId);
-			cmd.Parameters.AddWithValue("@localFilePath", localFilePath);
-			cmd.Parameters.AddWithValue("@folderId", folderId);
-			cmd.Parameters.AddWithValue("@updatedAt", updatedAt);
-			await cmd.ExecuteNonQueryAsync();
+			_upsertTrack.Parameters.Add("@trackId", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@artist", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@title", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@album", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@durationMs", SqliteType.Integer);
+			_upsertTrack.Parameters.Add("@year", SqliteType.Integer);
+			_upsertTrack.Parameters.Add("@trackNumber", SqliteType.Integer);
+			_upsertTrack.Parameters.Add("@coverUrl", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@remoteCoverUrl", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@localCoverPath", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@genres", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@albumId", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@sourceTrackId", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@localFilePath", SqliteType.Text);
+			_upsertTrack.Parameters.Add("@folderId", SqliteType.Integer);
+			_upsertTrack.Parameters.Add("@updatedAt", SqliteType.Integer);
+
+			_clearArtistLinks = connection.CreateCommand();
+			_clearArtistLinks.Transaction = transaction;
+			_clearArtistLinks.CommandText = "DELETE FROM TrackArtists WHERE TrackId = @trackId";
+			_clearArtistLinks.Parameters.Add("@trackId", SqliteType.Text);
+
+			// Local artists use their name as the ID since they have no external identifier.
+			_upsertArtist = connection.CreateCommand();
+			_upsertArtist.Transaction = transaction;
+			_upsertArtist.CommandText = @"
+				INSERT OR REPLACE INTO Artists (Id, Name, CoverUrl, Description, UpdatedAt)
+				VALUES (@id, @name, NULL, NULL, @updatedAt)";
+			_upsertArtist.Parameters.Add("@id", SqliteType.Text);
+			_upsertArtist.Parameters.Add("@name", SqliteType.Text);
+			_upsertArtist.Parameters.Add("@updatedAt", SqliteType.Integer);
+
+			_linkArtist = connection.CreateCommand();
+			_linkArtist.Transaction = transaction;
+			_linkArtist.CommandText = @"
+				INSERT OR IGNORE INTO TrackArtists (TrackId, ArtistId)
+				VALUES (@trackId, @artistId)";
+			_linkArtist.Parameters.Add("@trackId", SqliteType.Text);
+			_linkArtist.Parameters.Add("@artistId", SqliteType.Text);
 		}
 
-		using (var clearArtistLinksCmd = _connection.CreateCommand())
+		public void Save(Track track, int folderId, long updatedAt)
 		{
-			clearArtistLinksCmd.Transaction = transaction;
-			clearArtistLinksCmd.CommandText = "DELETE FROM TrackArtists WHERE TrackId = @trackId";
-			clearArtistLinksCmd.Parameters.AddWithValue("@trackId", track.Id);
-			await clearArtistLinksCmd.ExecuteNonQueryAsync();
-		}
+			string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
+			string localFilePath = track.LocalFilePath ?? track.Id;
+			string? localCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(track.SourceType, track.CoverUrl, track.LocalCoverPath);
+			string? coverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(track.SourceType, track.CoverUrl, track.RemoteCoverUrl, localCoverPath);
 
-		if (track.Artists is { Count: > 0 } artists)
-		{
-			foreach (Artist artist in artists)
+			_upsertTrack.Parameters["@trackId"].Value = track.Id;
+			_upsertTrack.Parameters["@artist"].Value = track.Artist;
+			_upsertTrack.Parameters["@title"].Value = track.Title;
+			_upsertTrack.Parameters["@album"].Value = track.Album;
+			_upsertTrack.Parameters["@durationMs"].Value = (object?)track.DurationMs ?? DBNull.Value;
+			_upsertTrack.Parameters["@year"].Value = (object?)track.Year ?? DBNull.Value;
+			_upsertTrack.Parameters["@trackNumber"].Value = (object?)track.TrackNumber ?? DBNull.Value;
+			_upsertTrack.Parameters["@coverUrl"].Value = (object?)coverUrl ?? DBNull.Value;
+			_upsertTrack.Parameters["@remoteCoverUrl"].Value = DBNull.Value;
+			_upsertTrack.Parameters["@localCoverPath"].Value = (object?)localCoverPath ?? DBNull.Value;
+			_upsertTrack.Parameters["@genres"].Value = (object?)genresJson ?? DBNull.Value;
+			_upsertTrack.Parameters["@albumId"].Value = (object?)track.AlbumInfo?.Id ?? DBNull.Value;
+			_upsertTrack.Parameters["@sourceTrackId"].Value = track.SourceTrackId;
+			_upsertTrack.Parameters["@localFilePath"].Value = localFilePath;
+			_upsertTrack.Parameters["@folderId"].Value = folderId;
+			_upsertTrack.Parameters["@updatedAt"].Value = updatedAt;
+			_upsertTrack.ExecuteNonQuery();
+
+			_clearArtistLinks.Parameters["@trackId"].Value = track.Id;
+			_clearArtistLinks.ExecuteNonQuery();
+
+			if (track.Artists is { Count: > 0 } artists)
 			{
-				// Local artists use their name as the ID since they have no external identifier.
-				using (var artistCmd = _connection.CreateCommand())
+				foreach (Artist artist in artists)
 				{
-					artistCmd.Transaction = transaction;
-					artistCmd.CommandText = @"
-						INSERT OR REPLACE INTO Artists (Id, Name, CoverUrl, Description, UpdatedAt)
-						VALUES (@id, @name, @coverUrl, @description, @updatedAt)";
-					artistCmd.Parameters.AddWithValue("@id", artist.Id);
-					artistCmd.Parameters.AddWithValue("@name", artist.Name);
-					artistCmd.Parameters.AddWithValue("@coverUrl", DBNull.Value);
-					artistCmd.Parameters.AddWithValue("@description", DBNull.Value);
-					artistCmd.Parameters.AddWithValue("@updatedAt", updatedAt);
-					await artistCmd.ExecuteNonQueryAsync();
-				}
+					_upsertArtist.Parameters["@id"].Value = artist.Id;
+					_upsertArtist.Parameters["@name"].Value = artist.Name;
+					_upsertArtist.Parameters["@updatedAt"].Value = updatedAt;
+					_upsertArtist.ExecuteNonQuery();
 
-				using (var linkCmd = _connection.CreateCommand())
-				{
-					linkCmd.Transaction = transaction;
-					linkCmd.CommandText = @"
-						INSERT OR IGNORE INTO TrackArtists (TrackId, ArtistId)
-						VALUES (@trackId, @artistId)";
-					linkCmd.Parameters.AddWithValue("@trackId", track.Id);
-					linkCmd.Parameters.AddWithValue("@artistId", artist.Id);
-					await linkCmd.ExecuteNonQueryAsync();
+					_linkArtist.Parameters["@trackId"].Value = track.Id;
+					_linkArtist.Parameters["@artistId"].Value = artist.Id;
+					_linkArtist.ExecuteNonQuery();
 				}
 			}
 		}
 
-		transaction.Commit();
+		public void Dispose()
+		{
+			_upsertTrack.Dispose();
+			_clearArtistLinks.Dispose();
+			_upsertArtist.Dispose();
+			_linkArtist.Dispose();
+		}
 	}
 
 	/// <summary>
@@ -794,12 +817,12 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		};
 	}
 
-	private async Task RemoveMissingLocalTracksAsync(int folderId, IReadOnlyCollection<string> currentFilePaths)
+	private async Task RemoveMissingLocalTracksAsync(SqliteConnection connection, int folderId, IReadOnlyCollection<string> currentFilePaths)
 	{
 		var currentFilePathSet = new HashSet<string>(currentFilePaths, StringComparer.OrdinalIgnoreCase);
 		var staleTrackIds = new List<string>();
 
-		using (var cmd = _connection.CreateCommand())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.CommandText = """
 				SELECT TrackId, COALESCE(LocalFilePath, TrackId)
@@ -821,10 +844,10 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		if (staleTrackIds.Count == 0)
 			return;
 
-		using var transaction = _connection.BeginTransaction();
+		using var transaction = connection.BeginTransaction();
 
-		using (var deleteTrackArtistsCmd = _connection.CreateCommand())
-		using (var deleteTracksCmd = _connection.CreateCommand())
+		using (var deleteTrackArtistsCmd = connection.CreateCommand())
+		using (var deleteTracksCmd = connection.CreateCommand())
 		{
 			deleteTrackArtistsCmd.Transaction = transaction;
 			deleteTrackArtistsCmd.CommandText = "DELETE FROM TrackArtists WHERE TrackId = @trackId";
@@ -848,10 +871,10 @@ public sealed class LocalLibraryService : ILocalLibraryService
 		transaction.Commit();
 	}
 
-	private async Task UpdateFolderLastScannedAtAsync(int folderId)
+	private async Task UpdateFolderLastScannedAtAsync(SqliteConnection connection, int folderId)
 	{
 		long scannedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-		using var cmd = _connection.CreateCommand();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = "UPDATE LocalFolders SET LastScannedAt = @scannedAt WHERE Id = @id";
 		cmd.Parameters.AddWithValue("@scannedAt", scannedAt);
 		cmd.Parameters.AddWithValue("@id", folderId);

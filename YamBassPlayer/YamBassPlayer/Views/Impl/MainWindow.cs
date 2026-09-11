@@ -171,6 +171,8 @@ public sealed class MainWindow : Window
 		{
 			new MenuBarItem("Файл", new[]
 			{
+				new MenuItem("О программе", "[Сведения о программе]", _coordinator.ShowAbout),
+				null,
 				new MenuItem("Выход", "[Выход из программы]", _coordinator.StopApplication)
 			}),
 			new MenuBarItem("Темы", new[]
@@ -181,6 +183,7 @@ public sealed class MainWindow : Window
 				new MenuItem("Матрица", "", () => Themes.ApplyMatrixTheme()),
 				new MenuItem("Киберпанк", "", () => Themes.ApplyCyberpunkTheme()),
 				new MenuItem("Спокойная", "", () => Themes.ApplyNordTheme()),
+				new MenuItem("Янтарь", "", () => Themes.ApplyAmberTheme()),
 				new MenuItem("По умолчанию", "", () => Themes.RestoreDefaultTheme())
 			}),
 			new MenuBarItem("Аудио", new[]

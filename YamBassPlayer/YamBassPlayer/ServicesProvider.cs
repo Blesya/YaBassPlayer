@@ -1,5 +1,4 @@
 ﻿using Autofac;
-using Microsoft.Data.Sqlite;
 using YamBassPlayer.Commands;
 using YamBassPlayer.Presenters;
 using YamBassPlayer.Presenters.Impl;
@@ -27,23 +26,20 @@ public static class ServicesProvider
 		builder.RegisterInstance(authService).As<IAuthService>().SingleInstance();
 		builder.RegisterInstance(authService.Api).As<YandexMusicApi>().SingleInstance();
 		builder.RegisterInstance(authService.Storage).As<AuthStorage>().SingleInstance();
-		builder.RegisterType<YandexApiClient>().As<IYandexApiClient>().SingleInstance();
 
 		// Регистрация сервисов
 		builder.RegisterType<AudioPlayerService>().As<IAudioPlayer>().SingleInstance();
 		builder.RegisterType<BassEqualizer>().As<IBassEqualizer>().SingleInstance();
-		builder.RegisterType<DatabaseProvider>().As<IDatabaseProvider>().SingleInstance();
+		builder.RegisterType<CoverArtService>().As<ICoverArtService>().SingleInstance();
+		builder.RegisterType<SqliteConnectionFactory>().As<IDbConnectionFactory>().SingleInstance();
+		builder.RegisterType<DatabaseInitializer>().As<IDatabaseInitializer>().SingleInstance();
 		builder.RegisterType<DbWriteLock>().As<IDbWriteLock>().SingleInstance();
 		builder.RegisterType<EventBus>().As<IEventBus>().SingleInstance();
 		builder.RegisterType<YandexRadioService>().As<IYandexRadioService>().SingleInstance();
 			
-		builder.Register(c => c.Resolve<IDatabaseProvider>().Connection)
-			.As<SqliteConnection>()
-			.SingleInstance();
-			
 		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
 		builder.Register(c => new LocalLibraryService(
-			c.Resolve<SqliteConnection>(),
+			c.Resolve<IDbConnectionFactory>(),
 			CoversFolder,
 			c.Resolve<IDbWriteLock>()
 		)).As<ILocalLibraryService>().SingleInstance();
@@ -72,7 +68,7 @@ public static class ServicesProvider
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
 			CoversFolder,
-			c.Resolve<SqliteConnection>()
+			c.Resolve<IDbConnectionFactory>()
 		)).As<ICoverProvider>().SingleInstance();
 			
 		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
@@ -80,7 +76,7 @@ public static class ServicesProvider
 		builder.Register(c => new LyricsService(
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
-			c.Resolve<SqliteConnection>(),
+			c.Resolve<IDbConnectionFactory>(),
 			c.Resolve<IDbWriteLock>()
 		)).As<ILyricsService>().SingleInstance();
 		builder.RegisterType<SourcesBranchBuilder>().As<ITreeBranchBuilder>().SingleInstance();
@@ -96,7 +92,7 @@ public static class ServicesProvider
 		)).As<INextTrackPredictor>().SingleInstance();
 		
 		builder.Register(c => new DatabaseStatisticsService(
-			c.Resolve<SqliteConnection>(),
+			c.Resolve<IDbConnectionFactory>(),
 			TracksFolder
 		)).As<IDatabaseStatisticsService>().SingleInstance();
 
@@ -208,5 +204,8 @@ public static class ServicesProvider
 		builder.RegisterType<MainWindow>().AsSelf().SingleInstance();
 
 		Ioc = builder.Build();
+
+		// Schema creation/migration runs once, before any service touches the database.
+		Ioc.Resolve<IDatabaseInitializer>().Initialize();
 	}
 }

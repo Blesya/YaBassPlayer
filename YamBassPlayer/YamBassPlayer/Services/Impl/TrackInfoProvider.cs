@@ -16,49 +16,17 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
-	private readonly SqliteConnection _connection;
+	private readonly IDbConnectionFactory _connectionFactory;
 	private readonly IDbWriteLock _writeLock;
 	private readonly IMusicSourceRegistry _musicSourceRegistry;
 
-	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, SqliteConnection connection, IDbWriteLock writeLock, IMusicSourceRegistry musicSourceRegistry)
+	public TrackInfoProvider(YandexMusicApi api, AuthStorage storage, IDbConnectionFactory connectionFactory, IDbWriteLock writeLock, IMusicSourceRegistry musicSourceRegistry)
 	{
 		_api = api;
 		_storage = storage;
-		_connection = connection;
+		_connectionFactory = connectionFactory;
 		_writeLock = writeLock;
 		_musicSourceRegistry = musicSourceRegistry;
-
-		using SqliteCommand cmd = connection.CreateCommand();
-		cmd.CommandText = @"
-			CREATE TABLE IF NOT EXISTS Tracks (
-				Id INTEGER PRIMARY KEY AUTOINCREMENT,
-				TrackId TEXT UNIQUE,
-				Artist TEXT,
-				Title TEXT,
-				Album TEXT,
-				RemoteCoverUrl TEXT,
-				LocalCoverPath TEXT,
-				SourceTrackId TEXT,
-				LocalFilePath TEXT,
-				UpdatedAt INTEGER
-			);";
-		cmd.ExecuteNonQuery();
-
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "SourceTrackId", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "LocalFilePath", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "RemoteCoverUrl", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "LocalCoverPath", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "DurationMs", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Year", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "CoverUrl", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Genres", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "AlbumId", "TEXT");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "SourceType", "TEXT DEFAULT 'yandex'");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "FolderId", "INTEGER");
-		SqliteSchemaHelper.EnsureTrackColumn(_connection, "Lyrics", "TEXT");
-		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_source_folder", "Tracks", "SourceType, FolderId");
-		SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_tracks_artist", "Tracks", "Artist");
-		SqliteSchemaHelper.BackfillTrackCoverMetadataColumns(_connection);
 	}
 
 	// Raw DB row before artist/album enrichment
@@ -90,7 +58,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 		var paramNames = idsList.Select((_, i) => $"@id{i}").ToList();
 		var inClause = string.Join(", ", paramNames);
 
-		using (var cmd = _connection.CreateCommand())
+		using (var connection = _connectionFactory.Create())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.CommandText = $@"
 				SELECT {TrackProjection}
@@ -118,12 +87,18 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 			if (yTracks != null)
 			{
-				foreach (YTrack yTrack in yTracks)
+				var fetchedTracks = yTracks.Select(y => y.ToTrack()).ToList();
+
+				using (var lockHandle = await _writeLock.AcquireAsync())
+				using (var connection = _connectionFactory.Create())
+				using (var transaction = connection.BeginTransaction())
 				{
-					Track track = yTrack.ToTrack();
-					await SaveAsync(track);
-					cachedRows[track.Id] = ToTrackRow(track);
+					await WriteTracksAsync(connection, transaction, fetchedTracks);
+					transaction.Commit();
 				}
+
+				foreach (Track track in fetchedTracks)
+					cachedRows[track.Id] = ToTrackRow(track);
 			}
 		}
 
@@ -143,7 +118,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task<Track> GetTrackInfoById(string id)
 	{
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = @"
 			SELECT " + TrackProjection + @"
 			FROM Tracks WHERE TrackId = @id";
@@ -194,83 +170,128 @@ public class TrackInfoProvider : ITrackInfoProvider
 	public async Task SaveAsync(Track track)
 	{
 		using var lockHandle = await _writeLock.AcquireAsync();
+		using var connection = _connectionFactory.Create();
+		using var writer = new TrackWriteCommands(connection, null);
+		await writer.WriteAsync(track);
+	}
 
-		long updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-		string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
-		string sourceType = track.SourceType ?? SourceIds.Yandex;
-		string? remoteCoverUrl = CoverMetadataResolver.ResolveRemoteCoverUrl(sourceType, track.CoverUrl, track.RemoteCoverUrl);
-		string? localCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(sourceType, track.CoverUrl, track.LocalCoverPath);
-		string? coverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(sourceType, track.CoverUrl, remoteCoverUrl, localCoverPath);
+	private static async Task WriteTracksAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<Track> tracks)
+	{
+		using var writer = new TrackWriteCommands(connection, transaction);
+		foreach (Track track in tracks)
+			await writer.WriteAsync(track);
+	}
 
-		// Save to Tracks table with all enriched columns
-		using (var cmd = _connection.CreateCommand())
+	/// <summary>
+	/// Reusable set of prepared commands that writes a track together with its artist links
+	/// and album. All commands share one connection (and optional transaction), so a batch of
+	/// tracks is persisted without opening a connection per track.
+	/// </summary>
+	private sealed class TrackWriteCommands : IDisposable
+	{
+		private readonly SqliteCommand _tracks;
+		private readonly SqliteCommand _artists;
+		private readonly SqliteCommand _trackArtists;
+		private readonly SqliteCommand _albums;
+
+		public TrackWriteCommands(SqliteConnection connection, SqliteTransaction? transaction)
 		{
-			cmd.CommandText = @"
+			_tracks = CreateCommand(connection, transaction, @"
 				INSERT OR REPLACE INTO Tracks (TrackId, Artist, Title, Album, DurationMs, Year, CoverUrl, RemoteCoverUrl, LocalCoverPath, Genres, AlbumId, SourceType, SourceTrackId, LocalFilePath, UpdatedAt)
-				VALUES (@TrackId, @artist, @title, @album, @durationMs, @year, @coverUrl, @remoteCoverUrl, @localCoverPath, @genres, @albumId, @sourceType, @sourceTrackId, @localFilePath, @updatedAt)";
-			cmd.Parameters.AddWithValue("@TrackId", track.Id ?? "");
-			cmd.Parameters.AddWithValue("@artist", track.Artist ?? "");
-			cmd.Parameters.AddWithValue("@title", track.Title ?? "");
-			cmd.Parameters.AddWithValue("@album", track.Album ?? "");
-			cmd.Parameters.AddWithValue("@durationMs", (object?)track.DurationMs ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@year", (object?)track.Year ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@coverUrl", (object?)coverUrl ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@remoteCoverUrl", (object?)remoteCoverUrl ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@localCoverPath", (object?)localCoverPath ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@genres", (object?)genresJson ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@albumId", (object?)track.AlbumInfo?.Id ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@sourceType", sourceType);
-			cmd.Parameters.AddWithValue("@sourceTrackId", track.SourceTrackId ?? track.Id ?? "");
-			cmd.Parameters.AddWithValue("@localFilePath", (object?)track.LocalFilePath ?? DBNull.Value);
-			cmd.Parameters.AddWithValue("@updatedAt", updatedAt);
-			await cmd.ExecuteNonQueryAsync();
+				VALUES (@TrackId, @artist, @title, @album, @durationMs, @year, @coverUrl, @remoteCoverUrl, @localCoverPath, @genres, @albumId, @sourceType, @sourceTrackId, @localFilePath, @updatedAt)",
+				"@TrackId", "@artist", "@title", "@album", "@durationMs", "@year", "@coverUrl", "@remoteCoverUrl", "@localCoverPath", "@genres", "@albumId", "@sourceType", "@sourceTrackId", "@localFilePath", "@updatedAt");
+
+			_artists = CreateCommand(connection, transaction, @"
+				INSERT OR REPLACE INTO Artists (Id, Name, CoverUrl, Description, UpdatedAt)
+				VALUES (@id, @name, @coverUrl, @description, @updatedAt)",
+				"@id", "@name", "@coverUrl", "@description", "@updatedAt");
+
+			_trackArtists = CreateCommand(connection, transaction, @"
+				INSERT OR IGNORE INTO TrackArtists (TrackId, ArtistId)
+				VALUES (@trackId, @artistId)",
+				"@trackId", "@artistId");
+
+			_albums = CreateCommand(connection, transaction, @"
+				INSERT OR REPLACE INTO Albums (Id, Title, Year, CoverUrl, Genre, TrackCount, UpdatedAt)
+				VALUES (@id, @title, @year, @coverUrl, @genre, @trackCount, @updatedAt)",
+				"@id", "@title", "@year", "@coverUrl", "@genre", "@trackCount", "@updatedAt");
 		}
 
-		// Save artists and track-artist links
-		if (track.Artists != null)
+		public async Task WriteAsync(Track track)
 		{
-			foreach (Artist artist in track.Artists)
-			{
-				using (var artistCmd = _connection.CreateCommand())
-				{
-					artistCmd.CommandText = @"
-						INSERT OR REPLACE INTO Artists (Id, Name, CoverUrl, Description, UpdatedAt)
-						VALUES (@id, @name, @coverUrl, @description, @updatedAt)";
-					artistCmd.Parameters.AddWithValue("@id", artist.Id);
-					artistCmd.Parameters.AddWithValue("@name", artist.Name);
-					artistCmd.Parameters.AddWithValue("@coverUrl", (object?)artist.CoverUrl ?? DBNull.Value);
-					artistCmd.Parameters.AddWithValue("@description", (object?)artist.Description ?? DBNull.Value);
-					artistCmd.Parameters.AddWithValue("@updatedAt", updatedAt);
-					await artistCmd.ExecuteNonQueryAsync();
-				}
+			long updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+			string? genresJson = track.Genres?.Count > 0 ? JsonSerializer.Serialize(track.Genres) : null;
+			string sourceType = track.SourceType ?? SourceIds.Yandex;
+			string? remoteCoverUrl = CoverMetadataResolver.ResolveRemoteCoverUrl(sourceType, track.CoverUrl, track.RemoteCoverUrl);
+			string? localCoverPath = CoverMetadataResolver.ResolveLocalCoverPath(sourceType, track.CoverUrl, track.LocalCoverPath);
+			string? coverUrl = CoverMetadataResolver.ResolveLegacyCoverUrl(sourceType, track.CoverUrl, remoteCoverUrl, localCoverPath);
 
-				using (var linkCmd = _connection.CreateCommand())
+			Set(_tracks, "@TrackId", track.Id ?? "");
+			Set(_tracks, "@artist", track.Artist ?? "");
+			Set(_tracks, "@title", track.Title ?? "");
+			Set(_tracks, "@album", track.Album ?? "");
+			Set(_tracks, "@durationMs", track.DurationMs);
+			Set(_tracks, "@year", track.Year);
+			Set(_tracks, "@coverUrl", coverUrl);
+			Set(_tracks, "@remoteCoverUrl", remoteCoverUrl);
+			Set(_tracks, "@localCoverPath", localCoverPath);
+			Set(_tracks, "@genres", genresJson);
+			Set(_tracks, "@albumId", track.AlbumInfo?.Id);
+			Set(_tracks, "@sourceType", sourceType);
+			Set(_tracks, "@sourceTrackId", track.SourceTrackId ?? track.Id ?? "");
+			Set(_tracks, "@localFilePath", track.LocalFilePath);
+			Set(_tracks, "@updatedAt", updatedAt);
+			await _tracks.ExecuteNonQueryAsync();
+
+			if (track.Artists != null)
+			{
+				foreach (Artist artist in track.Artists)
 				{
-					linkCmd.CommandText = @"
-						INSERT OR IGNORE INTO TrackArtists (TrackId, ArtistId)
-						VALUES (@trackId, @artistId)";
-					linkCmd.Parameters.AddWithValue("@trackId", track.Id ?? "");
-					linkCmd.Parameters.AddWithValue("@artistId", artist.Id);
-					await linkCmd.ExecuteNonQueryAsync();
+					Set(_artists, "@id", artist.Id);
+					Set(_artists, "@name", artist.Name);
+					Set(_artists, "@coverUrl", artist.CoverUrl);
+					Set(_artists, "@description", artist.Description);
+					Set(_artists, "@updatedAt", updatedAt);
+					await _artists.ExecuteNonQueryAsync();
+
+					Set(_trackArtists, "@trackId", track.Id ?? "");
+					Set(_trackArtists, "@artistId", artist.Id);
+					await _trackArtists.ExecuteNonQueryAsync();
 				}
+			}
+
+			if (track.AlbumInfo is { } albumInfo)
+			{
+				Set(_albums, "@id", albumInfo.Id);
+				Set(_albums, "@title", albumInfo.Title);
+				Set(_albums, "@year", albumInfo.Year);
+				Set(_albums, "@coverUrl", albumInfo.CoverUrl);
+				Set(_albums, "@genre", albumInfo.Genre);
+				Set(_albums, "@trackCount", albumInfo.TrackCount);
+				Set(_albums, "@updatedAt", updatedAt);
+				await _albums.ExecuteNonQueryAsync();
 			}
 		}
 
-		// Save album
-		if (track.AlbumInfo is { } albumInfo)
+		private static SqliteCommand CreateCommand(SqliteConnection connection, SqliteTransaction? transaction, string sql, params string[] parameterNames)
 		{
-			using var albumCmd = _connection.CreateCommand();
-			albumCmd.CommandText = @"
-				INSERT OR REPLACE INTO Albums (Id, Title, Year, CoverUrl, Genre, TrackCount, UpdatedAt)
-				VALUES (@id, @title, @year, @coverUrl, @genre, @trackCount, @updatedAt)";
-			albumCmd.Parameters.AddWithValue("@id", albumInfo.Id);
-			albumCmd.Parameters.AddWithValue("@title", albumInfo.Title);
-			albumCmd.Parameters.AddWithValue("@year", (object?)albumInfo.Year ?? DBNull.Value);
-			albumCmd.Parameters.AddWithValue("@coverUrl", (object?)albumInfo.CoverUrl ?? DBNull.Value);
-			albumCmd.Parameters.AddWithValue("@genre", (object?)albumInfo.Genre ?? DBNull.Value);
-			albumCmd.Parameters.AddWithValue("@trackCount", (object?)albumInfo.TrackCount ?? DBNull.Value);
-			albumCmd.Parameters.AddWithValue("@updatedAt", updatedAt);
-			await albumCmd.ExecuteNonQueryAsync();
+			var cmd = connection.CreateCommand();
+			cmd.Transaction = transaction;
+			cmd.CommandText = sql;
+			foreach (string name in parameterNames)
+				cmd.Parameters.Add(new SqliteParameter(name, DBNull.Value));
+			return cmd;
+		}
+
+		private static void Set(SqliteCommand cmd, string name, object? value)
+			=> cmd.Parameters[name].Value = value ?? DBNull.Value;
+
+		public void Dispose()
+		{
+			_tracks.Dispose();
+			_artists.Dispose();
+			_trackArtists.Dispose();
+			_albums.Dispose();
 		}
 	}
 
@@ -284,11 +305,13 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 		var trackIds = rows.Select(r => r.TrackId).Distinct().ToList();
 
+		using var connection = _connectionFactory.Create();
+
 		// --- 1. Batch-load artists for all track IDs ---
 		var artistsByTrackId = new Dictionary<string, List<Artist>>();
 		var tidParams = trackIds.Select((_, i) => $"@tid{i}").ToList();
 
-		using (var cmd = _connection.CreateCommand())
+		using (var cmd = connection.CreateCommand())
 		{
 			cmd.CommandText = $@"
 				SELECT ta.TrackId, a.Id, a.Name, a.CoverUrl, a.Description
@@ -327,7 +350,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 		{
 			var aidParams = albumIds.Select((_, i) => $"@aid{i}").ToList();
 
-			using var cmd = _connection.CreateCommand();
+			using var cmd = connection.CreateCommand();
 			cmd.CommandText = $@"
 				SELECT Id, Title, Year, CoverUrl, Genre, TrackCount
 				FROM Albums
@@ -422,7 +445,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task<bool> IsTrackCached(string trackId)
 	{
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = "SELECT 1 FROM Tracks WHERE TrackId = @id LIMIT 1";
 		cmd.Parameters.AddWithValue("@id", trackId);
 
@@ -440,7 +464,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 		var paramNames = idsList.Select((_, i) => $"@id{i}").ToList();
 		var inClause = string.Join(", ", paramNames);
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = $"SELECT TrackId FROM Tracks WHERE TrackId IN ({inClause})";
 		for (int i = 0; i < idsList.Count; i++)
 			cmd.Parameters.AddWithValue(paramNames[i], idsList[i]);
@@ -461,7 +486,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task<IReadOnlyList<(string artistName, int trackCount)>> GetArtistsWithTrackCountAsync()
 	{
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = @"
 			SELECT CASE WHEN Artist = '' OR Artist IS NULL THEN 'Неизвестный исполнитель' ELSE Artist END AS ArtistName,
 			       COUNT(*) AS TrackCount
@@ -479,7 +505,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 
 	public async Task<List<string>> GetTrackIdsByArtistAsync(string artistName)
 	{
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		if (artistName == "Неизвестный исполнитель")
 		{
 			cmd.CommandText = "SELECT TrackId FROM Tracks WHERE Artist = '' OR Artist IS NULL ORDER BY Album, Title";
@@ -503,7 +530,8 @@ public class TrackInfoProvider : ITrackInfoProvider
 		if (string.IsNullOrWhiteSpace(searchQuery))
 			return [];
 
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText = @"
 			SELECT TrackId, Artist, Title, Album, COALESCE(SourceType, 'yandex'), COALESCE(SourceTrackId, TrackId), LocalFilePath
 			FROM Tracks 

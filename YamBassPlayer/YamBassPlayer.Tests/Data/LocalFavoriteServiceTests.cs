@@ -7,20 +7,23 @@ using YamBassPlayer.Services.Impl;
 [TestFixture]
 public sealed class LocalFavoriteServiceTests
 {
+    private SharedMemoryDbConnectionFactory _factory = null!;
     private SqliteConnection _connection = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _connection = new SqliteConnection("Data Source=:memory:");
-        _connection.Open();
+        _factory = new SharedMemoryDbConnectionFactory();
+        _connection = _factory.Anchor;
+
+        // Schema is now owned by DatabaseInitializer, not by LocalFavoriteService's constructor.
+        new DatabaseInitializer(_factory).Initialize();
     }
 
     [TearDown]
     public void TearDown()
     {
-        _connection?.Close();
-        _connection?.Dispose();
+        _factory?.Dispose();
     }
 
     // ── Constructor ───────────────────────────────────────────────────────
@@ -28,8 +31,8 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public void Constructor_CreatesTable()
     {
-        // EnsureSchema() runs synchronously in the constructor
-        _ = new LocalFavoriteService(_connection);
+        // EnsureSchema() no longer runs in the constructor; the table is created by the initializer.
+        _ = new LocalFavoriteService(_factory);
 
         Assert.That(
             SqliteSchemaHelper.HasTable(_connection, "favoriteLocalTracks"),
@@ -43,7 +46,7 @@ public sealed class LocalFavoriteServiceTests
         InsertFavoriteTrackDirect("preloaded_1", 1000);
         InsertFavoriteTrackDirect("preloaded_2", 2000);
 
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
 
         // Wait for LoadFavorites (runs on ThreadPool) to complete
         await WaitForFavoritesLoaded(service, "preloaded_1", TimeSpan.FromSeconds(3));
@@ -61,7 +64,7 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public async Task AddToFavorites_InsertsTrack_AndIsTrackFavoriteReturnsTrue()
     {
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
 
         await service.AddToFavorites("test123");
 
@@ -79,7 +82,7 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public async Task AddToFavorites_FiresOnFavoriteAdded()
     {
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
         var eventFired = false;
         string? firedTrackId = null;
 
@@ -101,7 +104,7 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public async Task AddToFavorites_IsIdempotent()
     {
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
 
         await service.AddToFavorites("dup_test");
         // Second add should not throw and should have no effect
@@ -118,7 +121,7 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public async Task RemoveFromFavorites_DeletesTrack_AndIsTrackFavoriteReturnsFalse()
     {
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
 
         await service.AddToFavorites("remove_me");
 
@@ -138,7 +141,7 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public async Task RemoveFromFavorites_FiresOnFavoriteRemoved()
     {
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
         await service.AddToFavorites("remove_event");
 
         var eventFired = false;
@@ -162,7 +165,7 @@ public sealed class LocalFavoriteServiceTests
     [Test]
     public async Task RemoveFromFavorites_IsIdempotent_OnNonExisting()
     {
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
 
         // Removing a non-existing track should not throw
         Assert.DoesNotThrowAsync(async () =>
@@ -179,7 +182,7 @@ public sealed class LocalFavoriteServiceTests
         InsertFavoriteTrackDirect("track_b", 2000);
         InsertFavoriteTrackDirect("track_c", 3000);
 
-        var service = new LocalFavoriteService(_connection);
+        var service = new LocalFavoriteService(_factory);
 
         var allIds = await service.GetAllFavoriteTrackIds();
 

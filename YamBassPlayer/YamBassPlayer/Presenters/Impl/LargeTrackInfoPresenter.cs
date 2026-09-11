@@ -13,6 +13,7 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly ICoverProvider _coverProvider;
+	private readonly ICoverArtService _coverArtService;
 	private readonly IEventBus _eventBus;
 	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
@@ -20,11 +21,13 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
 		ICoverProvider coverProvider,
+		ICoverArtService coverArtService,
 		IEventBus eventBus)
 	{
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
 		_coverProvider = coverProvider;
+		_coverArtService = coverArtService;
 		_eventBus = eventBus;
 	}
 
@@ -102,7 +105,8 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 			view.SetTrack(track);
 
 			string coverPath = await _coverProvider.DownloadCoverAsync(trackId);
-			view.SetCover(string.IsNullOrWhiteSpace(coverPath) ? null : coverPath);
+			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, view.CoverSize.Width, view.CoverSize.Height);
+			view.SetCover(coverArt);
 		}
 		catch (Exception ex)
 		{

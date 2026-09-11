@@ -10,6 +10,10 @@ public interface ILocalLibraryService
 	Task<int> ScanFolderAsync(int folderId, IProgress<string>? progress = null);
 	Task<int> ScanAllFoldersAsync(IProgress<string>? progress = null);
 	Task<IReadOnlyList<Track>> GetTracksAsync(int? folderId = null);
+
+	/// <summary>Returns the number of local tracks, optionally filtered to a single registered folder.</summary>
+	Task<int> GetTrackCountAsync(int? folderId = null);
+
 	Task<IReadOnlyList<Track>> SearchTracksAsync(string query);
 
 	/// <summary>

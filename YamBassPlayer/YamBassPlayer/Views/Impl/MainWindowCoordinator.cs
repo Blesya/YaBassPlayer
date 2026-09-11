@@ -609,6 +609,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	public void ShowDbStats() => _dbStatsPresenter.ShowStatisticsDialog();
 	public void ShowNowPlaying() => _nowPlayingPresenter.ShowNowPlaying();
 	public void ShowLargeTrackInfo() => _largeTrackInfoPresenter.ShowLargeTrackInfo();
+	public void ShowAbout() => AboutDialog.Show();
 
 	public void StopApplication()
 	{

@@ -1,38 +1,33 @@
 using Microsoft.Data.Sqlite;
-using Moq;
 
 namespace YamBassPlayer.Tests.Data;
 
 using YamBassPlayer.Enums;
-using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 
 [TestFixture]
 public sealed class HistoryServiceTests
 {
+    private SharedMemoryDbConnectionFactory _factory = null!;
     private SqliteConnection _connection = null!;
-    private Mock<IDbWriteLock> _mockLock = null!;
     private HistoryService _service = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _connection = new SqliteConnection("Data Source=:memory:");
-        _connection.Open();
+        _factory = new SharedMemoryDbConnectionFactory();
+        _connection = _factory.Anchor;
 
-        _mockLock = new Mock<IDbWriteLock>();
-        _mockLock
-            .Setup(l => l.AcquireAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Mock.Of<IDisposable>());
+        // Schema is now owned by DatabaseInitializer, not by HistoryService's constructor.
+        new DatabaseInitializer(_factory).Initialize();
 
-        _service = new HistoryService(_connection, _mockLock.Object);
+        _service = new HistoryService(_factory);
     }
 
     [TearDown]
     public void TearDown()
     {
-        _connection?.Close();
-        _connection?.Dispose();
+        _factory?.Dispose();
     }
 
     // ── Constructor ───────────────────────────────────────────────────────

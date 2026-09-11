@@ -13,6 +13,7 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly ICoverProvider _coverProvider;
+	private readonly ICoverArtService _coverArtService;
 	private readonly PlayStatusView _playStatusView;
 	private readonly IEventBus _eventBus;
 	private Action<TrackChangedEvent>? _onTrackChangedHandler;
@@ -22,6 +23,7 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		IPlaybackQueue playbackQueue,
 		ITrackInfoProvider trackInfoProvider,
 		ICoverProvider coverProvider,
+		ICoverArtService coverArtService,
 		PlayStatusView playStatusView,
 		IEventBus eventBus)
 	{
@@ -29,6 +31,7 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		_playbackQueue = playbackQueue;
 		_trackInfoProvider = trackInfoProvider;
 		_coverProvider = coverProvider;
+		_coverArtService = coverArtService;
 		_playStatusView = playStatusView;
 		_eventBus = eventBus;
 	}
@@ -91,7 +94,8 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 			view.SetCover(null);
 
 			string coverPath = await _coverProvider.DownloadCoverAsync(trackId);
-			view.SetCover(string.IsNullOrWhiteSpace(coverPath) ? null : coverPath);
+			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, view.CoverSize.Width, view.CoverSize.Height);
+			view.SetCover(coverArt);
 		}
 		catch (Exception ex)
 		{

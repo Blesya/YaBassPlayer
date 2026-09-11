@@ -88,10 +88,9 @@ public class TrackRepository : ITrackRepository
 		ct.ThrowIfCancellationRequested();
 		try
 		{
-			var slice = _tracksIds
-				.Skip(_currentOffset)
-				.Take(tracksPerBatch)
-				.ToList();
+			int start = Math.Clamp(_currentOffset, 0, _tracksIds.Count);
+			int count = Math.Clamp(_tracksIds.Count - start, 0, Math.Max(0, tracksPerBatch));
+			var slice = _tracksIds.GetRange(start, count);
 
 			_currentOffset += tracksPerBatch;
 

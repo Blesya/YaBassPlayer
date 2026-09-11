@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 
 namespace YamBassPlayer.Views.Impl;
 
@@ -138,24 +139,14 @@ public sealed class TrackInfoPanelView : FrameView, ITrackInfoPanelView
 
     public void SetListenCount(int count) { }
 
-    public void SetCover(string? coverPath)
+    public (int Width, int Height) CoverSize => (CoverWidth, CoverHeight);
+
+    public void SetCover(CoverArt? art)
     {
         Application.MainLoop.Invoke(() =>
         {
-            if (string.IsNullOrWhiteSpace(coverPath) || !File.Exists(coverPath))
-            {
-                _asciiView.SetPixels(null);
-                return;
-            }
-
-            try
-            {
-                _asciiView.SetPixels(CoverAsciiView.RenderAscii(coverPath, CoverWidth, CoverHeight));
-            }
-            catch
-            {
-                _asciiView.SetPixels(null);
-            }
+            _asciiView.SetPixels(art);
+            SetNeedsDisplay();
         });
     }
 

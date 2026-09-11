@@ -1,5 +1,4 @@
 using System.Net.Http;
-using Microsoft.Data.Sqlite;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using Yandex.Music.Api;
@@ -20,14 +19,14 @@ public sealed class CoverProvider : ICoverProvider
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly string _coversFolder;
-	private readonly SqliteConnection _connection;
+	private readonly IDbConnectionFactory _connectionFactory;
 
-	public CoverProvider(YandexMusicApi api, AuthStorage storage, string coversFolder, SqliteConnection connection)
+	public CoverProvider(YandexMusicApi api, AuthStorage storage, string coversFolder, IDbConnectionFactory connectionFactory)
 	{
 		_api = api;
 		_storage = storage;
 		_coversFolder = coversFolder;
-		_connection = connection;
+		_connectionFactory = connectionFactory;
 
 		if (!Directory.Exists(_coversFolder))
 		{
@@ -151,7 +150,8 @@ public sealed class CoverProvider : ICoverProvider
 
 	private async Task<TrackCoverMetadata?> GetTrackCoverMetadataAsync(string trackId)
 	{
-		using var cmd = _connection.CreateCommand();
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
 		cmd.CommandText =
 			"""
 			SELECT COALESCE(SourceType, 'yandex'), CoverUrl, RemoteCoverUrl, LocalCoverPath
@@ -185,25 +185,9 @@ public sealed class CoverProvider : ICoverProvider
 
 		return string.IsNullOrWhiteSpace(coverUrl)
 			? null
-			: NormalizeCoverUrl(coverUrl);
+			: CoverUrl.Normalize(coverUrl);
 	}
 
 	private static bool IsLocalSourceType(string sourceType)
 		=> string.Equals(sourceType, SourceIds.Local, StringComparison.OrdinalIgnoreCase);
-
-	private static string NormalizeCoverUrl(string rawUrl)
-	{
-		string normalized = rawUrl.Replace("%%", "400x400");
-		if (normalized.StartsWith("//"))
-		{
-			return $"https:{normalized}";
-		}
-
-		if (!normalized.StartsWith("http://") && !normalized.StartsWith("https://"))
-		{
-			return $"https://{normalized.TrimStart('/')}";
-		}
-
-		return normalized;
-	}
 }

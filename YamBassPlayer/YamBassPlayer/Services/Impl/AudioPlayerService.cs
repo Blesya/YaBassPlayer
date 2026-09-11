@@ -8,6 +8,8 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 {
 	private int _currentStream;
 	private const double PreloadSecondsBeforeEnd = 30.0;
+	private float[] _fftBuffer = [];
+	private float[] _waveformBuffer = [];
 	
 	public event EventHandler? OnTrackEnded;
 	public event EventHandler? OnPreloadRequested;
@@ -225,9 +227,11 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 				return [];
 			}
 
-			float[] fft = new float[128];
-			Bass.ChannelGetData(_currentStream, fft, (int)DataFlags.FFT256);
-			return fft;
+			if (_fftBuffer.Length != 128)
+				_fftBuffer = new float[128];
+
+			Bass.ChannelGetData(_currentStream, _fftBuffer, (int)DataFlags.FFT256);
+			return _fftBuffer;
 		}
 		catch (Exception ex)
 		{
@@ -246,9 +250,11 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 			if (!IsStreamActive)
 				return [];
 
-			float[] buffer = new float[sampleCount];
-			Bass.ChannelGetData(_currentStream, buffer, (int)DataFlags.Float | (sampleCount * 4));
-			return buffer;
+			if (_waveformBuffer.Length != sampleCount)
+				_waveformBuffer = new float[sampleCount];
+
+			Bass.ChannelGetData(_currentStream, _waveformBuffer, (int)DataFlags.Float | (sampleCount * 4));
+			return _waveformBuffer;
 		}
 		catch (Exception ex)
 		{

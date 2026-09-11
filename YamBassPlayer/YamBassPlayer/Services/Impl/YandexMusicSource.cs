@@ -211,7 +211,7 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
 		if (string.IsNullOrWhiteSpace(uri))
 			return null;
 
-		return NormalizeCoverUrl(uri);
+		return CoverUrl.Normalize(uri);
 	}
 
 	/// <summary>
@@ -332,7 +332,10 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
 	{
 		var playlists = _personalPlaylistsCache;
 		if (playlists is null)
+		{
 			playlists = (await _api.Playlist.GetPersonalPlaylistsAsync(_storage)).ToList();
+			_personalPlaylistsCache = playlists;
+		}
 
 		var found = playlists.FirstOrDefault(r => r.Result.Title == playlistName);
 		if (found == null)
@@ -390,17 +393,4 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
 			.Select(c => c.Track.ToTrack());
 	}
 
-	// Mirrors CoverProvider.NormalizeCoverUrl — ensures a complete https:// URL.
-	private static string NormalizeCoverUrl(string rawUrl)
-	{
-		string normalized = rawUrl.Replace("%%", "400x400");
-
-		if (normalized.StartsWith("//"))
-			return $"https:{normalized}";
-
-		if (!normalized.StartsWith("http://") && !normalized.StartsWith("https://"))
-			return $"https://{normalized.TrimStart('/')}";
-
-		return normalized;
-	}
 }

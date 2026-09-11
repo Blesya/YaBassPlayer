@@ -1,17 +1,16 @@
-using Microsoft.Data.Sqlite;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Services.Impl;
 
 public sealed class DatabaseStatisticsService : IDatabaseStatisticsService
 {
-	private readonly SqliteConnection _connection;
+	private readonly IDbConnectionFactory _connectionFactory;
 	private readonly string _tracksFolder;
 	private readonly string _dbFilePath;
 
-	public DatabaseStatisticsService(SqliteConnection connection, string tracksFolder)
+	public DatabaseStatisticsService(IDbConnectionFactory connectionFactory, string tracksFolder)
 	{
-		_connection = connection;
+		_connectionFactory = connectionFactory;
 		_tracksFolder = tracksFolder;
 		_dbFilePath = Path.Combine(AppContext.BaseDirectory, "tracks_cache.db");
 	}
@@ -36,7 +35,8 @@ public sealed class DatabaseStatisticsService : IDatabaseStatisticsService
 	{
 		try
 		{
-			using var cmd = _connection.CreateCommand();
+			using var connection = _connectionFactory.Create();
+			using var cmd = connection.CreateCommand();
 			cmd.CommandText = sql;
 			var result = cmd.ExecuteScalar();
 			return result is long l ? (int)l : 0;
@@ -51,7 +51,8 @@ public sealed class DatabaseStatisticsService : IDatabaseStatisticsService
 	{
 		try
 		{
-			using var cmd = _connection.CreateCommand();
+			using var connection = _connectionFactory.Create();
+			using var cmd = connection.CreateCommand();
 			cmd.CommandText = sql;
 			var result = cmd.ExecuteScalar();
 			if (result is DBNull || result is null || result is string s && string.IsNullOrWhiteSpace(s))

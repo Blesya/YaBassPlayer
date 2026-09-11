@@ -12,6 +12,7 @@ public static class Themes
 	private const string MatrixThemeName = "Matrix";
 	private const string CyberpunkThemeName = "Cyberpunk";
 	private const string NordThemeName = "Nord";
+	private const string AmberThemeName = "Amber";
 	private const string DefaultThemeName = "Default";
 
 	private static ColorScheme? _defaultBase;
@@ -54,6 +55,9 @@ public static class Themes
 				break;
 			case NordThemeName:
 				ApplyNordTheme(false);
+				break;
+			case AmberThemeName:
+				ApplyAmberTheme(false);
 				break;
 			case DefaultThemeName:
 				RestoreDefaultTheme(false);
@@ -204,6 +208,28 @@ public static class Themes
 		if (save)
 		{
 			AppConfiguration.SaveTheme(NordThemeName);
+		}
+
+		Application.Refresh();
+	}
+
+	public static void ApplyAmberTheme(bool save = true)
+	{
+		var b = Colors.Base;
+		b.Normal = new Attribute(Color.BrightYellow, Color.Black);
+		b.Focus = new Attribute(Color.Black, Color.Brown);
+		b.HotNormal = new Attribute(Color.Brown, Color.Black);
+		b.HotFocus = new Attribute(Color.Black, Color.BrightYellow);
+
+		var d = Colors.Dialog;
+		d.Normal = new Attribute(Color.BrightYellow, Color.DarkGray);
+		d.Focus = new Attribute(Color.Black, Color.BrightYellow);
+		d.HotNormal = new Attribute(Color.Brown, Color.DarkGray);
+		d.HotFocus = new Attribute(Color.Black, Color.Brown);
+
+		if (save)
+		{
+			AppConfiguration.SaveTheme(AmberThemeName);
 		}
 
 		Application.Refresh();
