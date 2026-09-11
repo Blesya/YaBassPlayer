@@ -55,6 +55,9 @@ public static class ServicesProvider
 			c.Resolve<IDbWriteLock>()
 		)).As<ILocalLibraryService>().SingleInstance();
 		builder.RegisterType<TrackRepositoryCache>().As<ITrackRepositoryCache>().SingleInstance();
+		builder.Register(c => new PlaylistStateStore(
+			Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "playlist_state.json")
+		)).As<IPlaylistStateStore>().SingleInstance();
 		builder.RegisterType<PlaybackPresenter>().As<IPlaybackPresenter>().SingleInstance();
 		builder.RegisterType<LocalFavoriteService>()
 			.As<ILocalFavoriteService>()
@@ -146,7 +149,8 @@ public static class ServicesProvider
 			c.Resolve<ILocalLibraryService>(),
 			c.Resolve<PlaylistLoadStrategyResolver>(),
 			c.Resolve<IAppPlaylistProvider>(),
-			c.Resolve<IYandexPlaylistInitializer>()
+			c.Resolve<IYandexPlaylistInitializer>(),
+			c.Resolve<IPlaylistStateStore>()
 		)).As<ITrackRepository>().SingleInstance();
 
 		// Регистрация источников музыки

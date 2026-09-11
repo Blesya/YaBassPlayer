@@ -102,6 +102,68 @@ public sealed class PlaylistsPresenterTests
         _errorHandler.Verify(e => e.Handle(ex), Times.Once);
     }
 
+    // ── Запуск из сохранённого состояния ──────────────────────────────────
+
+    [Test]
+    public async Task InitializeAsync_WhenPersistedSnapshotExists_UsesItImmediately()
+    {
+        var playlist = new Playlist("Мои треки", PlaylistType.Favorite);
+        _repository.Setup(r => r.GetPersistedSnapshot())
+            .Returns(new PlaylistState { Playlists = [playlist] });
+        _repository.Setup(r => r.GetPlaylists(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Playlist>());
+        _composer.Setup(c => c.ComposeAsync(It.IsAny<IReadOnlyList<Playlist>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { PlaylistTreeItem.FromPlaylist(playlist) });
+
+        Playlist? chosen = null;
+        _presenter.PlaylistChosen += p => chosen = p;
+
+        await _presenter.InitializeAsync();
+
+        Assert.Multiple(() =>
+        {
+            _view.Verify(v => v.SetPlaylistTree(It.IsAny<IEnumerable<PlaylistTreeItem>>()), Times.Once);
+            _view.Verify(v => v.MarkAsPlaying(playlist), Times.Once);
+            Assert.That(chosen, Is.SameAs(playlist));
+        });
+    }
+
+    [Test]
+    public async Task InitializeAsync_WhenSnapshotHasLastPlaylist_RestoresIt()
+    {
+        var first = new Playlist("A", PlaylistType.Favorite);
+        var last = new Playlist("B", PlaylistType.Custom);
+        _repository.Setup(r => r.GetPersistedSnapshot())
+            .Returns(new PlaylistState { Playlists = [first, last], LastPlaylist = last });
+        _repository.Setup(r => r.GetPlaylists(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Playlist>());
+        _composer.Setup(c => c.ComposeAsync(It.IsAny<IReadOnlyList<Playlist>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { PlaylistTreeItem.FromPlaylist(first), PlaylistTreeItem.FromPlaylist(last) });
+
+        Playlist? chosen = null;
+        _presenter.PlaylistChosen += p => chosen = p;
+
+        await _presenter.InitializeAsync();
+
+        Assert.Multiple(() =>
+        {
+            _view.Verify(v => v.MarkAsPlaying(last), Times.Once);
+            Assert.That(chosen, Is.SameAs(last));
+        });
+    }
+
+    [Test]
+    public async Task InitializeAsync_WhenSnapshotEmpty_FallsBackToRepository()
+    {
+        var playlist = new Playlist("Мои треки", PlaylistType.Favorite);
+        SetupTree(playlist);
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState());
+
+        await _presenter.InitializeAsync();
+
+        _repository.Verify(r => r.GetPlaylists(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     // ── Выбор плейлиста ───────────────────────────────────────────────────
 
     [Test]

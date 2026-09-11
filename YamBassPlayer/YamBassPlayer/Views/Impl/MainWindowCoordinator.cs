@@ -133,7 +133,10 @@ public sealed class MainWindowCoordinator : IDisposable
 
 		_playlistsPresenter.PlaylistChosen += _ =>
 		{
-			Application.Top.Remove(splashScreen);
+			// Событие может прийти повторно (фоновое обновление дерева) —
+			// сплеш снимаем только один раз.
+			if (splashScreen.SuperView is not null)
+				Application.Top.Remove(splashScreen);
 		};
 
 		_playStatusPresenter.OnQueueClicked += ShowCurrentQueue;

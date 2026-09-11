@@ -25,6 +25,9 @@ bld/
 **/appsettings.json
 !**/appsettings.example.json
 
+# Runtime cache of the last playlist state
+**/playlist_state.json
+
 # NuGet Packages
 *.nupkg
 *.snupkg

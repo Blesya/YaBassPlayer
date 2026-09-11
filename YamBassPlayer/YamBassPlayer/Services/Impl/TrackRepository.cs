@@ -15,11 +15,14 @@ public class TrackRepository : ITrackRepository
 	private readonly PlaylistLoadStrategyResolver _strategyResolver;
 	private readonly IAppPlaylistProvider _appPlaylistProvider;
 	private readonly IYandexPlaylistInitializer _yandexPlaylistInitializer;
+	private readonly IPlaylistStateStore _playlistStateStore;
 
 	private IMusicSource YandexSource => _musicSourceRegistry.GetRequired(SourceIds.Yandex);
 	private List<string> _tracksIds = new();
 	private Playlist? _currentPlaylist;
 	private int _currentOffset = 0;
+	private PlaylistState? _persistedState;
+	private bool _persistedStateLoaded;
 
 	public TrackRepository(
 		IMusicSourceRegistry musicSourceRegistry,
@@ -29,7 +32,8 @@ public class TrackRepository : ITrackRepository
 		ILocalLibraryService localLibraryService,
 		PlaylistLoadStrategyResolver strategyResolver,
 		IAppPlaylistProvider appPlaylistProvider,
-		IYandexPlaylistInitializer yandexPlaylistInitializer)
+		IYandexPlaylistInitializer yandexPlaylistInitializer,
+		IPlaylistStateStore playlistStateStore)
 	{
 		_musicSourceRegistry = musicSourceRegistry;
 		_trackInfoProvider = trackInfoProvider;
@@ -39,12 +43,33 @@ public class TrackRepository : ITrackRepository
 		_strategyResolver = strategyResolver;
 		_appPlaylistProvider = appPlaylistProvider;
 		_yandexPlaylistInitializer = yandexPlaylistInitializer;
+		_playlistStateStore = playlistStateStore;
 
 		_cache.MyWaveReplaced += OnMyWaveReplaced;
 		_cache.MyWaveAppended += OnMyWaveAppended;
 	}
 
 	public PlaylistType? CurrentPlaylistType => _currentPlaylist?.Type;
+
+	public PlaylistState? GetPersistedSnapshot()
+	{
+		if (_persistedStateLoaded)
+			return _persistedState;
+
+		_persistedStateLoaded = true;
+		_persistedState = _playlistStateStore.Load();
+
+		if (_persistedState is not null)
+		{
+			// Наполняем кэши составом из прошлого запуска, чтобы выбранный
+			// плейлист отрисовался мгновенно, без обращения к сети.
+			_cache.ReplaceFavoriteTrackIds(_persistedState.FavoriteTrackIds);
+			foreach (var (playlistName, trackIds) in _persistedState.CustomPlaylistTrackIds)
+				_cache.SetCustomPlaylistIds(playlistName, trackIds);
+		}
+
+		return _persistedState;
+	}
 
 	public async Task<IEnumerable<Playlist>> GetPlaylists(CancellationToken ct = default)
 	{
@@ -56,13 +81,70 @@ public class TrackRepository : ITrackRepository
 
 			var appPlaylists = await _appPlaylistProvider.GetAppPlaylistsAsync(ct);
 
-			return appPlaylists.Concat(yandexPlaylists.Where(p => p.Type is PlaylistType.Custom or PlaylistType.Favorite));
+			var result = appPlaylists
+				.Concat(yandexPlaylists.Where(p => p.Type is PlaylistType.Custom or PlaylistType.Favorite))
+				.ToList();
+
+			PersistState(result, yandexPlaylists);
+			return result;
 		}
 		catch (Exception exception)
 		{
 			exception.Handle();
 			return [];
 		}
+	}
+
+	/// <summary>Сохраняет актуальный состав плейлистов для следующего запуска.</summary>
+	private void PersistState(IReadOnlyList<Playlist> playlists, IReadOnlyList<Playlist> yandexPlaylists)
+	{
+		var customPlaylistTrackIds = new Dictionary<string, List<string>>();
+		foreach (var playlist in yandexPlaylists.Where(p => p.Type == PlaylistType.Custom))
+		{
+			if (_cache.TryGetCustomPlaylistIds(playlist.PlaylistName, out var trackIds))
+				customPlaylistTrackIds[playlist.PlaylistName] = trackIds.ToList();
+		}
+
+		_persistedState = new PlaylistState
+		{
+			Playlists = playlists.ToList(),
+			FavoriteTrackIds = _cache.FavoriteTrackIds.ToList(),
+			CustomPlaylistTrackIds = customPlaylistTrackIds,
+			LastPlaylist = _persistedState?.LastPlaylist ?? _currentPlaylist,
+			SavedAt = DateTime.UtcNow
+		};
+		_persistedStateLoaded = true;
+		_playlistStateStore.Save(_persistedState);
+	}
+
+	/// <summary>Запоминает выбранный плейлист, чтобы восстановить выделение при следующем запуске.</summary>
+	private void PersistLastPlaylist(Playlist playlist)
+	{
+		// Временные плейлисты (поиск, очередь, «Моя волна») не переживают перезапуск — не сохраняем их.
+		if (playlist.Type.GetCategory() == PlaylistCategory.Transient)
+			return;
+
+		var state = _persistedState;
+		if (state is null || state.Playlists.Count == 0)
+			return;
+
+		var last = state.LastPlaylist;
+		if (last is not null
+			&& last.Type == playlist.Type
+			&& last.PlaylistName == playlist.PlaylistName)
+		{
+			return;
+		}
+
+		_persistedState = new PlaylistState
+		{
+			Playlists = state.Playlists,
+			FavoriteTrackIds = state.FavoriteTrackIds,
+			CustomPlaylistTrackIds = state.CustomPlaylistTrackIds,
+			LastPlaylist = playlist,
+			SavedAt = DateTime.UtcNow
+		};
+		_playlistStateStore.Save(_persistedState);
 	}
 
 	public async Task SetPlaylist(Playlist playlist, CancellationToken ct = default)
@@ -76,6 +158,8 @@ public class TrackRepository : ITrackRepository
 			_tracksIds = trackIds;
 			_currentOffset = 0;
 			_currentPlaylist = playlist;
+
+			PersistLastPlaylist(playlist);
 		}
 		catch (Exception exception)
 		{
