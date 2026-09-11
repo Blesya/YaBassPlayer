@@ -184,6 +184,7 @@ public sealed class MainWindow : Window
 				new MenuItem("Киберпанк", "", () => Themes.ApplyCyberpunkTheme()),
 				new MenuItem("Спокойная", "", () => Themes.ApplyNordTheme()),
 				new MenuItem("Янтарь", "", () => Themes.ApplyAmberTheme()),
+				new MenuItem("Мятная", "", () => Themes.ApplyMintTheme()),
 				new MenuItem("По умолчанию", "", () => Themes.RestoreDefaultTheme())
 			}),
 			new MenuBarItem("Аудио", new[]

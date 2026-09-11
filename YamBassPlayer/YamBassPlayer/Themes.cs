@@ -13,6 +13,7 @@ public static class Themes
 	private const string CyberpunkThemeName = "Cyberpunk";
 	private const string NordThemeName = "Nord";
 	private const string AmberThemeName = "Amber";
+	private const string MintThemeName = "Mint";
 	private const string DefaultThemeName = "Default";
 
 	private static ColorScheme? _defaultBase;
@@ -59,6 +60,9 @@ public static class Themes
 			case AmberThemeName:
 				ApplyAmberTheme(false);
 				break;
+			case MintThemeName:
+				ApplyMintTheme(false);
+				break;
 			case DefaultThemeName:
 				RestoreDefaultTheme(false);
 				break;
@@ -67,6 +71,8 @@ public static class Themes
 
 	public static void ApplyDarkTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.White, Color.Black);
 		b.Focus = new Attribute(Color.Black, Color.Gray);
@@ -89,6 +95,8 @@ public static class Themes
 
 	public static void ApplyLightTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.Black, Color.Gray);
 		b.Focus = new Attribute(Color.White, Color.DarkGray);
@@ -111,6 +119,8 @@ public static class Themes
 
 	public static void ApplyWhiteTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.Black, Color.White);
 		b.Focus = new Attribute(Color.White, Color.DarkGray);
@@ -133,6 +143,8 @@ public static class Themes
 
 	public static void ApplyMatrixTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.BrightGreen, Color.Black);
 		b.Focus = new Attribute(Color.Black, Color.BrightGreen);
@@ -155,6 +167,8 @@ public static class Themes
 
 	public static void ApplyCyberpunkTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.BrightMagenta, Color.Black);
 		b.Focus = new Attribute(Color.Black, Color.BrightMagenta);
@@ -177,6 +191,8 @@ public static class Themes
 
 	public static void ApplyNordTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.BrightCyan, Color.Black);
 		b.Focus = new Attribute(Color.White, Color.Blue);
@@ -215,6 +231,8 @@ public static class Themes
 
 	public static void ApplyAmberTheme(bool save = true)
 	{
+		ResetMenuAndError();
+
 		var b = Colors.Base;
 		b.Normal = new Attribute(Color.BrightYellow, Color.Black);
 		b.Focus = new Attribute(Color.Black, Color.Brown);
@@ -230,6 +248,30 @@ public static class Themes
 		if (save)
 		{
 			AppConfiguration.SaveTheme(AmberThemeName);
+		}
+
+		Application.Refresh();
+	}
+
+	public static void ApplyMintTheme(bool save = true)
+	{
+		ResetMenuAndError();
+
+		var b = Colors.Base;
+		b.Normal = new Attribute(Color.Black, Color.BrightCyan);
+		b.Focus = new Attribute(Color.White, Color.DarkGray);
+		b.HotNormal = new Attribute(Color.Blue, Color.BrightCyan);
+		b.HotFocus = new Attribute(Color.White, Color.Blue);
+
+		var d = Colors.Dialog;
+		d.Normal = new Attribute(Color.Black, Color.BrightCyan);
+		d.Focus = new Attribute(Color.White, Color.Black);
+		d.HotNormal = new Attribute(Color.Blue, Color.BrightCyan);
+		d.HotFocus = new Attribute(Color.White, Color.Blue);
+
+		if (save)
+		{
+			AppConfiguration.SaveTheme(MintThemeName);
 		}
 
 		Application.Refresh();
@@ -253,6 +295,18 @@ public static class Themes
 			Colors.Dialog.HotFocus = _defaultDialog.HotFocus;
 		}
 
+		ResetMenuAndError();
+
+		if (save)
+		{
+			AppConfiguration.SaveTheme(DefaultThemeName);
+		}
+
+		Application.Refresh();
+	}
+
+	private static void ResetMenuAndError()
+	{
 		if (_defaultMenu != null)
 		{
 			Colors.Menu.Normal = _defaultMenu.Normal;
@@ -268,13 +322,6 @@ public static class Themes
 			Colors.Error.HotNormal = _defaultError.HotNormal;
 			Colors.Error.HotFocus = _defaultError.HotFocus;
 		}
-
-		if (save)
-		{
-			AppConfiguration.SaveTheme(DefaultThemeName);
-		}
-
-		Application.Refresh();
 	}
 
 	private static ColorScheme Clone(ColorScheme scheme)
