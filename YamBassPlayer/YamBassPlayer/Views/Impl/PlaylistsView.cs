@@ -75,6 +75,10 @@ public sealed class PlaylistsView : View, IPlaylistsView
 						parent.Children.Remove(existing);
 					parent.Children.Add(item);
 					parent.UpdateText();
+					// TreeView кэширует развёрнутый список — без RefreshObject новый
+					// дочерний узел не появится, а RefreshObject сворачивает ветку.
+					_tree.RefreshObject(parent);
+					_tree.Expand(parent);
 					_tree.SetNeedsDisplay();
 					return;
 				}

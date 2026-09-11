@@ -27,8 +27,7 @@ public sealed class LocalMusicSource : IMusicSource
     /// Returns one <see cref="Playlist"/> per registered local folder
     /// (<see cref="PlaylistType.LocalFolder"/>) plus a single "Вся локальная музыка" playlist
     /// (<see cref="PlaylistType.LocalSearch"/>) when at least one folder is registered.
-    /// The folder id is encoded in <see cref="Playlist.Description"/> so it can be decoded in
-    /// <see cref="GetPlaylistTracksAsync"/>.
+    /// The folder id is carried in <see cref="Playlist.Payload"/>.
     /// </summary>
     public async Task<IEnumerable<Playlist>> GetPlaylistsAsync(CancellationToken ct = default)
     {
@@ -41,9 +40,9 @@ public sealed class LocalMusicSource : IMusicSource
             int folderTrackCount = await _localLibraryService.GetTrackCountAsync(folder.Id);
             result.Add(new Playlist(folder.Name, PlaylistType.LocalFolder)
             {
-                // Encode the folder id in Description so GetPlaylistTracksAsync can route correctly.
-                Description = folder.Id.ToString(),
+                Description = folder.Path,
                 TrackCount = folderTrackCount,
+                Payload = new PlaylistPayload { FolderId = folder.Id },
             });
         }
 
@@ -72,16 +71,16 @@ public sealed class LocalMusicSource : IMusicSource
 
     /// <summary>
     /// Returns a paginated slice of tracks for the given playlist.
-    /// For <see cref="PlaylistType.LocalFolder"/>, the folder id is decoded from
-    /// <see cref="Playlist.Description"/>. For <see cref="PlaylistType.LocalSearch"/>,
-    /// all local tracks are returned. Offset and limit are applied in memory.
+    /// For <see cref="PlaylistType.LocalFolder"/>, the folder id comes from <see cref="Playlist.Payload"/>.
+    /// For <see cref="PlaylistType.LocalSearch"/>, all local tracks are returned. Offset and limit are
+    /// applied in memory.
     /// </summary>
     public async Task<IEnumerable<Track>> GetPlaylistTracksAsync(Playlist playlist, int offset, int limit, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         IReadOnlyList<Track> tracks = playlist.Type switch
         {
-            PlaylistType.LocalFolder when int.TryParse(playlist.Description, out int folderId)
+            PlaylistType.LocalFolder when playlist.Payload?.FolderId is int folderId
                 => await _localLibraryService.GetTracksAsync(folderId),
             PlaylistType.LocalSearch
                 => await _localLibraryService.GetTracksAsync(null),

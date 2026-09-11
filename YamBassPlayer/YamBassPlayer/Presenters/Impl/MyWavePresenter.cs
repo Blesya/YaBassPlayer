@@ -1,5 +1,4 @@
 using YamBassPlayer.Enums;
-using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 
@@ -13,6 +12,7 @@ public class MyWavePresenter : IMyWavePresenter
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly IPlayStatusPresenter _playStatusPresenter;
+	private readonly IErrorHandler _errorHandler;
 
 	public MyWavePresenter(
 		IYandexRadioService radioService,
@@ -20,7 +20,8 @@ public class MyWavePresenter : IMyWavePresenter
 		ITrackRepositoryCache trackRepositoryCache,
 		ITracksPresenter tracksPresenter,
 		IPlaybackQueue playbackQueue,
-		IPlayStatusPresenter playStatusPresenter)
+		IPlayStatusPresenter playStatusPresenter,
+		IErrorHandler errorHandler)
 	{
 		_radioService = radioService;
 		_trackInfoProvider = trackInfoProvider;
@@ -28,6 +29,7 @@ public class MyWavePresenter : IMyWavePresenter
 		_tracksPresenter = tracksPresenter;
 		_playbackQueue = playbackQueue;
 		_playStatusPresenter = playStatusPresenter;
+		_errorHandler = errorHandler;
 	}
 
 	public Task<Playlist?> StartMyWaveAsync()
@@ -94,7 +96,7 @@ public class MyWavePresenter : IMyWavePresenter
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			_errorHandler.Handle(ex);
 			return null;
 		}
 	}
@@ -115,7 +117,7 @@ public class MyWavePresenter : IMyWavePresenter
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			_errorHandler.Handle(ex);
 		}
 	}
 

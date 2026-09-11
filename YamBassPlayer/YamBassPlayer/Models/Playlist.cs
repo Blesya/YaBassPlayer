@@ -18,6 +18,9 @@ public class Playlist(string name, PlaylistType type)
 
 	public string? ParentTag { get; init; }
 
+	/// <summary>Типизированные данные, определяющие поведение плейлиста (папка/альбом и т.п.).</summary>
+	public PlaylistPayload? Payload { get; init; }
+
 	public override string ToString()
 	{
 		return $"{PlaylistName} ({TrackCount})";

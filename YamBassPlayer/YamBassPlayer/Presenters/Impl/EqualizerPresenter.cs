@@ -1,39 +1,43 @@
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Services;
-using YamBassPlayer.Views.Impl;
+using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Presenters.Impl;
 
 public class EqualizerPresenter : IEqualizerPresenter
 {
 	private readonly IBassEqualizer _bassEqualizer;
+	private readonly IAppConfiguration _configuration;
+	private readonly IViewFactory _viewFactory;
 	private readonly float[] _savedValues = new float[10];
 	private readonly float[] _tempValues = new float[10];
 
-	public EqualizerPresenter(IBassEqualizer bassEqualizer)
+	public EqualizerPresenter(IBassEqualizer bassEqualizer, IAppConfiguration configuration, IViewFactory viewFactory)
 	{
 		_bassEqualizer = bassEqualizer;
+		_configuration = configuration;
+		_viewFactory = viewFactory;
 		LoadFromConfig();
 	}
 
 	private void LoadFromConfig()
 	{
-		var bands = AppConfiguration.GetEqualizerBands();
+		var bands = _configuration.GetEqualizerBands();
 		Array.Copy(bands, _savedValues, 10);
 		ApplyEqualizerValues(_savedValues);
 	}
 
 	private void SaveToConfig()
 	{
-		AppConfiguration.SaveEqualizerBands(_savedValues);
+		_configuration.SaveEqualizerBands(_savedValues);
 	}
 
 	public void ShowEqualizerDialog()
 	{
-		var view = new EqualizerView();
-		
+		var view = _viewFactory.Create<IEqualizerView>();
+
 		Array.Copy(_savedValues, _tempValues, 10);
-		
+
 		for (int i = 0; i < 10; i++)
 		{
 			view.SetBandValue(i, _savedValues[i]);

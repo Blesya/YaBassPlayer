@@ -15,9 +15,10 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 	private readonly ICoverProvider _coverProvider;
 	private readonly ICoverArtService _coverArtService;
 	private readonly ILyricsService _lyricsService;
-	private readonly ITrackInfoProvider _trackInfoProvider;
+	private readonly ITrackCatalog _trackCatalog;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly IEventBus _eventBus;
+	private readonly IErrorHandler _errorHandler;
 	private readonly Action<TrackChangedEvent> _onTrackChangedHandler;
 	private string? _loadingTrackId;
 
@@ -26,26 +27,28 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 		ICoverProvider coverProvider,
 		ICoverArtService coverArtService,
 		ILyricsService lyricsService,
-		ITrackInfoProvider trackInfoProvider,
+		ITrackCatalog trackCatalog,
 		IPlaybackQueue playbackQueue,
-		IEventBus eventBus)
+		IEventBus eventBus,
+		IErrorHandler errorHandler)
 	{
 		_view = view;
 		_coverProvider = coverProvider;
 		_coverArtService = coverArtService;
 		_lyricsService = lyricsService;
-		_trackInfoProvider = trackInfoProvider;
+		_trackCatalog = trackCatalog;
 		_playbackQueue = playbackQueue;
 		_eventBus = eventBus;
+		_errorHandler = errorHandler;
 
-		_onTrackChangedHandler = e => ShowTrack(e.TrackId);
+		_onTrackChangedHandler = e => ShowTrack(e.TrackId).Forget();
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		if (_playbackQueue.CurrentTrackId is { } currentTrackId)
-			ShowTrack(currentTrackId);
+			ShowTrack(currentTrackId).Forget();
 	}
 
-	private async void ShowTrack(string trackId)
+	private async Task ShowTrack(string trackId)
 	{
 		if (trackId == _loadingTrackId)
 			return;
@@ -53,7 +56,7 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 
 		try
 		{
-			Track track = await _trackInfoProvider.GetTrackInfoById(trackId);
+			Track track = await _trackCatalog.GetAsync(trackId);
 			_view.SetTrack(track);
 
 			string coverPath = await _coverProvider.DownloadCoverAsync(track.Id);
@@ -65,7 +68,7 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			_errorHandler.Handle(ex);
 			_view.SetLyrics(null);
 		}
 	}

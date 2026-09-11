@@ -1,10 +1,11 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
+using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class MyWaveView : Window
+public sealed class MyWaveView : Window, IMyWaveView
 {
 	private const int CoverWidth = 100;
 	private const int CoverHeight = 55;
@@ -15,7 +16,7 @@ public sealed class MyWaveView : Window
 	private readonly Label _waveDescriptionLabel;
 	private readonly Label _nextTrackLabel;
 
-	public Action? OnClose { get; set; }
+	public Toplevel ModalWindow => this;
 
 	public MyWaveView() : base("Моя волна")
 	{
@@ -158,14 +159,8 @@ public sealed class MyWaveView : Window
 		});
 	}
 
-	public void Show()
-	{
-		Application.Run(this);
-	}
-
 	public void Close()
 	{
-		OnClose?.Invoke();
 		Application.RequestStop(this);
 	}
 }

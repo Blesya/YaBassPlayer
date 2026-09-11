@@ -1,4 +1,3 @@
-using Autofac;
 using System.Threading;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
@@ -8,6 +7,7 @@ using YamBassPlayer.Presenters;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Events;
 using YamBassPlayer.Services.Impl;
+using YamBassPlayer.UseCases;
 using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Views.Impl;
@@ -15,6 +15,7 @@ namespace YamBassPlayer.Views.Impl;
 /// <summary>
 /// Coordinates all presenter interactions, playback, and keyboard shortcuts.
 /// Extracted from MainWindow to reduce its responsibility to pure UI composition.
+/// Search/local-library/radio/favorite pipelines are delegated to use cases.
 /// </summary>
 public sealed class MainWindowCoordinator : IDisposable
 {
@@ -23,8 +24,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly IPlayStatusPresenter _playStatusPresenter;
 	private readonly IPlaybackPresenter _playbackPresenter;
 	private readonly IPlaybackQueue _playbackQueue;
-	private readonly ITrackInfoProvider _trackInfoProvider;
-	private readonly ISourceSearchService _sourceSearchService;
+	private readonly INextTrackPredictor _nextTrackPredictor;
 	private readonly ITrackRepository _trackRepository;
 	private readonly ITrackRepositoryCache _trackRepositoryCache;
 	private readonly IListenTimer _listenTimer;
@@ -37,11 +37,11 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
 	private readonly INowPlayingPresenter _nowPlayingPresenter;
 	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
-	private readonly IMyWavePresenter _myWavePresenter;
-	private readonly IMyWaveWindowPresenter _myWaveWindowPresenter;
 	private readonly ICommandInputView _commandInputView;
-	private readonly ITrackFavoriteService _trackFavoriteService;
-	private readonly ITrackSourceDetector _trackSourceDetector;
+	private readonly SearchAndLoadPlaylistUseCase _searchAndLoadPlaylistUseCase;
+	private readonly ToggleFavoriteUseCase _toggleFavoriteUseCase;
+	private readonly ScanLibraryUseCase _scanLibraryUseCase;
+	private readonly ShowMyWaveUseCase _showMyWaveUseCase;
 	private CancellationTokenSource? _startupCts;
 	private Window _window = null!; // Set later via SetWindow()
 	private string? _currentTrackId;
@@ -58,21 +58,20 @@ public sealed class MainWindowCoordinator : IDisposable
 		IDatabaseStatisticsPresenter dbStatsPresenter,
 		INowPlayingPresenter nowPlayingPresenter,
 		ILargeTrackInfoPresenter largeTrackInfoPresenter,
-		IMyWavePresenter myWavePresenter,
-		IMyWaveWindowPresenter myWaveWindowPresenter,
 		ITrackInfoPanelPresenter trackInfoPanelPresenter,
 		ICommandInputView commandInputView,
 		IPlaybackPresenter playbackPresenter,
 		IPlaybackQueue playbackQueue,
-		ITrackInfoProvider trackInfoProvider,
-		ISourceSearchService sourceSearchService,
 		ITrackRepository trackRepository,
 		ITrackRepositoryCache trackRepositoryCache,
+		INextTrackPredictor nextTrackPredictor,
 		IListenTimer listenTimer,
 		IAudioPlayer audioPlayer,
 		IEventBus eventBus,
-		ITrackFavoriteService trackFavoriteService,
-		ITrackSourceDetector trackSourceDetector)
+		SearchAndLoadPlaylistUseCase searchAndLoadPlaylistUseCase,
+		ToggleFavoriteUseCase toggleFavoriteUseCase,
+		ScanLibraryUseCase scanLibraryUseCase,
+		ShowMyWaveUseCase showMyWaveUseCase)
 	{
 		_playlistsPresenter = playlistsPresenter;
 		_tracksPresenter = tracksPresenter;
@@ -83,20 +82,19 @@ public sealed class MainWindowCoordinator : IDisposable
 		_dbStatsPresenter = dbStatsPresenter;
 		_nowPlayingPresenter = nowPlayingPresenter;
 		_largeTrackInfoPresenter = largeTrackInfoPresenter;
-		_myWavePresenter = myWavePresenter;
-		_myWaveWindowPresenter = myWaveWindowPresenter;
 		_commandInputView = commandInputView;
 		_playbackPresenter = playbackPresenter;
 		_playbackQueue = playbackQueue;
-		_trackInfoProvider = trackInfoProvider;
-		_sourceSearchService = sourceSearchService;
 		_trackRepository = trackRepository;
 		_trackRepositoryCache = trackRepositoryCache;
+		_nextTrackPredictor = nextTrackPredictor;
 		_listenTimer = listenTimer;
 		_audioPlayer = audioPlayer;
 		_eventBus = eventBus;
-		_trackFavoriteService = trackFavoriteService;
-		_trackSourceDetector = trackSourceDetector;
+		_searchAndLoadPlaylistUseCase = searchAndLoadPlaylistUseCase;
+		_toggleFavoriteUseCase = toggleFavoriteUseCase;
+		_scanLibraryUseCase = scanLibraryUseCase;
+		_showMyWaveUseCase = showMyWaveUseCase;
 	}
 
 	/// <summary>
@@ -172,20 +170,29 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	// ── Playback ──────────────────────────────────────────────────────────
 
-	private async void OnTrackForPlaySelected(string trackId)
+	private void OnTrackForPlaySelected(string trackId)
+		=> PlaySelectedTrackAsync(trackId).Forget();
+
+	private async Task PlaySelectedTrackAsync(string trackId)
 	{
 		try { await _playbackPresenter.PlaySelectedTrackAsync(trackId); }
 		catch (Exception ex) { ex.Handle(); }
 	}
 
-	private async void OnPlaylistChosen(Playlist playlist)
+	private void OnPlaylistChosen(Playlist playlist)
+		=> LoadPlaylistAsync(playlist).Forget();
+
+	private async Task LoadPlaylistAsync(Playlist playlist)
 	{
 		_playbackPresenter.SetPlaylistType(playlist.Type);
 		await _tracksPresenter.LoadTracksFor(playlist);
 		_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
 	}
 
-	private async void OnPreloadNextTrack(object? sender, EventArgs e)
+	private void OnPreloadNextTrack(object? sender, EventArgs e)
+		=> PreloadNextTrackAsync().Forget();
+
+	private async Task PreloadNextTrackAsync()
 	{
 		try { await _playbackPresenter.PreloadNextTrackAsync(); }
 		catch (Exception ex) { ex.Handle(); }
@@ -269,7 +276,10 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	// ── Queue ─────────────────────────────────────────────────────────────
 
-	private async void ShowCurrentQueue()
+	private void ShowCurrentQueue()
+		=> ShowCurrentQueueAsync().Forget();
+
+	private async Task ShowCurrentQueueAsync()
 	{
 		try
 		{
@@ -294,134 +304,18 @@ public sealed class MainWindowCoordinator : IDisposable
 		catch (Exception ex) { ex.Handle(); }
 	}
 
-	// ── Search ────────────────────────────────────────────────────────────
+	// ── Search / Favorites ────────────────────────────────────────────────
 
-	public async void ToggleFavoriteCommandAsync(string sourceId, string trackId)
-	{
-		try
-		{
-			if (!_trackFavoriteService.SupportsSource(sourceId))
-			{
-				_playStatusPresenter.SetPlayStatus("Источник избранного недоступен");
-				return;
-			}
+	public void ToggleFavoriteCommandAsync(string sourceId, string trackId)
+		=> _toggleFavoriteUseCase.ExecuteAsync(sourceId, trackId).Forget();
 
-			bool isFavorite = _trackFavoriteService.IsTrackFavorite(sourceId, trackId);
-			if (isFavorite)
-			{
-				await _trackFavoriteService.RemoveFromFavorites(sourceId, trackId);
-				_playStatusPresenter.SetPlayStatus("Удалён из избранного");
-			}
-			else
-			{
-				await _trackFavoriteService.AddToFavorites(sourceId, trackId);
-				_playStatusPresenter.SetPlayStatus("Добавлен в избранное");
-			}
+	public void RunSearchAsync(string source, string query, SearchEntityKind kind = SearchEntityKind.Tracks)
+		=> _searchAndLoadPlaylistUseCase.SearchAndLoadAsync(source, query, kind, SetWindowTitle).Forget();
 
-			_playStatusPresenter.SetCurrentTrack(trackId, _trackSourceDetector.GetSourceId(trackId));
-		}
-		catch (Exception ex)
-		{
-			ex.Handle();
-			_playStatusPresenter.SetPlayStatus("Не удалось обновить избранное");
-		}
-	}
+	public void ShowYandexSearchDialog()
+		=> ShowYandexSearchDialogAsync().Forget();
 
-	public async void RunSearchAsync(string source, string query, SearchEntityKind kind = SearchEntityKind.Tracks)
-	{
-		try
-		{
-			bool isYandex = string.Equals(source, SourceIds.Yandex, StringComparison.OrdinalIgnoreCase);
-
-			List<Track> tracks;
-			if (isYandex)
-			{
-				if (kind == SearchEntityKind.Artist)
-				{
-					var artistTracks = await GetFirstArtistTracksAsync(query);
-					if (artistTracks is null) return;
-					tracks = artistTracks;
-				}
-				else if (kind == SearchEntityKind.Album)
-				{
-					var albumTracks = await GetFirstAlbumTracksAsync(query);
-					if (albumTracks is null) return;
-					tracks = albumTracks;
-				}
-				else
-				{
-					tracks = (await _sourceSearchService.SearchAsync(SourceIds.Yandex, query, 50)).ToList();
-				}
-
-				foreach (var track in tracks)
-					await _trackInfoProvider.SaveAsync(track);
-				_trackRepositoryCache.ReplaceYandexSearchTracks(tracks);
-			}
-			else
-			{
-				tracks = (await _trackInfoProvider.SearchTracks(query, 50)).ToList();
-				_trackRepositoryCache.ReplaceLocalSearchTracks(tracks);
-			}
-
-			if (tracks.Count == 0)
-			{
-				_playStatusPresenter.SetPlayStatus($"По запросу «{query}» ничего не найдено");
-				return;
-			}
-
-			var playlist = new Playlist(
-				isYandex ? "Поиск по ЯМ" : "Локальный поиск",
-				isYandex ? PlaylistType.YandexSearch : PlaylistType.LocalSearch)
-			{
-				Description = $"Результаты поиска: {query}",
-				TrackCount = tracks.Count,
-				SourceId = source,
-				ParentTag = isYandex ? SourceIds.Yandex : SourceIds.Local
-			};
-
-			await _trackRepository.SetPlaylist(playlist);
-			await _tracksPresenter.LoadTracksFor(playlist);
-			_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
-			_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
-		}
-		catch (Exception ex) { ex.Handle(); }
-	}
-
-	/// <summary>
-	/// Возвращает треки первого найденного исполнителя, либо null (статус уже выставлен),
-	/// если исполнитель по запросу не найден.
-	/// </summary>
-	private async Task<List<Track>?> GetFirstArtistTracksAsync(string query)
-	{
-		var result = await _sourceSearchService.SearchAllAsync(SourceIds.Yandex, query, 20);
-		var artist = result.Artists.FirstOrDefault();
-		if (artist is null)
-		{
-			_playStatusPresenter.SetPlayStatus($"Исполнитель по запросу «{query}» не найден");
-			return null;
-		}
-
-		return (await _sourceSearchService.GetArtistTracksAsync(SourceIds.Yandex, artist.Id)).ToList();
-	}
-
-	/// <summary>
-	/// Возвращает треки первого найденного альбома, либо null (статус уже выставлен),
-	/// если альбом по запросу не найден.
-	/// </summary>
-	private async Task<List<Track>?> GetFirstAlbumTracksAsync(string query)
-	{
-		var result = await _sourceSearchService.SearchAllAsync(SourceIds.Yandex, query, 20);
-		var album = result.Albums.FirstOrDefault();
-		if (album is null)
-		{
-			_playStatusPresenter.SetPlayStatus($"Альбом по запросу «{query}» не найден");
-			return null;
-		}
-
-		return (await _sourceSearchService.GetAlbumTracksAsync(SourceIds.Yandex, album.Id)).ToList();
-	}
-
-	public async void ShowYandexSearchDialog()
+	private async Task ShowYandexSearchDialogAsync()
 	{
 		try
 		{
@@ -431,26 +325,15 @@ public sealed class MainWindowCoordinator : IDisposable
 			var selectedTracks = _yandexSearchPresenter.GetSelectedTracks();
 			if (selectedTracks.Count == 0) return;
 
-			foreach (var track in selectedTracks)
-				await _trackInfoProvider.SaveAsync(track);
-
-			_trackRepositoryCache.ReplaceYandexSearchTracks(selectedTracks);
-			var playlist = new Playlist("Поиск по ЯМ", PlaylistType.YandexSearch)
-			{
-				Description = "Результаты поиска по Яндекс.Музыке",
-				TrackCount = selectedTracks.Count,
-				SourceId = SourceIds.Yandex,
-				ParentTag = SourceIds.Yandex
-			};
-			await _trackRepository.SetPlaylist(playlist);
-			await _tracksPresenter.LoadTracksFor(playlist);
-			_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
-			_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
+			await _searchAndLoadPlaylistUseCase.LoadYandexSelectionAsync(selectedTracks, SetWindowTitle);
 		}
 		catch (Exception ex) { ex.Handle(); }
 	}
 
-	public async void ShowLocalSearchDialog()
+	public void ShowLocalSearchDialog()
+		=> ShowLocalSearchDialogAsync().Forget();
+
+	private async Task ShowLocalSearchDialogAsync()
 	{
 		try
 		{
@@ -460,50 +343,18 @@ public sealed class MainWindowCoordinator : IDisposable
 			var selectedTracks = _localSearchPresenter.GetSelectedTracks();
 			if (selectedTracks.Count == 0) return;
 
-			_trackRepositoryCache.ReplaceLocalSearchTracks(selectedTracks);
-			var playlist = new Playlist("Локальный поиск", PlaylistType.LocalSearch)
-			{
-				Description = "Результаты локального поиска",
-				TrackCount = selectedTracks.Count,
-				SourceId = SourceIds.Local,
-				ParentTag = SourceIds.Local
-			};
-			await _trackRepository.SetPlaylist(playlist);
-			await _tracksPresenter.LoadTracksFor(playlist);
-			_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
-			_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
+			await _searchAndLoadPlaylistUseCase.LoadLocalSelectionAsync(selectedTracks, SetWindowTitle);
 		}
 		catch (Exception ex) { ex.Handle(); }
 	}
 
 	// ── Radio / Wave ──────────────────────────────────────────────────────
 
-	public async void ShowMyWave()
-	{
-		var playlist = await _myWavePresenter.StartMyWaveAsync();
-		if (playlist is null) return;
-		_playbackPresenter.SetPlaylistType(PlaylistType.MyWave);
-		_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
-		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
-		_myWaveWindowPresenter.ShowWindow(playlist);
-	}
+	public void ShowMyWave()
+		=> _showMyWaveUseCase.ShowAsync(SetWindowTitle).Forget();
 
-	public async void ShowMyWaveByTrack()
-	{
-		var trackId = _playbackQueue.CurrentTrackId;
-		if (trackId == null)
-		{
-			_playStatusPresenter.SetPlayStatus("Сначала начните воспроизведение трека");
-			return;
-		}
-
-		var playlist = await _myWavePresenter.StartMyWaveFromTrackAsync(trackId);
-		if (playlist is null) return;
-		_playbackPresenter.SetPlaylistType(PlaylistType.MyWave);
-		_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
-		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
-		_myWaveWindowPresenter.ShowWindow(playlist);
-	}
+	public void ShowMyWaveByTrack()
+		=> _showMyWaveUseCase.ShowByTrackAsync(SetWindowTitle).Forget();
 
 	// ── Local library ─────────────────────────────────────────────────────
 
@@ -519,43 +370,23 @@ public sealed class MainWindowCoordinator : IDisposable
 		if (!od.Canceled && od.FilePath != null)
 		{
 			string path = od.FilePath.ToString()!;
-			_ = Task.Run(async () =>
-			{
-				try
-				{
-					var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
-					await libraryService.AddFolderAsync(path);
-					Application.MainLoop.Invoke(RefreshPlaylistTree);
-				}
-				catch (Exception ex) { Application.MainLoop.Invoke(() => ex.Handle()); }
-			});
+			Task.Run(() => _scanLibraryUseCase.AddFolderAsync(path)).Forget();
 		}
 	}
 
-	public async void ShowLocalFolderManagerDialog()
-	{
-		var presenter = ServicesProvider.Ioc.Resolve<ILocalFolderManagerPresenter>();
-		presenter.OnLibraryChanged += RefreshPlaylistTree;
-		try { await presenter.ShowAsync(); }
-		finally { presenter.OnLibraryChanged -= RefreshPlaylistTree; }
-	}
+	public void ShowLocalFolderManagerDialog()
+		=> _scanLibraryUseCase.ShowFolderManagerAsync().Forget();
 
 	public void ScanLocalLibrary()
 	{
-		_ = Task.Run(async () =>
+		Task.Run(async () =>
 		{
-			try
-			{
-				var libraryService = ServicesProvider.Ioc.Resolve<ILocalLibraryService>();
-				int count = await libraryService.ScanAllFoldersAsync();
-				Application.MainLoop.Invoke(() =>
-				{
-					RefreshPlaylistTree();
-					MessageBox.Query("Сканирование завершено", $"Найдено треков: {count}", "OK");
-				});
-			}
-			catch (Exception ex) { Application.MainLoop.Invoke(() => ex.Handle()); }
-		});
+			int? count = await _scanLibraryUseCase.ScanAllFoldersAsync();
+			if (count is null) return;
+
+			Application.MainLoop.Invoke(() =>
+				MessageBox.Query("Сканирование завершено", $"Найдено треков: {count.Value}", "OK"));
+		}).Forget();
 	}
 
 	public void RefreshPlaylistTree()
@@ -573,14 +404,13 @@ public sealed class MainWindowCoordinator : IDisposable
 				return;
 			}
 
-			var predictor = ServicesProvider.Ioc.Resolve<INextTrackPredictor>();
-			if (!predictor.IsReady)
+			if (!_nextTrackPredictor.IsReady)
 			{
 				_playStatusPresenter.SetPlayStatus("Модель рекомендаций недоступна (нет файлов модели)");
 				return;
 			}
 
-			var result = predictor.GetNext(
+			var result = _nextTrackPredictor.GetNext(
 				_previousTrackId ?? "",
 				_currentTrackId,
 				_previous2Id ?? "");
@@ -610,6 +440,8 @@ public sealed class MainWindowCoordinator : IDisposable
 	public void ShowNowPlaying() => _nowPlayingPresenter.ShowNowPlaying();
 	public void ShowLargeTrackInfo() => _largeTrackInfoPresenter.ShowLargeTrackInfo();
 	public void ShowAbout() => AboutDialog.Show();
+
+	private void SetWindowTitle(string title) => _window.Title = title;
 
 	public void StopApplication()
 	{

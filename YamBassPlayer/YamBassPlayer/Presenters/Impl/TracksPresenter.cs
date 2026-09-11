@@ -1,4 +1,5 @@
-﻿using YamBassPlayer.Models;
+﻿using YamBassPlayer.Extensions;
+using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Events;
 using YamBassPlayer.Views;
@@ -31,7 +32,7 @@ public class TracksPresenter : ITracksPresenter
 		_eventBus = eventBus;
 
 		_view.OnTrackSelected += OnTrackSelected;
-		_view.NeedMoreTracks += OnNeedMoreTracks;
+		_view.NeedMoreTracks += () => OnNeedMoreTracks().Forget();
 		_view.OnCellActivated += ViewOnTrackSelected;
 		_onTrackChangedHandler = e => OnPlayingTrackChanged(e.TrackId);
 		_eventBus.Subscribe(_onTrackChangedHandler);
@@ -80,7 +81,7 @@ public class TracksPresenter : ITracksPresenter
 		OnTrackChosen?.Invoke(_tracks[index]);
 	}
 
-	private async void OnNeedMoreTracks()
+	private async Task OnNeedMoreTracks()
 	{
 		IEnumerable<Track> result = await _trackRepository.GetNextTracks(TracksPerBatch);
 		var more = result.ToList();

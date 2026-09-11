@@ -1,4 +1,3 @@
-using Autofac;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
@@ -8,18 +7,20 @@ namespace YamBassPlayer.Presenters.Impl;
 public class LocalSearchPresenter : ILocalSearchPresenter
 {
 	private readonly ITrackInfoProvider _trackInfoProvider;
+	private readonly IViewFactory _viewFactory;
 	private List<Track> _searchResults = new();
 	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
-	public LocalSearchPresenter(ITrackInfoProvider trackInfoProvider)
+	public LocalSearchPresenter(ITrackInfoProvider trackInfoProvider, IViewFactory viewFactory)
 	{
 		_trackInfoProvider = trackInfoProvider;
+		_viewFactory = viewFactory;
 	}
 
 	public void ShowLocalSearchDialog()
 	{
-		var view = ServicesProvider.Ioc.Resolve<ILocalSearchView>();
+		var view = _viewFactory.Create<ILocalSearchView>();
 
 		_searchResults.Clear();
 		_selectedTracks.Clear();

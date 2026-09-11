@@ -1,5 +1,4 @@
 ﻿using System.Threading;
-using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
@@ -11,6 +10,7 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 	private readonly IPlaylistsView _view;
 	private readonly ITrackRepository _trackRepository;
 	private readonly IPlaylistTreeComposer _playlistTreeComposer;
+	private readonly IErrorHandler _errorHandler;
 
 	private List<PlaylistTreeItem> _roots = new();
 	public event Action<Playlist>? PlaylistChosen;
@@ -18,11 +18,13 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 	public PlaylistsPresenter(
 		IPlaylistsView view,
 		ITrackRepository trackRepository,
-		IPlaylistTreeComposer playlistTreeComposer)
+		IPlaylistTreeComposer playlistTreeComposer,
+		IErrorHandler errorHandler)
 	{
 		_view = view;
 		_trackRepository = trackRepository;
 		_playlistTreeComposer = playlistTreeComposer;
+		_errorHandler = errorHandler;
 
 		_view.PlaylistSelected += OnPlaylistSelected;
 
@@ -49,7 +51,7 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			_errorHandler.Handle(ex);
 		}
 	}
 

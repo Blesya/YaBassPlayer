@@ -164,13 +164,11 @@ public sealed class LocalAlbumLoadStrategy(ILocalLibraryService localLibraryServ
     public bool CanHandle(PlaylistType type) => type == PlaylistType.LocalAlbum;
     public async Task<List<string>> LoadTrackIdsAsync(Playlist playlist)
     {
-        // Description encodes "artistName\nalbumName" — empty artist means all artists.
-        var parts = playlist.Description?.Split('\n', 2);
-        if (parts?.Length != 2)
+        // Payload carries artist/album; empty artist means all artists.
+        string artistName = playlist.Payload?.ArtistName ?? string.Empty;
+        string? albumName = playlist.Payload?.AlbumName;
+        if (albumName is null)
             return [];
-
-        string artistName = parts[0];
-        string albumName = parts[1];
 
         IReadOnlyList<Track> tracks = string.IsNullOrEmpty(artistName)
             ? await localLibraryService.GetTracksByAlbumTitleAsync(albumName)

@@ -1,4 +1,3 @@
-using Autofac;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
@@ -8,17 +7,19 @@ namespace YamBassPlayer.Presenters.Impl;
 public class YandexSearchPresenter : IYandexSearchPresenter
 {
 	private readonly ISourceSearchService _sourceSearchService;
+	private readonly IViewFactory _viewFactory;
 	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
-	public YandexSearchPresenter(ISourceSearchService sourceSearchService)
+	public YandexSearchPresenter(ISourceSearchService sourceSearchService, IViewFactory viewFactory)
 	{
 		_sourceSearchService = sourceSearchService;
+		_viewFactory = viewFactory;
 	}
 
 	public void ShowYandexSearchDialog()
 	{
-		var view = ServicesProvider.Ioc.Resolve<IYandexSearchView>();
+		var view = _viewFactory.Create<IYandexSearchView>();
 
 		_selectedTracks.Clear();
 		_cancelled = true;

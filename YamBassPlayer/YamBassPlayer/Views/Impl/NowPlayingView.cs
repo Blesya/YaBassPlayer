@@ -2,10 +2,11 @@ using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 using YamBassPlayer.Spectrum;
+using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class NowPlayingView : Window
+public sealed class NowPlayingView : Window, INowPlayingView
 {
 	private readonly Label _artistTitleLabel;
 	private readonly Label _albumLabel;
@@ -17,7 +18,7 @@ public sealed class NowPlayingView : Window
 
 	public SpectrumDataType SpectrumDataType => _spectrum.RequiredDataType;
 
-	public Action? OnClose;
+	public Toplevel ModalWindow => this;
 
 	public NowPlayingView() : base("Сейчас играет")
 	{
@@ -151,14 +152,8 @@ public sealed class NowPlayingView : Window
 		_freqButton.Text = freq >= 22050 ? "▲ 22k" : $"▲ {freq / 1000}k";
 	}
 
-	public void Show()
-	{
-		Application.Run(this);
-	}
-
 	public void Close()
 	{
-		OnClose?.Invoke();
 		Application.RequestStop(this);
 	}
 }

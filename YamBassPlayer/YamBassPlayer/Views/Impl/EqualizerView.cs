@@ -1,8 +1,9 @@
 using Terminal.Gui;
+using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class EqualizerView : Dialog
+public sealed class EqualizerView : Dialog, IEqualizerView
 {
 	private const int MaxValue = 10;
 	private const int BarHeight = 21; // -10 to +10 = 21 позиций

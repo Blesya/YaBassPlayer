@@ -1,10 +1,11 @@
 using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
+using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Views.Impl;
 
-public sealed class DatabaseStatisticsView : Dialog
+public sealed class DatabaseStatisticsView : Dialog, IDatabaseStatisticsView
 {
 	private readonly Label[] _valueLabels = new Label[9];
 

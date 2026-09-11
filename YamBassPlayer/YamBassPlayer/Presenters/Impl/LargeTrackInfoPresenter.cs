@@ -1,4 +1,3 @@
-using Autofac;
 using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
@@ -11,44 +10,50 @@ namespace YamBassPlayer.Presenters.Impl;
 public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 {
 	private readonly IPlaybackQueue _playbackQueue;
-	private readonly ITrackInfoProvider _trackInfoProvider;
+	private readonly ITrackCatalog _trackCatalog;
 	private readonly ICoverProvider _coverProvider;
 	private readonly ICoverArtService _coverArtService;
+	private readonly IViewFactory _viewFactory;
 	private readonly IEventBus _eventBus;
+	private readonly IErrorHandler _errorHandler;
 	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
 	public LargeTrackInfoPresenter(
 		IPlaybackQueue playbackQueue,
-		ITrackInfoProvider trackInfoProvider,
+		ITrackCatalog trackCatalog,
 		ICoverProvider coverProvider,
 		ICoverArtService coverArtService,
-		IEventBus eventBus)
+		IViewFactory viewFactory,
+		IEventBus eventBus,
+		IErrorHandler errorHandler)
 	{
 		_playbackQueue = playbackQueue;
-		_trackInfoProvider = trackInfoProvider;
+		_trackCatalog = trackCatalog;
 		_coverProvider = coverProvider;
 		_coverArtService = coverArtService;
+		_viewFactory = viewFactory;
 		_eventBus = eventBus;
+		_errorHandler = errorHandler;
 	}
 
 	public void ShowLargeTrackInfo()
 	{
-		var view = ServicesProvider.Ioc.Resolve<ILargeTrackInfoView>();
+		var view = _viewFactory.Create<ILargeTrackInfoView>();
 
-		LoadPlaylistAsync(view);
+		LoadPlaylistAsync(view).Forget();
 
 		string? currentTrackId = _playbackQueue.CurrentTrackId;
 		if (currentTrackId != null)
 		{
 			view.SetCurrentTrackId(currentTrackId);
-			LoadTrackInfo(view, currentTrackId);
+			LoadTrackInfo(view, currentTrackId).Forget();
 		}
 
 		_onTrackChangedHandler = e =>
 			Application.MainLoop.Invoke(() =>
 			{
 				view.SetCurrentTrackId(e.TrackId);
-				LoadTrackInfo(view, e.TrackId);
+				LoadTrackInfo(view, e.TrackId).Forget();
 			});
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
@@ -80,7 +85,7 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 		view.Show();
 	}
 
-	private async void LoadPlaylistAsync(ILargeTrackInfoView view)
+	private async Task LoadPlaylistAsync(ILargeTrackInfoView view)
 	{
 		try
 		{
@@ -88,20 +93,20 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 			if (trackIds.Count == 0)
 				return;
 
-			var tracks = await _trackInfoProvider.GetTracksInfoByIds(trackIds);
-			view.SetPlaylist(tracks.ToList().AsReadOnly());
+			IReadOnlyList<Track> tracks = await _trackCatalog.GetManyAsync(trackIds);
+			view.SetPlaylist(tracks);
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			_errorHandler.Handle(ex);
 		}
 	}
 
-	private async void LoadTrackInfo(ILargeTrackInfoView view, string trackId)
+	private async Task LoadTrackInfo(ILargeTrackInfoView view, string trackId)
 	{
 		try
 		{
-			Track track = await _trackInfoProvider.GetTrackInfoById(trackId);
+			Track track = await _trackCatalog.GetAsync(trackId);
 			view.SetTrack(track);
 
 			string coverPath = await _coverProvider.DownloadCoverAsync(trackId);
@@ -110,7 +115,7 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			_errorHandler.Handle(ex);
 		}
 	}
 }

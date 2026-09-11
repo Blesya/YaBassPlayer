@@ -3,31 +3,30 @@ using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
 
+/// <summary>
+/// Список треков плитками. Состояние списка хранится в общей
+/// <see cref="ITrackListModel"/>; здесь остаются только раскладка, анимация
+/// раскрытия плиток и бегущая строка.
+/// </summary>
 public sealed class TracksTileView : View, ITracksView
 {
 	private const int TileWidth = 26;
 	private const int TileHeight = 5;
 	private const int TileGap = 1;
 
-	private readonly record struct TileData(string DisplayNumber, string Artist, string Title, string Album, string TrackId, string? Subtitle = null);
-
-	private readonly List<TileData> _tracks = [];
-	private readonly List<TileData> _allTiles = [];
-	private string? _playingTrackId;
-	private int _selectedIndex;
-	private int _scrollOffset;
-	private int _columns = 1;
-	private bool _isLoadingMore;
-	private int _revealedCount;
-	private object? _animationToken;
-	private string? _filterText;
-
-	private string _blankLine = "";
-	private int _blankLineWidth = -1;
-
 	private const int MarqueeIntervalMs = 250;
 	private const int MarqueePauseTicks = 4;
 	private const int RevealBatchSize = 25;
+
+	private readonly ITrackListModel _model;
+
+	private int _columns = 1;
+	private int _revealedCount;
+	private int _syncedCount;
+	private object? _animationToken;
+
+	private string _blankLine = "";
+	private int _blankLineWidth = -1;
 
 	private int _marqueeArtistOffset;
 	private int _marqueeTitleOffset;
@@ -41,11 +40,44 @@ public sealed class TracksTileView : View, ITracksView
 	public event Action<int>? OnCellActivated;
 	public event Action? NeedMoreTracks;
 
-	public TracksTileView()
+	public TracksTileView() : this(new TrackListModel())
 	{
+	}
+
+	public TracksTileView(ITrackListModel model)
+	{
+		_model = model;
+		_model.Changed += OnModelChanged;
+
 		Width = Dim.Fill();
 		Height = Dim.Fill();
 		CanFocus = true;
+	}
+
+	private int VisibleRows => Math.Max(1, Bounds.Height / TileHeight);
+	private int VisibleItems => VisibleRows * Math.Max(1, _columns);
+	private int ColumnStep => Math.Max(1, _columns);
+
+	/// <summary>
+	/// Реакция на изменение модели. Рост списка (пагинация) раскрывается
+	/// анимацией с прежнего числа элементов; остальные изменения показываются сразу.
+	/// </summary>
+	private void OnModelChanged()
+	{
+		int count = _model.Items.Count;
+		if (_syncedCount > 0 && count > _syncedCount)
+		{
+			if (_animationToken == null)
+				StartRevealAnimation(_syncedCount);
+		}
+		else
+		{
+			StopRevealAnimation();
+			_revealedCount = count;
+		}
+
+		_syncedCount = count;
+		SetNeedsDisplay();
 	}
 
 	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
@@ -54,55 +86,26 @@ public sealed class TracksTileView : View, ITracksView
 		{
 			StopRevealAnimation();
 			StopMarqueeTimer();
-			_allTiles.Clear();
-			int number = 0;
-			foreach (Track track in tracks)
-			{
-				number++;
-				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_allTiles.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
-			}
-
-			ApplyFilter();
-			_selectedIndex = 0;
-			_scrollOffset = 0;
-			_isLoadingMore = false;
+			_model.SetTracks(tracks, isCached);
+			ResetMarqueeOffsets();
+			if (_model.Items.Count > 0)
+				StartMarqueeTimer();
 			StartRevealAnimation(0);
-			StartMarqueeTimer();
 		});
 	}
 
 	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			int previousCount = _tracks.Count;
-			int number = _allTiles.Count;
-			foreach (Track track in tracks)
-			{
-				number++;
-				string displayNumber = isCached(track.Id) ? $"{number}*" : number.ToString();
-				_allTiles.Add(new TileData(displayNumber, track.Artist, track.Title, track.Album, track.Id, track.Subtitle));
-			}
-
-			ApplyFilter();
-			_isLoadingMore = false;
-			if (_animationToken == null)
-				StartRevealAnimation(previousCount);
-		});
-	}
+		=> Application.MainLoop.Invoke(() => _model.AddTracks(tracks, isCached));
 
 	public void ClearTracks()
 	{
 		Application.MainLoop.Invoke(() =>
 		{
+			_model.Clear();
 			StopRevealAnimation();
 			StopMarqueeTimer();
 			_revealedCount = 0;
-			_allTiles.Clear();
-			_tracks.Clear();
-			_selectedIndex = 0;
-			_scrollOffset = 0;
+			_syncedCount = 0;
 			ResetMarqueeOffsets();
 			SetNeedsDisplay();
 		});
@@ -110,44 +113,19 @@ public sealed class TracksTileView : View, ITracksView
 
 	public void SetFilter(string? filter)
 	{
-		_filterText = filter;
-		ApplyFilter();
-		_selectedIndex = 0;
-		_scrollOffset = 0;
-		_revealedCount = _tracks.Count;
+		_model.SetFilter(filter);
+		StopRevealAnimation();
+		_revealedCount = _model.Items.Count;
+		_syncedCount = _model.Items.Count;
 		StopMarqueeTimer();
 		ResetMarqueeOffsets();
-		if (_tracks.Count > 0)
+		if (_model.Items.Count > 0)
 			StartMarqueeTimer();
 		SetNeedsDisplay();
 	}
 
-	private void ApplyFilter()
-	{
-		if (string.IsNullOrWhiteSpace(_filterText))
-		{
-			_tracks.Clear();
-			_tracks.AddRange(_allTiles);
-		}
-		else
-		{
-			string filter = _filterText;
-			_tracks.Clear();
-			_tracks.AddRange(_allTiles.Where(t =>
-				t.Artist.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-				t.Title.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-				t.Album.Contains(filter, StringComparison.OrdinalIgnoreCase)));
-		}
-	}
-
 	public void SetPlayingTrackId(string? trackId)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_playingTrackId = trackId;
-			SetNeedsDisplay();
-		});
-	}
+		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
 
 	public override void Redraw(Rect bounds)
 	{
@@ -165,29 +143,29 @@ public sealed class TracksTileView : View, ITracksView
 			Driver.AddStr(blankLine);
 		}
 
-		if (_tracks.Count == 0)
+		var items = _model.Items;
+		if (items.Count == 0)
 			return;
 
 		for (int row = 0; row < visibleRows; row++)
 		{
-			int gridRow = row + _scrollOffset;
 			for (int col = 0; col < _columns; col++)
 			{
-				int index = gridRow * _columns + col;
-				if (index >= _tracks.Count || index >= _revealedCount)
+				int index = _model.ScrollOffset + row * _columns + col;
+				if (index >= items.Count || index >= _revealedCount)
 					break;
 
 				int x = col * (TileWidth + TileGap);
 				int y = row * TileHeight;
 
-				bool isSelected = index == _selectedIndex;
-				bool isPlaying = _tracks[index].TrackId == _playingTrackId;
-				DrawTile(x, y, _tracks[index], isSelected, isPlaying, bounds);
+				bool isSelected = index == _model.SelectedIndex;
+				bool isPlaying = items[index].Track.Id == _model.PlayingTrackId;
+				DrawTile(x, y, items[index], isSelected, isPlaying, bounds);
 			}
 		}
 	}
 
-	private void DrawTile(int x, int y, TileData tile, bool isSelected, bool isPlaying, Rect bounds)
+	private void DrawTile(int x, int y, TrackListItem item, bool isSelected, bool isPlaying, Rect bounds)
 	{
 		var attr = isSelected ? ColorScheme.Focus : ColorScheme.Normal;
 		Driver.SetAttribute(attr);
@@ -195,7 +173,7 @@ public sealed class TracksTileView : View, ITracksView
 		int innerWidth = TileWidth - 2;
 
 		// Top border: ┌─── N ──────────────────────┐  or  ┌─── N ────────────────── ▶┐
-		string numberPart = $" {tile.DisplayNumber} ";
+		string numberPart = $" {item.Number.Trim()} ";
 		string playingMark = isPlaying ? " ▶ " : "";
 		int dashesAfter = Math.Max(0, innerWidth - numberPart.Length - playingMark.Length);
 		string topLine = "┌" + numberPart + new string('─', dashesAfter) + playingMark + "┐";
@@ -205,19 +183,19 @@ public sealed class TracksTileView : View, ITracksView
 		var artistAttr = isSelected ? ColorScheme.HotFocus : ColorScheme.HotNormal;
 		Driver.SetAttribute(artistAttr);
 		string artistText = isSelected
-			? MarqueeText(tile.Artist, _marqueeArtistOffset, innerWidth)
-			: PadOrTruncate(tile.Artist, innerWidth);
+			? MarqueeText(item.Track.Artist, _marqueeArtistOffset, innerWidth)
+			: PadOrTruncate(item.Track.Artist, innerWidth);
 		DrawStringAt(x, y + 1, "│" + artistText + "│", bounds);
 		Driver.SetAttribute(attr);
 
 		// Title line
 		string titleText = isSelected
-			? MarqueeText(tile.Title, _marqueeTitleOffset, innerWidth)
-			: PadOrTruncate(tile.Title, innerWidth);
+			? MarqueeText(item.Track.Title, _marqueeTitleOffset, innerWidth)
+			: PadOrTruncate(item.Track.Title, innerWidth);
 		DrawStringAt(x, y + 2, "│" + titleText + "│", bounds);
 
 		// Album / Subtitle line
-		string thirdLine = tile.Subtitle ?? tile.Album;
+		string thirdLine = item.Track.Subtitle ?? item.Track.Album;
 		string albumText = isSelected
 			? MarqueeText(thirdLine, _marqueeAlbumOffset, innerWidth)
 			: PadOrTruncate(thirdLine, innerWidth);
@@ -277,48 +255,42 @@ public sealed class TracksTileView : View, ITracksView
 
 	public override bool ProcessKey(KeyEvent kb)
 	{
-		if (_tracks.Count == 0)
+		if (_model.Items.Count == 0)
 			return base.ProcessKey(kb);
 
-		int oldIndex = _selectedIndex;
-
+		bool moved;
 		switch (kb.Key)
 		{
 			case Key.CursorRight:
-				if (_selectedIndex < _revealedCount - 1)
-					_selectedIndex++;
+				moved = _model.MoveDown(1);
 				break;
 
 			case Key.CursorLeft:
-				if (_selectedIndex > 0)
-					_selectedIndex--;
+				moved = _model.MoveUp(1);
 				break;
 
 			case Key.CursorDown:
-				if (_selectedIndex + _columns < _revealedCount)
-					_selectedIndex += _columns;
+				moved = _model.MoveDown(ColumnStep);
 				break;
 
 			case Key.CursorUp:
-				if (_selectedIndex - _columns >= 0)
-					_selectedIndex -= _columns;
+				moved = _model.MoveUp(ColumnStep);
 				break;
 
 			case Key.Enter:
-				OnCellActivated?.Invoke(_selectedIndex);
+				OnCellActivated?.Invoke(_model.SelectedIndex);
 				return true;
 
 			default:
 				return base.ProcessKey(kb);
 		}
 
-		if (_selectedIndex != oldIndex)
+		if (moved)
 		{
-			ResetMarqueeState();
-			EnsureSelectedVisible();
-			OnTrackSelected?.Invoke(_selectedIndex);
-			CheckNeedMoreTracks();
-			SetNeedsDisplay();
+			_model.EnsureSelectedVisible(VisibleItems, ColumnStep);
+			OnTrackSelected?.Invoke(_model.SelectedIndex);
+			if (_model.ShouldRequestMore(VisibleItems))
+				NeedMoreTracks?.Invoke();
 		}
 
 		return true;
@@ -328,26 +300,14 @@ public sealed class TracksTileView : View, ITracksView
 	{
 		if (me.Flags.HasFlag(MouseFlags.WheeledDown))
 		{
-			int totalRows = (_tracks.Count + _columns - 1) / Math.Max(1, _columns);
-			int visibleRows = Math.Max(1, Bounds.Height / TileHeight);
-			if (_scrollOffset < totalRows - visibleRows)
-			{
-				_scrollOffset++;
-				CheckNeedMoreTracks();
-				SetNeedsDisplay();
-			}
-
+			if (_model.ScrollBy(ColumnStep, VisibleItems) && _model.ShouldRequestMore(VisibleItems))
+				NeedMoreTracks?.Invoke();
 			return true;
 		}
 
 		if (me.Flags.HasFlag(MouseFlags.WheeledUp))
 		{
-			if (_scrollOffset > 0)
-			{
-				_scrollOffset--;
-				SetNeedsDisplay();
-			}
-
+			_model.ScrollBy(-ColumnStep, VisibleItems);
 			return true;
 		}
 
@@ -356,23 +316,11 @@ public sealed class TracksTileView : View, ITracksView
 			if (!HasFocus)
 				SetFocus();
 
-			int col = me.X / (TileWidth + TileGap);
-			int row = me.Y / TileHeight + _scrollOffset;
-			int index = row * _columns + col;
-
-			if (col < _columns && index >= 0 && index < _revealedCount)
+			if (TryGetTileIndex(me, out int index) && _model.Select(index))
 			{
-				int oldIndex = _selectedIndex;
-				_selectedIndex = index;
-
-				if (_selectedIndex != oldIndex)
-				{
-					ResetMarqueeState();
-					OnTrackSelected?.Invoke(_selectedIndex);
-					CheckNeedMoreTracks();
-				}
-
-				SetNeedsDisplay();
+				OnTrackSelected?.Invoke(_model.SelectedIndex);
+				if (_model.ShouldRequestMore(VisibleItems))
+					NeedMoreTracks?.Invoke();
 			}
 
 			return true;
@@ -380,18 +328,10 @@ public sealed class TracksTileView : View, ITracksView
 
 		if (me.Flags.HasFlag(MouseFlags.Button1DoubleClicked))
 		{
-			int col = me.X / (TileWidth + TileGap);
-			int row = me.Y / TileHeight + _scrollOffset;
-			int index = row * _columns + col;
-
-			if (col < _columns && index >= 0 && index < _revealedCount)
+			if (TryGetTileIndex(me, out int index))
 			{
-				int oldIndex = _selectedIndex;
-				_selectedIndex = index;
-				if (_selectedIndex != oldIndex)
-					ResetMarqueeState();
-				OnCellActivated?.Invoke(_selectedIndex);
-				SetNeedsDisplay();
+				_model.Select(index);
+				OnCellActivated?.Invoke(_model.SelectedIndex);
 			}
 
 			return true;
@@ -400,34 +340,28 @@ public sealed class TracksTileView : View, ITracksView
 		return base.MouseEvent(me);
 	}
 
-	private void EnsureSelectedVisible()
+	private bool TryGetTileIndex(MouseEvent me, out int index)
 	{
-		if (_columns == 0)
-			return;
-
-		int selectedRow = _selectedIndex / _columns;
-		int visibleRows = Math.Max(1, Bounds.Height / TileHeight);
-
-		if (selectedRow < _scrollOffset)
-			_scrollOffset = selectedRow;
-		else if (selectedRow >= _scrollOffset + visibleRows)
-			_scrollOffset = selectedRow - visibleRows + 1;
+		int col = me.X / (TileWidth + TileGap);
+		int row = me.Y / TileHeight;
+		index = _model.ScrollOffset + row * ColumnStep + col;
+		return col < ColumnStep && index >= 0 && index < _model.Items.Count && index < _revealedCount;
 	}
 
 	private void StartRevealAnimation(int fromIndex)
 	{
 		StopRevealAnimation();
-		_revealedCount = fromIndex;
+		_revealedCount = Math.Clamp(fromIndex, 0, _model.Items.Count);
 
-		if (_tracks.Count == 0)
+		if (_model.Items.Count == 0)
 			return;
 
 		_animationToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
-			_revealedCount = Math.Min(_revealedCount + RevealBatchSize, _tracks.Count);
+			_revealedCount = Math.Min(_revealedCount + RevealBatchSize, _model.Items.Count);
 			SetNeedsDisplay();
 
-			if (_revealedCount >= _tracks.Count)
+			if (_revealedCount >= _model.Items.Count)
 			{
 				_animationToken = null;
 				return false;
@@ -457,15 +391,15 @@ public sealed class TracksTileView : View, ITracksView
 			if (!Visible)
 				return true;
 
-			if (_tracks.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _tracks.Count)
+			if (_model.Items.Count == 0 || _model.SelectedIndex < 0 || _model.SelectedIndex >= _model.Items.Count)
 				return true;
 
 			int innerWidth = TileWidth - 2;
-			TileData tile = _tracks[_selectedIndex];
+			TrackListItem item = _model.Items[_model.SelectedIndex];
 
-			AdvanceMarquee(tile.Artist, innerWidth, ref _marqueeArtistOffset, ref _marqueePauseArtist);
-			AdvanceMarquee(tile.Title, innerWidth, ref _marqueeTitleOffset, ref _marqueePauseTitle);
-			AdvanceMarquee(tile.Subtitle ?? tile.Album, innerWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
+			AdvanceMarquee(item.Track.Artist, innerWidth, ref _marqueeArtistOffset, ref _marqueePauseArtist);
+			AdvanceMarquee(item.Track.Title, innerWidth, ref _marqueeTitleOffset, ref _marqueePauseTitle);
+			AdvanceMarquee(item.Track.Subtitle ?? item.Track.Album, innerWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
 
 			SetNeedsDisplay();
 			return true;
@@ -513,28 +447,5 @@ public sealed class TracksTileView : View, ITracksView
 		_marqueePauseArtist = 0;
 		_marqueePauseTitle = 0;
 		_marqueePauseAlbum = 0;
-	}
-
-	private void ResetMarqueeState()
-	{
-		ResetMarqueeOffsets();
-		StopMarqueeTimer();
-		StartMarqueeTimer();
-	}
-
-	private void CheckNeedMoreTracks()
-	{
-		if (_tracks.Count == 0 || _columns == 0)
-			return;
-
-		int totalRows = (_tracks.Count + _columns - 1) / _columns;
-		int visibleRows = Math.Max(1, Bounds.Height / TileHeight);
-		int thresholdRows = Math.Max(1, 30 / _columns);
-
-		if (!_isLoadingMore && _scrollOffset + visibleRows >= totalRows - thresholdRows)
-		{
-			_isLoadingMore = true;
-			NeedMoreTracks?.Invoke();
-		}
 	}
 }

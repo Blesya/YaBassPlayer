@@ -6,22 +6,14 @@ namespace YamBassPlayer.Views.Impl;
 /// <summary>
 /// Список треков в одну колонку. Каждая строка: «№  Исполнитель — Название».
 /// Текст выбранной строки бежит строкой (marquee), если не помещается по ширине.
+/// Состояние списка хранится в общей <see cref="ITrackListModel"/>.
 /// </summary>
 public sealed class TracksView : View, ITracksView
 {
-	private sealed record RowData(Track Track, string Number);
-
 	private const int MarqueeIntervalMs = 250;
 	private const int MarqueePauseTicks = 4;
 
-	private readonly List<RowData> _allRows = [];
-	private readonly List<RowData> _rows = [];
-
-	private string? _filterText;
-	private string? _playingTrackId;
-	private int _selectedIndex;
-	private int _scrollOffset;
-	private bool _isLoadingMore;
+	private readonly ITrackListModel _model;
 
 	private string _blankLine = "";
 	private int _blankLineWidth = -1;
@@ -34,112 +26,50 @@ public sealed class TracksView : View, ITracksView
 	public event Action<int>? OnCellActivated;
 	public event Action? NeedMoreTracks;
 
-	public TracksView()
+	public TracksView() : this(new TrackListModel())
 	{
+	}
+
+	public TracksView(ITrackListModel model)
+	{
+		_model = model;
+		_model.Changed += OnModelChanged;
+
 		Width = Dim.Fill();
 		Height = Dim.Fill();
 		CanFocus = true;
 	}
 
-	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	private int VisibleRows => Math.Max(1, Bounds.Height);
+
+	private void OnModelChanged()
 	{
-		var list = tracks.ToList();
-		Application.MainLoop.Invoke(() =>
-		{
-			_allRows.Clear();
-			for (int i = 0; i < list.Count; i++)
-			{
-				Track t = list[i];
-				string number = PadNumber(i + 1, isCached(t.Id));
-				_allRows.Add(new RowData(t, number));
-			}
-
-			ApplyFilter();
-			_selectedIndex = 0;
-			_scrollOffset = 0;
-			_isLoadingMore = false;
-			ResetMarquee();
-			SetNeedsDisplay();
-		});
-	}
-
-	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
-	{
-		var incoming = new List<RowData>();
-		foreach (Track t in tracks)
-		{
-			string number = PadNumber(_allRows.Count + incoming.Count + 1, isCached(t.Id));
-			incoming.Add(new RowData(t, number));
-		}
-
-		Application.MainLoop.Invoke(() =>
-		{
-			_allRows.AddRange(incoming);
-			ApplyFilter();
-			_isLoadingMore = false;
-			ResetMarquee();
-			SetNeedsDisplay();
-		});
-	}
-
-	public void ClearTracks()
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			StopMarquee();
-			_allRows.Clear();
-			_rows.Clear();
-			_selectedIndex = 0;
-			_scrollOffset = 0;
-			SetNeedsDisplay();
-		});
-	}
-
-	public void SetPlayingTrackId(string? trackId)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_playingTrackId = trackId;
-			ResetMarquee();
-			SetNeedsDisplay();
-		});
-	}
-
-	public void SetFilter(string? filter)
-	{
-		_filterText = string.IsNullOrWhiteSpace(filter) ? null : filter.Trim();
-		_selectedIndex = 0;
-		_scrollOffset = 0;
-		ApplyFilter();
 		ResetMarquee();
 		SetNeedsDisplay();
 	}
 
-	private void ApplyFilter()
+	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+		=> Application.MainLoop.Invoke(() => _model.SetTracks(tracks, isCached));
+
+	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+		=> Application.MainLoop.Invoke(() => _model.AddTracks(tracks, isCached));
+
+	public void ClearTracks()
+		=> Application.MainLoop.Invoke(_model.Clear);
+
+	public void SetPlayingTrackId(string? trackId)
+		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
+
+	public void SetFilter(string? filter)
+		=> _model.SetFilter(filter);
+
+	private string RowText(TrackListItem item)
 	{
-		_rows.Clear();
-		if (_filterText == null)
-		{
-			_rows.AddRange(_allRows);
-			return;
-		}
-
-		string f = _filterText;
-		_rows.AddRange(_allRows.Where(r =>
-			(r.Track.Artist ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) ||
-			(r.Track.Title ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)));
-	}
-
-	private static string PadNumber(int n, bool isCached)
-		=> n.ToString().PadLeft(2) + (isCached ? "*" : " ");
-
-	private string RowText(RowData r)
-	{
-		string artist = r.Track.Artist ?? "";
-		string title = r.Track.Title ?? "";
+		string artist = item.Track.Artist ?? "";
+		string title = item.Track.Title ?? "";
 		string artistTitle = string.IsNullOrEmpty(artist) ? title : $"{artist} — {title}";
-		string playing = r.Track.Id == _playingTrackId ? "▶ " : "";
-		return playing + r.Number + "  " + artistTitle;
+		string playing = item.Track.Id == _model.PlayingTrackId ? "▶ " : "";
+		return playing + item.Number + "  " + artistTitle;
 	}
 
 	public override void Redraw(Rect bounds)
@@ -155,24 +85,25 @@ public sealed class TracksView : View, ITracksView
 			Driver.AddStr(blankLine);
 		}
 
-		if (_rows.Count == 0)
+		var items = _model.Items;
+		if (items.Count == 0)
 			return;
 
 		for (int row = 0; row < bounds.Height; row++)
 		{
-			int idx = row + _scrollOffset;
-			if (idx >= _rows.Count)
+			int idx = row + _model.ScrollOffset;
+			if (idx >= items.Count)
 				break;
 
-			bool isSelected = idx == _selectedIndex;
-			bool isPlaying = _rows[idx].Track.Id == _playingTrackId;
+			bool isSelected = idx == _model.SelectedIndex;
+			bool isPlaying = items[idx].Track.Id == _model.PlayingTrackId;
 
 			var attr = isSelected
 				? ColorScheme.Focus
 				: isPlaying ? ColorScheme.HotNormal : ColorScheme.Normal;
 			Driver.SetAttribute(attr);
 
-			string text = RowText(_rows[idx]);
+			string text = RowText(items[idx]);
 			string render = isSelected && text.Length > width
 				? MarqueeWindow(text, _marqueeOffset, width)
 				: PadOrTruncate(text, width);
@@ -214,54 +145,50 @@ public sealed class TracksView : View, ITracksView
 
 	public override bool ProcessKey(KeyEvent kb)
 	{
-		if (_rows.Count == 0)
+		if (_model.Items.Count == 0)
 			return base.ProcessKey(kb);
 
-		int oldIndex = _selectedIndex;
-
+		bool moved;
 		switch (kb.Key)
 		{
 			case Key.CursorUp:
-				if (_selectedIndex > 0)
-					_selectedIndex--;
+				moved = _model.MoveUp(1);
 				break;
 
 			case Key.CursorDown:
-				if (_selectedIndex < _rows.Count - 1)
-					_selectedIndex++;
+				moved = _model.MoveDown(1);
 				break;
 
 			case Key.PageUp:
-				_selectedIndex = Math.Max(0, _selectedIndex - Bounds.Height);
+				moved = _model.PageUp(VisibleRows);
 				break;
 
 			case Key.PageDown:
-				_selectedIndex = Math.Min(_rows.Count - 1, _selectedIndex + Bounds.Height);
+				moved = _model.PageDown(VisibleRows);
 				break;
 
 			case Key.Home:
-				_selectedIndex = 0;
+				moved = _model.Home();
 				break;
 
 			case Key.End:
-				_selectedIndex = _rows.Count - 1;
+				moved = _model.End();
 				break;
 
 			case Key.Enter:
-				OnCellActivated?.Invoke(_selectedIndex);
+				OnCellActivated?.Invoke(_model.SelectedIndex);
 				return true;
 
 			default:
 				return base.ProcessKey(kb);
 		}
 
-		if (_selectedIndex != oldIndex)
+		if (moved)
 		{
-			ResetMarqueeState();
-			EnsureSelectedVisible();
-			OnTrackSelected?.Invoke(_selectedIndex);
-			CheckNeedMoreTracks();
-			SetNeedsDisplay();
+			_model.EnsureSelectedVisible(VisibleRows);
+			OnTrackSelected?.Invoke(_model.SelectedIndex);
+			if (_model.ShouldRequestMore(VisibleRows))
+				NeedMoreTracks?.Invoke();
 		}
 
 		return true;
@@ -271,23 +198,14 @@ public sealed class TracksView : View, ITracksView
 	{
 		if (me.Flags.HasFlag(MouseFlags.WheeledDown))
 		{
-			int visible = Math.Max(1, Bounds.Height);
-			if (_scrollOffset < Math.Max(0, _rows.Count - visible))
-			{
-				_scrollOffset++;
-				CheckNeedMoreTracks();
-				SetNeedsDisplay();
-			}
+			if (_model.ScrollBy(1, VisibleRows) && _model.ShouldRequestMore(VisibleRows))
+				NeedMoreTracks?.Invoke();
 			return true;
 		}
 
 		if (me.Flags.HasFlag(MouseFlags.WheeledUp))
 		{
-			if (_scrollOffset > 0)
-			{
-				_scrollOffset--;
-				SetNeedsDisplay();
-			}
+			_model.ScrollBy(-1, VisibleRows);
 			return true;
 		}
 
@@ -296,33 +214,23 @@ public sealed class TracksView : View, ITracksView
 			if (!HasFocus)
 				SetFocus();
 
-			int index = me.Y + _scrollOffset;
-			if (index >= 0 && index < _rows.Count)
+			int index = me.Y + _model.ScrollOffset;
+			if (index >= 0 && index < _model.Items.Count && _model.Select(index))
 			{
-				int oldIndex = _selectedIndex;
-				_selectedIndex = index;
-				if (_selectedIndex != oldIndex)
-				{
-					ResetMarqueeState();
-					OnTrackSelected?.Invoke(_selectedIndex);
-					CheckNeedMoreTracks();
-				}
-				SetNeedsDisplay();
+				OnTrackSelected?.Invoke(_model.SelectedIndex);
+				if (_model.ShouldRequestMore(VisibleRows))
+					NeedMoreTracks?.Invoke();
 			}
 			return true;
 		}
 
 		if (me.Flags.HasFlag(MouseFlags.Button1DoubleClicked))
 		{
-			int index = me.Y + _scrollOffset;
-			if (index >= 0 && index < _rows.Count)
+			int index = me.Y + _model.ScrollOffset;
+			if (index >= 0 && index < _model.Items.Count)
 			{
-				int oldIndex = _selectedIndex;
-				_selectedIndex = index;
-				if (_selectedIndex != oldIndex)
-					ResetMarqueeState();
-				OnCellActivated?.Invoke(_selectedIndex);
-				SetNeedsDisplay();
+				_model.Select(index);
+				OnCellActivated?.Invoke(_model.SelectedIndex);
 			}
 			return true;
 		}
@@ -330,34 +238,12 @@ public sealed class TracksView : View, ITracksView
 		return base.MouseEvent(me);
 	}
 
-	private void EnsureSelectedVisible()
-	{
-		int visible = Math.Max(1, Bounds.Height);
-		if (_selectedIndex < _scrollOffset)
-			_scrollOffset = _selectedIndex;
-		else if (_selectedIndex >= _scrollOffset + visible)
-			_scrollOffset = _selectedIndex - visible + 1;
-	}
-
-	private void CheckNeedMoreTracks()
-	{
-		if (_rows.Count == 0)
-			return;
-
-		int visible = Math.Max(1, Bounds.Height);
-		if (!_isLoadingMore && _scrollOffset + visible >= _rows.Count - 10)
-		{
-			_isLoadingMore = true;
-			NeedMoreTracks?.Invoke();
-		}
-	}
-
 	// ── Бегущая строка (marquee) для выбранной строки ─────────────────
 
 	private void StartMarquee()
 	{
 		StopMarquee();
-		if (_rows.Count == 0 || _selectedIndex < 0 || _selectedIndex >= _rows.Count)
+		if (_model.Items.Count == 0 || _model.SelectedIndex < 0 || _model.SelectedIndex >= _model.Items.Count)
 			return;
 
 		_marqueeOffset = 0;
@@ -365,7 +251,7 @@ public sealed class TracksView : View, ITracksView
 		_marqueeToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(MarqueeIntervalMs), _ =>
 		{
 			int width = Math.Max(1, Bounds.Width);
-			string text = RowText(_rows[_selectedIndex]);
+			string text = RowText(_model.Items[_model.SelectedIndex]);
 			if (text.Length > width)
 			{
 				AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, text.Length, width);
@@ -388,11 +274,6 @@ public sealed class TracksView : View, ITracksView
 	{
 		StopMarquee();
 		StartMarquee();
-	}
-
-	private void ResetMarqueeState()
-	{
-		ResetMarquee();
 	}
 
 	private static void AdvanceMarquee(ref int offset, ref int pause, int length, int width)

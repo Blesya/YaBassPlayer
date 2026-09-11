@@ -99,8 +99,9 @@ public sealed class SourcesBranchBuilder(
                 var albumPlaylist = new Playlist(albumName, PlaylistType.LocalAlbum)
                 {
                     TrackCount = albumTrackCount,
-                    Description = $"{artistName}\n{albumName}",
-                    SourceId = SourceIds.Local
+                    Description = artistName,
+                    SourceId = SourceIds.Local,
+                    Payload = new PlaylistPayload { ArtistName = artistName, AlbumName = albumName }
                 };
                 artistNode.Children.Add(PlaylistTreeItem.FromPlaylist(albumPlaylist));
             }
@@ -139,8 +140,9 @@ public sealed class SourcesBranchBuilder(
                     new Playlist(a.albumName, PlaylistType.LocalAlbum)
                     {
                         TrackCount = a.trackCount,
-                        Description = $"\n{a.albumName}",
-                        SourceId = SourceIds.Local
+                        Description = string.Empty,
+                        SourceId = SourceIds.Local,
+                        Payload = new PlaylistPayload { AlbumName = a.albumName }
                     }))
                 .Cast<ITreeNode>()
                 .ToList(),

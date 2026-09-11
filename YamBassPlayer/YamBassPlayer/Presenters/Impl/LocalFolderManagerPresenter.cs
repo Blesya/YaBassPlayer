@@ -1,4 +1,5 @@
 using Terminal.Gui;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 
@@ -22,22 +23,27 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         var folders = await _libraryService.GetFoldersAsync();
         _view.SetFolders(folders);
 
-        _view.OnAddFolderClicked += HandleAddFolder;
-        _view.OnRemoveFolderClicked += HandleRemoveFolder;
-        _view.OnScanFolderClicked += HandleScanFolder;
-        _view.OnScanAllClicked += HandleScanAll;
+        Action onAddFolder = () => HandleAddFolder().Forget();
+        Action<int> onRemoveFolder = id => HandleRemoveFolder(id).Forget();
+        Action<int> onScanFolder = id => HandleScanFolder(id).Forget();
+        Action onScanAll = () => HandleScanAll().Forget();
+
+        _view.OnAddFolderClicked += onAddFolder;
+        _view.OnRemoveFolderClicked += onRemoveFolder;
+        _view.OnScanFolderClicked += onScanFolder;
+        _view.OnScanAllClicked += onScanAll;
         _view.OnCloseClicked += HandleClose;
 
         _view.Show(); // blocks until dialog closes
 
-        _view.OnAddFolderClicked -= HandleAddFolder;
-        _view.OnRemoveFolderClicked -= HandleRemoveFolder;
-        _view.OnScanFolderClicked -= HandleScanFolder;
-        _view.OnScanAllClicked -= HandleScanAll;
+        _view.OnAddFolderClicked -= onAddFolder;
+        _view.OnRemoveFolderClicked -= onRemoveFolder;
+        _view.OnScanFolderClicked -= onScanFolder;
+        _view.OnScanAllClicked -= onScanAll;
         _view.OnCloseClicked -= HandleClose;
     }
 
-    private async void HandleAddFolder()
+    private async Task HandleAddFolder()
     {
         try
         {
@@ -75,7 +81,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
     }
 
-    private async void HandleRemoveFolder(int folderId)
+    private async Task HandleRemoveFolder(int folderId)
     {
         try
         {
@@ -94,7 +100,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
     }
 
-    private async void HandleScanFolder(int folderId)
+    private async Task HandleScanFolder(int folderId)
     {
         try
         {
@@ -109,7 +115,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
             Application.MainLoop.Invoke(() =>
             {
                 _view.ShowScanCompleted(count);
-                RefreshFolders();
+                RefreshFolders().Forget();
             });
 
             OnLibraryChanged?.Invoke();
@@ -120,7 +126,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
     }
 
-    private async void HandleScanAll()
+    private async Task HandleScanAll()
     {
         try
         {
@@ -135,7 +141,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
             Application.MainLoop.Invoke(() =>
             {
                 _view.ShowScanCompleted(count);
-                RefreshFolders();
+                RefreshFolders().Forget();
             });
 
             OnLibraryChanged?.Invoke();
@@ -151,7 +157,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         _view.Close();
     }
 
-    private async void RefreshFolders()
+    private async Task RefreshFolders()
     {
         await RefreshFoldersAsync();
     }

@@ -1,9 +1,11 @@
 ﻿using Autofac;
 using YamBassPlayer.Commands;
+using YamBassPlayer.Configuration;
 using YamBassPlayer.Presenters;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
+using YamBassPlayer.UseCases;
 using YamBassPlayer.Views;
 using YamBassPlayer.Views.Impl;
 using Yandex.Music.Api;
@@ -34,13 +36,22 @@ public static class ServicesProvider
 		builder.RegisterType<SqliteConnectionFactory>().As<IDbConnectionFactory>().SingleInstance();
 		builder.RegisterType<DatabaseInitializer>().As<IDatabaseInitializer>().SingleInstance();
 		builder.RegisterType<DbWriteLock>().As<IDbWriteLock>().SingleInstance();
+		builder.RegisterType<AppConfigurationProvider>().As<IAppConfiguration>().SingleInstance();
+		builder.RegisterType<UiErrorHandler>().As<IErrorHandler>().SingleInstance();
+		builder.RegisterType<UiDispatcher>().As<IUiDispatcher>().SingleInstance();
 		builder.RegisterType<EventBus>().As<IEventBus>().SingleInstance();
 		builder.RegisterType<YandexRadioService>().As<IYandexRadioService>().SingleInstance();
 			
 		builder.RegisterType<HistoryService>().As<IHistoryService>().SingleInstance();
-		builder.Register(c => new LocalLibraryService(
+		builder.RegisterType<LocalLibraryRepository>().AsSelf().SingleInstance();
+		builder.Register(c => new LocalLibraryScanner(
 			c.Resolve<IDbConnectionFactory>(),
 			CoversFolder,
+			c.Resolve<LocalLibraryRepository>()
+		)).AsSelf().SingleInstance();
+		builder.Register(c => new LocalLibraryService(
+			c.Resolve<LocalLibraryRepository>(),
+			c.Resolve<LocalLibraryScanner>(),
 			c.Resolve<IDbWriteLock>()
 		)).As<ILocalLibraryService>().SingleInstance();
 		builder.RegisterType<TrackRepositoryCache>().As<ITrackRepositoryCache>().SingleInstance();
@@ -72,6 +83,7 @@ public static class ServicesProvider
 		)).As<ICoverProvider>().SingleInstance();
 			
 		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
+		builder.RegisterType<TrackCatalog>().As<ITrackCatalog>().SingleInstance();
 		builder.RegisterType<SourceSearchService>().As<ISourceSearchService>().SingleInstance();
 		builder.Register(c => new LyricsService(
 			c.Resolve<YandexMusicApi>(),
@@ -149,10 +161,20 @@ public static class ServicesProvider
 
 		builder.RegisterType<LocalMusicSource>().Named<IMusicSource>(YamBassPlayer.Models.SourceIds.Local).As<IMusicSource>().SingleInstance();
 
+		// Фабрика вьюх (убирает Ioc.Resolve из презентеров)
+		builder.RegisterType<AutofacViewFactory>().As<IViewFactory>().SingleInstance();
+
+		// Хост модальных окон (одолживает PlayStatusView на время показа)
+		builder.RegisterType<ModalWindowHost>().As<IModalWindowHost>().SingleInstance();
+
 		// Регистрация Views
+		builder.RegisterType<EqualizerView>().As<IEqualizerView>();
+		builder.RegisterType<DatabaseStatisticsView>().As<IDatabaseStatisticsView>();
 		builder.RegisterType<PlayStatusView>().As<IPlayStatusView>().AsSelf().SingleInstance();
 		builder.RegisterType<CommandInputView>().As<ICommandInputView>().AsSelf().SingleInstance();
 		builder.RegisterType<PlaylistsView>().As<IPlaylistsView>().AsSelf().SingleInstance();
+		// Общая модель списка треков: таблица, плитки и хост получают один и тот же экземпляр.
+		builder.RegisterType<TrackListModel>().As<ITrackListModel>().SingleInstance();
 		builder.RegisterType<TracksTileView>().AsSelf().SingleInstance();
 		builder.RegisterType<TracksView>().AsSelf().SingleInstance();
 		builder.RegisterType<TracksViewHost>().As<ITracksView>().AsSelf().SingleInstance();
@@ -161,6 +183,8 @@ public static class ServicesProvider
 		builder.RegisterType<YandexSearchView>().As<IYandexSearchView>();
 		builder.RegisterType<LargeTrackInfoView>().As<ILargeTrackInfoView>();
 		builder.RegisterType<LocalFolderManagerView>().As<ILocalFolderManagerView>().SingleInstance();
+		builder.RegisterType<NowPlayingView>().As<INowPlayingView>();
+		builder.RegisterType<MyWaveView>().As<IMyWaveView>();
 
 		// Регистрация Presenters
 		builder.RegisterType<PlayStatusPresenter>().As<IPlayStatusPresenter>().SingleInstance();
@@ -196,6 +220,12 @@ public static class ServicesProvider
 		builder.RegisterType<LikeYandexCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<LikeLocalCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<ClearCommand>().As<ICommand>().SingleInstance();
+
+		// Регистрация прикладных сценариев (use case)
+		builder.RegisterType<SearchAndLoadPlaylistUseCase>().AsSelf().SingleInstance();
+		builder.RegisterType<ToggleFavoriteUseCase>().AsSelf().SingleInstance();
+		builder.RegisterType<ScanLibraryUseCase>().AsSelf().SingleInstance();
+		builder.RegisterType<ShowMyWaveUseCase>().AsSelf().SingleInstance();
 
 		// Регистрация MainWindowCoordinator
 		builder.RegisterType<MainWindowCoordinator>().AsSelf().SingleInstance();

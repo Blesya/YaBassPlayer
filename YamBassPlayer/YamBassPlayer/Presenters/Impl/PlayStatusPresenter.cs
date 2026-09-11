@@ -2,6 +2,7 @@ using System.Timers;
 using Microsoft.Data.Sqlite;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
@@ -44,8 +45,8 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnPlaybackModeToggled += () => OnPlaybackModeToggled?.Invoke();
 		_view.OnRestartClicked += () => OnRestartClicked?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
-		_view.OnLocalFavoriteToggleClicked += OnLocalFavoriteToggleClickedHandler;
-		_view.OnYandexFavoriteToggleClicked += OnYandexFavoriteToggleClickedHandler;
+		_view.OnLocalFavoriteToggleClicked += () => OnLocalFavoriteToggleClickedHandler().Forget();
+		_view.OnYandexFavoriteToggleClicked += () => OnYandexFavoriteToggleClickedHandler().Forget();
 
 		_timer = new Timer(1000);
 		_timer.Elapsed += TimerOnElapsed;
@@ -90,12 +91,12 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		UpdateFavoriteStates();
 	}
 
-	private async void OnLocalFavoriteToggleClickedHandler()
+	private async Task OnLocalFavoriteToggleClickedHandler()
 	{
 		await ToggleFavoriteAsync(LocalSourceId, LocalFavoriteSourceName);
 	}
 
-	private async void OnYandexFavoriteToggleClickedHandler()
+	private async Task OnYandexFavoriteToggleClickedHandler()
 	{
 		await ToggleFavoriteAsync(
 			YandexSourceId,
