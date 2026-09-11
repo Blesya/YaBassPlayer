@@ -1,10 +1,12 @@
 ﻿using Terminal.Gui;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
 
 /// <summary>
-/// Список треков в одну колонку. Каждая строка: «№  Исполнитель — Название».
+/// Список треков в одну колонку. Каждая строка: «№  Исполнитель — Название»,
+/// справа выровнена длительность трека.
 /// Текст выбранной строки бежит строкой (marquee), если не помещается по ширине.
 /// Состояние списка хранится в общей <see cref="ITrackListModel"/>.
 /// </summary>
@@ -103,10 +105,16 @@ public sealed class TracksView : View, ITracksView
 				: isPlaying ? ColorScheme.HotNormal : ColorScheme.Normal;
 			Driver.SetAttribute(attr);
 
-			string text = RowText(items[idx]);
-			string render = isSelected && text.Length > width
-				? MarqueeWindow(text, _marqueeOffset, width)
-				: PadOrTruncate(text, width);
+			            string text = RowText(items[idx]);
+			string duration = items[idx].Track.DurationMs.ToShortDuration();
+			int reserve = duration.Length == 0 ? 0 : duration.Length + 1;
+			int contentWidth = Math.Max(0, width - reserve);
+
+			string content = isSelected && text.Length > contentWidth
+				? MarqueeWindow(text, _marqueeOffset, contentWidth)
+				: PadOrTruncate(text, contentWidth);
+
+			string render = reserve == 0 ? content : content + " " + duration;
 
 			Move(0, row);
 			Driver.AddStr(render.Length > width ? render[..width] : render);
@@ -124,24 +132,30 @@ public sealed class TracksView : View, ITracksView
 		return _blankLine;
 	}
 
-	private static string PadOrTruncate(string text, int width)
-	{
-		if (string.IsNullOrEmpty(text))
-			return new string(' ', width);
+	    private static string PadOrTruncate(string text, int width)
+	    {
+	        if (width <= 0)
+	            return string.Empty;
 
-		return text.Length >= width
-			? text[..(width - 1)] + "…"
-			: text.PadRight(width);
-	}
+	        if (string.IsNullOrEmpty(text))
+	            return new string(' ', width);
 
-	private static string MarqueeWindow(string text, int offset, int width)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= width)
-			return (text ?? "").PadRight(width);
+	        return text.Length >= width
+	            ? text[..(width - 1)] + "…"
+	            : text.PadRight(width);
+	    }
 
-		int safe = Math.Clamp(offset, 0, text.Length - width);
-		return text.Substring(safe, width);
-	}
+	    private static string MarqueeWindow(string text, int offset, int width)
+	    {
+	        if (width <= 0)
+	            return string.Empty;
+
+	        if (string.IsNullOrEmpty(text) || text.Length <= width)
+	            return (text ?? "").PadRight(width);
+
+	        int safe = Math.Clamp(offset, 0, text.Length - width);
+	        return text.Substring(safe, width);
+	    }
 
 	public override bool ProcessKey(KeyEvent kb)
 	{
@@ -251,10 +265,15 @@ public sealed class TracksView : View, ITracksView
 		_marqueeToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(MarqueeIntervalMs), _ =>
 		{
 			int width = Math.Max(1, Bounds.Width);
-			string text = RowText(_model.Items[_model.SelectedIndex]);
-			if (text.Length > width)
+			TrackListItem item = _model.Items[_model.SelectedIndex];
+			string text = RowText(item);
+
+			string duration = item.Track.DurationMs.ToShortDuration();
+			int contentWidth = Math.Max(1, width - (duration.Length == 0 ? 0 : duration.Length + 1));
+
+			if (text.Length > contentWidth)
 			{
-				AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, text.Length, width);
+				AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, text.Length, contentWidth);
 			}
 			SetNeedsDisplay();
 			return true;

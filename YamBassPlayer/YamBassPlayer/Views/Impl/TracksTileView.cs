@@ -1,4 +1,5 @@
 using Terminal.Gui;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
@@ -194,12 +195,17 @@ public sealed class TracksTileView : View, ITracksView
 			: PadOrTruncate(item.Track.Title, innerWidth);
 		DrawStringAt(x, y + 2, "│" + titleText + "│", bounds);
 
-		// Album / Subtitle line
+		// Album / Subtitle line (right-aligned duration)
 		string thirdLine = item.Track.Subtitle ?? item.Track.Album;
-		string albumText = isSelected
-			? MarqueeText(thirdLine, _marqueeAlbumOffset, innerWidth)
-			: PadOrTruncate(thirdLine, innerWidth);
-		DrawStringAt(x, y + 3, "│" + albumText + "│", bounds);
+		string duration = item.Track.DurationMs.ToShortDuration();
+		int durationReserve = duration.Length == 0 ? 0 : duration.Length + 1;
+		int thirdWidth = Math.Max(0, innerWidth - durationReserve);
+		string thirdText = isSelected
+			? MarqueeText(thirdLine, _marqueeAlbumOffset, thirdWidth)
+			: PadOrTruncate(thirdLine, thirdWidth);
+		if (durationReserve > 0)
+			thirdText += " " + duration;
+		DrawStringAt(x, y + 3, "│" + thirdText + "│", bounds);
 
 		// Bottom border
 		DrawStringAt(x, y + 4, "└" + new string('─', innerWidth) + "┘", bounds);
@@ -229,24 +235,30 @@ public sealed class TracksTileView : View, ITracksView
 		return _blankLine;
 	}
 
-	private static string PadOrTruncate(string text, int width)
-	{
-		if (string.IsNullOrEmpty(text))
-			return new string(' ', width);
+	    private static string PadOrTruncate(string text, int width)
+	    {
+	        if (width <= 0)
+	            return string.Empty;
 
-		return text.Length >= width
-			? text[..(width - 1)] + "…"
-			: text.PadRight(width);
-	}
+	        if (string.IsNullOrEmpty(text))
+	            return new string(' ', width);
 
-	private static string MarqueeText(string text, int offset, int width)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= width)
-			return (text ?? "").PadRight(width);
+	        return text.Length >= width
+	            ? text[..(width - 1)] + "…"
+	            : text.PadRight(width);
+	    }
 
-		int safeOffset = Math.Clamp(offset, 0, text.Length - width);
-		return text.Substring(safeOffset, width);
-	}
+	    private static string MarqueeText(string text, int offset, int width)
+	    {
+	        if (width <= 0)
+	            return string.Empty;
+
+	        if (string.IsNullOrEmpty(text) || text.Length <= width)
+	            return (text ?? "").PadRight(width);
+
+	        int safeOffset = Math.Clamp(offset, 0, text.Length - width);
+	        return text.Substring(safeOffset, width);
+	    }
 
 	private static string Truncate(string text, int width)
 	{
@@ -397,9 +409,12 @@ public sealed class TracksTileView : View, ITracksView
 			int innerWidth = TileWidth - 2;
 			TrackListItem item = _model.Items[_model.SelectedIndex];
 
+			string duration = item.Track.DurationMs.ToShortDuration();
+			int thirdWidth = Math.Max(1, innerWidth - (duration.Length == 0 ? 0 : duration.Length + 1));
+
 			AdvanceMarquee(item.Track.Artist, innerWidth, ref _marqueeArtistOffset, ref _marqueePauseArtist);
 			AdvanceMarquee(item.Track.Title, innerWidth, ref _marqueeTitleOffset, ref _marqueePauseTitle);
-			AdvanceMarquee(item.Track.Subtitle ?? item.Track.Album, innerWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
+			AdvanceMarquee(item.Track.Subtitle ?? item.Track.Album, thirdWidth, ref _marqueeAlbumOffset, ref _marqueePauseAlbum);
 
 			SetNeedsDisplay();
 			return true;
