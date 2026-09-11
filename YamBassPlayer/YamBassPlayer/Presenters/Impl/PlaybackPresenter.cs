@@ -1,4 +1,5 @@
 using YamBassPlayer.Enums;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 
@@ -55,8 +56,15 @@ public sealed class PlaybackPresenter(
 
 			Track track = await trackInfoProvider.GetTrackInfoById(trackId);
 
-			playStatusPresenter.SetTitle($"Загружается трек: {track.Artist} - {track.Title}");
-			string filePath = await trackFileProvider.DownloadTrackAsync(trackId);
+			string downloadTitle = $"Загружается трек: {track.Artist} - {track.Title}";
+			playStatusPresenter.SetTitle(downloadTitle);
+			var downloadProgress = new ActionProgress<DownloadProgress>(progress =>
+			{
+				string formatted = FormatDownloadProgress(progress);
+				playStatusPresenter.SetTitle($"{downloadTitle} ({formatted})");
+				playStatusPresenter.SetPlayStatus($"Загрузка: {formatted}");
+			});
+			string filePath = await trackFileProvider.DownloadTrackAsync(trackId, downloadProgress);
 			if (string.IsNullOrWhiteSpace(filePath))
 				return;
 
@@ -97,12 +105,29 @@ public sealed class PlaybackPresenter(
 				return;
 
 			Track nextTrack = await trackInfoProvider.GetTrackInfoById(nextTrackId);
-			playStatusPresenter.SetTitle($"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}");
-			await trackFileProvider.DownloadTrackAsync(nextTrackId);
+			string preloadTitle = $"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}";
+			playStatusPresenter.SetTitle(preloadTitle);
+			var downloadProgress = new ActionProgress<DownloadProgress>(progress =>
+				playStatusPresenter.SetTitle($"{preloadTitle} ({FormatDownloadProgress(progress)})"));
+			await trackFileProvider.DownloadTrackAsync(nextTrackId, downloadProgress);
 		}
 		finally
 		{
 			playStatusPresenter.SetTitle("Управление воспроизведением");
 		}
+	}
+
+	private static string FormatDownloadProgress(DownloadProgress progress)
+		=> progress.HasTotal
+			? $"{progress.Percent}%"
+			: progress.BytesReceived.ToHumanReadableSize();
+
+	/// <summary>
+	/// Reports progress synchronously on the calling thread (unlike <see cref="Progress{T}"/>,
+	/// which posts to a captured context), so the UI updates stay ordered with download completion.
+	/// </summary>
+	private sealed class ActionProgress<T>(Action<T> onReport) : IProgress<T>
+	{
+		public void Report(T value) => onReport(value);
 	}
 }

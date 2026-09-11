@@ -1,11 +1,17 @@
 using YamBassPlayer.Extensions;
+using YamBassPlayer.Models;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
+using Yandex.Music.Api.Models.Track;
 
 namespace YamBassPlayer.Services.Impl;
 
 public class TrackFileProvider : ITrackFileProvider
 {
+	private const int CopyBufferSize = 81920;
+	private const int MaxPercentDuringCopy = 99;
+	private const long IndeterminateReportStepBytes = 262144;
+
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 	private readonly string _tracksFolder;
@@ -36,7 +42,7 @@ public class TrackFileProvider : ITrackFileProvider
 		return File.Exists(GetTrackPath(trackId));
 	}
 
-	public async Task<string> DownloadTrackAsync(string trackId)
+	public async Task<string> DownloadTrackAsync(string trackId, IProgress<DownloadProgress>? progress = null)
 	{
 		// Local tracks: trackId is the absolute file path — no download needed
 		if (_sourceDetector.IsLocal(trackId))
@@ -48,6 +54,7 @@ public class TrackFileProvider : ITrackFileProvider
 
 			if (File.Exists(filePath))
 			{
+				ReportCached(filePath, progress);
 				return filePath;
 			}
 
@@ -59,7 +66,7 @@ public class TrackFileProvider : ITrackFileProvider
 				throw new Exception("Не удалось получить информацию о треке");
 			}
 
-			await _api.Track.ExtractToFileAsync(_storage, track, filePath);
+			await DownloadToFileAsync(track, filePath, progress);
 
 			return filePath;
 		}
@@ -76,5 +83,85 @@ public class TrackFileProvider : ITrackFileProvider
 			return trackId;
 
 		return GetTrackPath(trackId);
+	}
+
+	private static void ReportCached(string filePath, IProgress<DownloadProgress>? progress)
+	{
+		if (progress == null)
+			return;
+
+		long size = new FileInfo(filePath).Length;
+		progress.Report(new DownloadProgress(size, size));
+	}
+
+	/// <summary>
+	/// Streams the track into a temporary ".part" file and only promotes it to the final
+	/// path once the whole file is written, so an interrupted download is never mistaken
+	/// for a cached one by <see cref="IsTrackDownloaded"/>.
+	/// </summary>
+	private async Task DownloadToFileAsync(YTrack track, string filePath, IProgress<DownloadProgress>? progress)
+	{
+		string tempPath = $"{filePath}.part";
+
+		try
+		{
+			string url = await _api.Track.GetFileLinkAsync(_storage, track);
+
+			using var request = new HttpRequestMessage(HttpMethod.Get, url);
+			using var response = await _storage.Provider.GetWebResponseAsync(request, HttpCompletionOption.ResponseHeadersRead);
+			response.EnsureSuccessStatusCode();
+
+			// Content-Length is the reliable source of the total size; YTrack.FileSize is often 0.
+			long totalBytes = response.Content.Headers.ContentLength ?? track.FileSize;
+
+			await using (var stream = await response.Content.ReadAsStreamAsync())
+			await using (var file = File.Create(tempPath))
+			{
+				await CopyWithProgressAsync(stream, file, totalBytes, progress);
+			}
+
+			File.Move(tempPath, filePath, overwrite: true);
+
+			long finalSize = new FileInfo(filePath).Length;
+			progress?.Report(new DownloadProgress(finalSize, totalBytes > 0 ? totalBytes : finalSize));
+		}
+		finally
+		{
+			if (File.Exists(tempPath))
+				File.Delete(tempPath);
+		}
+	}
+
+	private static async Task CopyWithProgressAsync(Stream source, Stream destination, long totalBytes, IProgress<DownloadProgress>? progress)
+	{
+		var buffer = new byte[CopyBufferSize];
+		long copied = 0;
+		long lastIndeterminateReport = -1;
+		int lastPercent = -1;
+
+		int read;
+		while ((read = await source.ReadAsync(buffer)) > 0)
+		{
+			await destination.WriteAsync(buffer.AsMemory(0, read));
+			copied += read;
+
+			if (progress == null)
+				continue;
+
+			if (totalBytes > 0)
+			{
+				int percent = (int)Math.Min(copied * 100 / totalBytes, MaxPercentDuringCopy);
+				if (percent == lastPercent)
+					continue;
+
+				lastPercent = percent;
+				progress.Report(new DownloadProgress(copied, totalBytes));
+			}
+			else if (copied - lastIndeterminateReport >= IndeterminateReportStepBytes)
+			{
+				lastIndeterminateReport = copied;
+				progress.Report(new DownloadProgress(copied, 0));
+			}
+		}
 	}
 }
