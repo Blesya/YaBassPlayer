@@ -13,7 +13,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly Button _playButton;
 	private readonly Button _stopButton;
 	private readonly Button _restartButton;
-	private readonly ProgressBar _progressBar;
+	private readonly SeekBarView _seekBar;
 	private readonly Button _prevButton;
 	private readonly Button _nextButton;
 	private readonly Label _timeLabel;
@@ -86,32 +86,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_nextButton.Clicked += () => OnNextClicked?.Invoke();
 
-		_progressBar = new ProgressBar
+		_seekBar = new SeekBarView
 		{
 			X = 1,
 			Y = 1,
 			Width = Dim.Fill() - 2,
-			Height = 1,
-			Fraction = 0f
+			Height = 1
 		};
-		_progressBar.MouseClick += args =>
-		{
-			if (!args.MouseEvent.Flags.HasFlag(MouseFlags.Button1Clicked))
-				return;
-
-			int x = args.MouseEvent.X;
-			int width = _progressBar.Bounds.Width;
-
-			if (width <= 0)
-				return;
-
-			int percent = (int)(x / (double)width * 100.0);
-
-			if (percent < 0) percent = 0;
-			if (percent > 100) percent = 100;
-
-			OnSeekRequested?.Invoke(percent);
-		};
+		_seekBar.SeekRequested += percent => OnSeekRequested?.Invoke(percent);
 
 		_timeLabel = new Label
 		{
@@ -165,7 +147,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
-		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton, _progressBar, _statusLabel);
+		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton, _seekBar, _statusLabel);
 		Add(_panel);
 	}
 
@@ -181,7 +163,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_progressBar.Fraction = percent / 100f;
+			_seekBar.Fraction = percent / 100f;
 		});
 	}
 
