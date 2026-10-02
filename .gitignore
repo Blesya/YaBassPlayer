@@ -1,4 +1,5 @@
 /YamBassPlayer/.vs/*
 **/bin/**
 **/obj/**
+**/logs/**
 /YamBassPlayer/YamBassPlayer/tracks/*

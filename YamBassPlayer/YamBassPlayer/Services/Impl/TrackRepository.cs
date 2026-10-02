@@ -73,6 +73,8 @@ public class TrackRepository : ITrackRepository
 
 	public async Task<IEnumerable<Playlist>> GetPlaylists(CancellationToken ct = default)
 	{
+		Logging.LogBeforeCall();
+
 		ct.ThrowIfCancellationRequested();
 		try
 		{
@@ -86,6 +88,7 @@ public class TrackRepository : ITrackRepository
 				.ToList();
 
 			PersistState(result, yandexPlaylists);
+			Logging.LogAfterCall();
 			return result;
 		}
 		catch (Exception exception)
@@ -149,6 +152,8 @@ public class TrackRepository : ITrackRepository
 
 	public async Task SetPlaylist(Playlist playlist, CancellationToken ct = default)
 	{
+		Logging.LogBeforeCall();
+
 		ct.ThrowIfCancellationRequested();
 		try
 		{
@@ -160,6 +165,7 @@ public class TrackRepository : ITrackRepository
 			_currentPlaylist = playlist;
 
 			PersistLastPlaylist(playlist);
+			Logging.LogAfterCall();
 		}
 		catch (Exception exception)
 		{

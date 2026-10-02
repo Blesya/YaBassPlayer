@@ -1,4 +1,5 @@
 ﻿using System.Threading;
+using Serilog;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
@@ -34,6 +35,8 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 	public async Task InitializeAsync(CancellationToken ct = default)
 	{
+		Logging.LogBeforeCall();
+
 		ct.ThrowIfCancellationRequested();
 		try
 		{
@@ -41,16 +44,20 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 			var persisted = _trackRepository.GetPersistedSnapshot();
 			if (persisted is { Playlists.Count: > 0 })
 			{
+				Log.Information("Плейлисты восстановлены из снимка: {Count}", persisted.Playlists.Count);
 				await ApplyPlaylistsAsync(persisted.Playlists, persisted.LastPlaylist, ct);
 
 				// 2. В фоне актуализируем состав и перерисовываем дерево.
 				_ = RefreshAsync(ct);
+				Logging.LogAfterCall();
 				return;
 			}
 
 			// Снимка нет — грузим как раньше, одним запросом.
 			var playlists = (await _trackRepository.GetPlaylists(ct)).ToList();
+			Log.Information("Плейлисты загружены из источников: {Count}", playlists.Count);
 			await ApplyPlaylistsAsync(playlists, null, ct);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{
@@ -66,14 +73,19 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 	/// <summary>Перезагружает дерево из источников, сохраняя текущий выбор.</summary>
 	private async Task RefreshAsync(CancellationToken ct)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			var playlists = (await _trackRepository.GetPlaylists(ct)).ToList();
 			if (playlists.Count == 0)
 				return;
 
+			Log.Information("Дерево плейлистов обновлено из источников: {Count}", playlists.Count);
+
 			// Если выбран временный плейлист (поиск/очередь) — не навязываем первый из дерева.
 			await ApplyPlaylistsAsync(playlists, _currentPlaylist, ct, selectIfNotFound: _currentPlaylist is null);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{

@@ -36,14 +36,19 @@ public sealed class ShowMyWaveUseCase
 
 	public async Task ShowAsync(Action<string> setWindowTitle)
 	{
+		Logging.LogBeforeCall();
+
 		var playlist = await _myWavePresenter.StartMyWaveAsync();
 		if (playlist is null) return;
 
 		Activate(playlist, setWindowTitle);
+		Logging.LogAfterCall();
 	}
 
 	public async Task ShowByTrackAsync(Action<string> setWindowTitle)
 	{
+		Logging.LogBeforeCall();
+
 		var trackId = _playbackQueue.CurrentTrackId;
 		if (trackId == null)
 		{
@@ -55,6 +60,7 @@ public sealed class ShowMyWaveUseCase
 		if (playlist is null) return;
 
 		Activate(playlist, setWindowTitle);
+		Logging.LogAfterCall();
 	}
 
 	private void Activate(Playlist playlist, Action<string> setWindowTitle)

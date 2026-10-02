@@ -1,3 +1,4 @@
+using Serilog;
 using YamBassPlayer.Configuration;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
@@ -25,6 +26,8 @@ public class AuthService : IAuthService
 
     public async Task<bool> AuthorizeAsync(string token)
     {
+        Logging.LogBeforeCall();
+
         if (string.IsNullOrWhiteSpace(token))
             return false;
 
@@ -34,10 +37,18 @@ public class AuthService : IAuthService
             _api = new YandexMusicApi();
             await _api.User.AuthorizeAsync(_storage, token);
             IsAuthorized = _storage.IsAuthorized;
+
+            if (IsAuthorized)
+            {
+                Log.Information("Авторизация в Яндекс.Музыке выполнена");
+            }
+
+            Logging.LogAfterCall();
             return IsAuthorized;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warning(ex, "Не удалось авторизоваться в Яндекс.Музыке");
             IsAuthorized = false;
             return false;
         }

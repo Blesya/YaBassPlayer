@@ -1,4 +1,5 @@
 using ManagedBass;
+using Serilog;
 using Terminal.Gui;
 using YamBassPlayer.Extensions;
 
@@ -19,14 +20,25 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 
 	public void Init()
 	{
+		Logging.LogBeforeCall();
+
 		if (!Bass.Init())
 		{
+			Log.Error("Не удалось инициализировать BASS: {Error}", Bass.LastError);
 			MessageBox.ErrorQuery("Ошибка", "Не удалось инициализировать BASS", "OK");
 		}
+		else
+		{
+			Log.Information("BASS инициализирован");
+		}
+
+		Logging.LogAfterCall();
 	}
 
 	public void Play(string filePath, string trackName = "")
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			if (string.IsNullOrWhiteSpace(filePath))
@@ -44,31 +56,46 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 			SetupPreloadSync();
 			bassEqualizer.AttachToStream(_currentStream);
 			Bass.ChannelPlay(_currentStream);
+
+			Log.Information("Воспроизведение: {TrackName} ({FilePath})",
+				string.IsNullOrWhiteSpace(trackName) ? filePath : trackName, filePath);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{
-			ex.Handle();
+			Log.Error(ex, "Не удалось воспроизвести трек {FilePath}", filePath);
+			ex.Handle(logException: false);
 		}
 	}
 
 	public void Pause()
 	{
+		Logging.LogBeforeCall();
+
 		if (IsStreamActive)
 		{
 			Bass.ChannelPause(_currentStream);
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	public void Resume()
 	{
+		Logging.LogBeforeCall();
+
 		if (IsStreamActive)
 		{
 			Bass.ChannelPlay(_currentStream);
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	public void Stop()
 	{
+		Logging.LogBeforeCall();
+
 		if (!IsStreamActive)
 		{
 			return;
@@ -77,6 +104,8 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		Bass.ChannelStop(_currentStream);
 		Bass.StreamFree(_currentStream);
 		_currentStream = 0;
+
+		Logging.LogAfterCall();
 	}
 
 	public void Free()
@@ -194,6 +223,8 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 
 	public void SeekToPercent(int percent)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			if (!IsStreamActive)
@@ -211,6 +242,7 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 
 			long newPos = (long)(len * (percent / 100.0));
 			Bass.ChannelSetPosition(_currentStream, newPos);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{

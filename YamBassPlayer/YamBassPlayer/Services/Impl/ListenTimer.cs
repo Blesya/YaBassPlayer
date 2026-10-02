@@ -12,14 +12,20 @@ public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 
 	public void OnTrackStart(string trackId, ListenSource source)
 	{
+		Logging.LogBeforeCall();
+
 		ResetInternal();
 		_trackId = trackId;
 		_source = source;
 		StartCountdown();
+
+		Logging.LogAfterCall();
 	}
 
 	public void OnPause()
 	{
+		Logging.LogBeforeCall();
+
 		if (_cts == null)
 			return;
 
@@ -28,19 +34,29 @@ public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 		_remaining -= delta;
 
 		_cts.Cancel();
+
+		Logging.LogAfterCall();
 	}
 
 	public void OnResume()
 	{
+		Logging.LogBeforeCall();
+
 		if (_remaining <= TimeSpan.Zero)
 			return;
 
 		StartCountdown();
+
+		Logging.LogAfterCall();
 	}
 
 	public void OnTrackStopOrChange()
 	{
+		Logging.LogBeforeCall();
+
 		ResetInternal();
+
+		Logging.LogAfterCall();
 	}
 
 	private void StartCountdown()

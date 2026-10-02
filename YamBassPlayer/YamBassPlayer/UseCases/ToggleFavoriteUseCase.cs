@@ -27,6 +27,8 @@ public sealed class ToggleFavoriteUseCase
 
 	public async Task ExecuteAsync(string sourceId, string trackId)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			if (!_trackFavoriteService.SupportsSource(sourceId))
@@ -48,6 +50,7 @@ public sealed class ToggleFavoriteUseCase
 			}
 
 			_playStatusPresenter.SetCurrentTrack(trackId, _trackSourceDetector.GetSourceId(trackId));
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{

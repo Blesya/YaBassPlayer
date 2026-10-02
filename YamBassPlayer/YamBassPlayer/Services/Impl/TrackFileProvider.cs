@@ -1,3 +1,4 @@
+using Serilog;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using Yandex.Music.Api;
@@ -44,6 +45,8 @@ public class TrackFileProvider : ITrackFileProvider
 
 	public async Task<string> DownloadTrackAsync(string trackId, IProgress<DownloadProgress>? progress = null)
 	{
+		Logging.LogBeforeCall();
+
 		// Local tracks: trackId is the absolute file path — no download needed
 		if (_sourceDetector.IsLocal(trackId))
 			return File.Exists(trackId) ? trackId : string.Empty;
@@ -54,6 +57,7 @@ public class TrackFileProvider : ITrackFileProvider
 
 			if (File.Exists(filePath))
 			{
+				Log.Debug("Трек {TrackId} уже скачан: {FilePath}", trackId, filePath);
 				ReportCached(filePath, progress);
 				return filePath;
 			}
@@ -66,13 +70,17 @@ public class TrackFileProvider : ITrackFileProvider
 				throw new Exception("Не удалось получить информацию о треке");
 			}
 
+			Log.Information("Скачивание трека {TrackId}", trackId);
 			await DownloadToFileAsync(track, filePath, progress);
+			Log.Information("Трек {TrackId} скачан: {FilePath}", trackId, filePath);
 
+			Logging.LogAfterCall();
 			return filePath;
 		}
 		catch (Exception e)
 		{
-			e.Handle();
+			Log.Error(e, "Не удалось скачать трек {TrackId}", trackId);
+			e.Handle(logException: false);
 			return string.Empty;
 		}
 	}

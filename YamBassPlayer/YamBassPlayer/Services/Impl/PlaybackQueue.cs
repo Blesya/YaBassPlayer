@@ -82,6 +82,8 @@ public class PlaybackQueue : IPlaybackQueue
 
 	public void SetQueue(IEnumerable<string> trackIds, int startIndex = 0)
 	{
+		Logging.LogBeforeCall();
+
 		lock (_syncLock)
 		{
 			_trackIds.Clear();
@@ -95,6 +97,8 @@ public class PlaybackQueue : IPlaybackQueue
 				RaiseTrackChanged(_trackIds[_currentIndex]);
 			}
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	public void AddToQueue(IEnumerable<string> trackIds)
@@ -105,6 +109,8 @@ public class PlaybackQueue : IPlaybackQueue
 
 	public void Next()
 	{
+		Logging.LogBeforeCall();
+
 		lock (_syncLock)
 		{
 			if (_trackIds.Count == 0)
@@ -130,10 +136,14 @@ public class PlaybackQueue : IPlaybackQueue
 
 			RaiseTrackChanged(_trackIds[_currentIndex]);
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	public void Previous()
 	{
+		Logging.LogBeforeCall();
+
 		lock (_syncLock)
 		{
 			if (_trackIds.Count == 0)
@@ -158,10 +168,14 @@ public class PlaybackQueue : IPlaybackQueue
 
 			RaiseTrackChanged(_trackIds[_currentIndex]);
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	public void Clear()
 	{
+		Logging.LogBeforeCall();
+
 		lock (_syncLock)
 		{
 			_trackIds.Clear();
@@ -169,6 +183,8 @@ public class PlaybackQueue : IPlaybackQueue
 			_shuffleHistory.Clear();
 			_nextShuffleIndex = null;
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	private int EnsureShuffleNextLocked()

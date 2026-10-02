@@ -30,6 +30,8 @@ public sealed class CommandRegistry
 
 	public CommandResult Execute(string raw)
 	{
+		Logging.LogBeforeCall();
+
 		if (string.IsNullOrWhiteSpace(raw))
 			return CommandResult.Error("Пустая команда. Введите help");
 
@@ -55,6 +57,7 @@ public sealed class CommandRegistry
 		if (!_commands.TryGetValue(verb, out var command))
 			return CommandResult.Error($"Неизвестная команда: {verb}. Введите help");
 
+		Logging.LogAfterCall();
 		return command.Execute(args);
 	}
 }

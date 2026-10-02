@@ -32,10 +32,13 @@ public sealed class ScanLibraryUseCase
 	/// <summary>Добавляет папку в библиотеку и обновляет дерево плейлистов.</summary>
 	public async Task AddFolderAsync(string path)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			await _libraryService.AddFolderAsync(path);
 			_uiDispatcher.Invoke(RefreshPlaylistTree);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{
@@ -46,10 +49,14 @@ public sealed class ScanLibraryUseCase
 	/// <summary>Показывает окно управления папками и обновляет дерево при изменениях.</summary>
 	public async Task ShowFolderManagerAsync()
 	{
+		Logging.LogBeforeCall();
+
 		Action onLibraryChanged = RefreshPlaylistTree;
 		_folderManagerPresenter.OnLibraryChanged += onLibraryChanged;
 		try { await _folderManagerPresenter.ShowAsync(); }
 		finally { _folderManagerPresenter.OnLibraryChanged -= onLibraryChanged; }
+
+		Logging.LogAfterCall();
 	}
 
 	/// <summary>
@@ -58,10 +65,13 @@ public sealed class ScanLibraryUseCase
 	/// </summary>
 	public async Task<int?> ScanAllFoldersAsync()
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			int count = await _libraryService.ScanAllFoldersAsync();
 			_uiDispatcher.Invoke(RefreshPlaylistTree);
+			Logging.LogAfterCall();
 			return count;
 		}
 		catch (Exception ex)

@@ -13,6 +13,8 @@ public sealed class HistoryService : IHistoryService
 
 	public void LogListen(string trackId, ListenSource source)
 	{
+		Logging.LogBeforeCall();
+
 		var utcNow = DateTime.UtcNow;
 		var offset = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes;
 
@@ -30,6 +32,8 @@ public sealed class HistoryService : IHistoryService
 		cmd.Parameters.AddWithValue("$s", source.ToString());
 
 		cmd.ExecuteNonQuery();
+
+		Logging.LogAfterCall();
 	}
 
 	public IReadOnlyList<(string trackId, int count)> GetTopTracks(int limit = 10)

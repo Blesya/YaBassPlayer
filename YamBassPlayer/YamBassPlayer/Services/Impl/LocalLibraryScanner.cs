@@ -46,6 +46,8 @@ public sealed class LocalLibraryScanner
 	/// <exception cref="InvalidOperationException">Thrown when <paramref name="folderId"/> is not found.</exception>
 	public async Task<int> ScanFolderAsync(int folderId, IProgress<string>? progress = null)
 	{
+		Logging.LogBeforeCall();
+
 		string? folderPath = await _repository.GetFolderPathAsync(folderId);
 		if (folderPath is null)
 			throw new InvalidOperationException($"Folder with id {folderId} not found.");
@@ -94,6 +96,7 @@ public sealed class LocalLibraryScanner
 		await _repository.UpdateFolderLastScannedAtAsync(connection, folderId);
 
 		OnScanCompleted?.Invoke(count);
+		Logging.LogAfterCall();
 		return count;
 	}
 

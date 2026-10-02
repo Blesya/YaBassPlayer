@@ -41,6 +41,8 @@ public sealed class PlaybackPresenter(
 
 	public async Task PlaySelectedTrackAsync(string trackId)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			if (_currentPlaylistType == PlaylistType.MyWave && _currentMyWaveTrackId != null)
@@ -93,11 +95,14 @@ public sealed class PlaybackPresenter(
 		finally
 		{
 			playStatusPresenter.SetTitle("Управление воспроизведением");
+			Logging.LogAfterCall();
 		}
 	}
 
 	public async Task PreloadNextTrackAsync()
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			var nextTrackId = playbackQueue.PeekNextTrackId;
@@ -114,6 +119,7 @@ public sealed class PlaybackPresenter(
 		finally
 		{
 			playStatusPresenter.SetTitle("Управление воспроизведением");
+			Logging.LogAfterCall();
 		}
 	}
 

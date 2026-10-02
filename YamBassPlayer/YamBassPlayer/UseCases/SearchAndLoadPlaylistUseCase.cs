@@ -51,6 +51,8 @@ public sealed class SearchAndLoadPlaylistUseCase
 		SearchEntityKind kind,
 		Action<string> setWindowTitle)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			bool isYandex = string.Equals(source, SourceIds.Yandex, StringComparison.OrdinalIgnoreCase);
@@ -90,6 +92,7 @@ public sealed class SearchAndLoadPlaylistUseCase
 			}
 
 			await LoadInternalAsync(tracks, source, $"Результаты поиска: {query}", setWindowTitle);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{
@@ -100,10 +103,13 @@ public sealed class SearchAndLoadPlaylistUseCase
 	/// <summary>Загружает треки, выбранные в окне поиска по Яндекс.Музыке.</summary>
 	public async Task LoadYandexSelectionAsync(IReadOnlyList<Track> tracks, Action<string> setWindowTitle)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			await SaveAndCacheYandexAsync(tracks);
 			await LoadInternalAsync(tracks, SourceIds.Yandex, "Результаты поиска по Яндекс.Музыке", setWindowTitle);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{
@@ -114,10 +120,13 @@ public sealed class SearchAndLoadPlaylistUseCase
 	/// <summary>Загружает треки, выбранные в окне локального поиска.</summary>
 	public async Task LoadLocalSelectionAsync(IReadOnlyList<Track> tracks, Action<string> setWindowTitle)
 	{
+		Logging.LogBeforeCall();
+
 		try
 		{
 			_trackRepositoryCache.ReplaceLocalSearchTracks(tracks);
 			await LoadInternalAsync(tracks, SourceIds.Local, "Результаты локального поиска", setWindowTitle);
+			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
 		{

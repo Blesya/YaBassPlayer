@@ -46,6 +46,8 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
 	/// </summary>
 	public async Task<IEnumerable<Playlist>> GetPlaylistsAsync(CancellationToken ct = default)
     {
+        Logging.LogBeforeCall();
+
         ct.ThrowIfCancellationRequested();
         if (_playlistsCache is not null)
             return _playlistsCache;
@@ -79,6 +81,7 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
             }
 
             _playlistsCache = playlists;
+            Logging.LogAfterCall();
             return _playlistsCache;
         }
         catch (Exception ex)

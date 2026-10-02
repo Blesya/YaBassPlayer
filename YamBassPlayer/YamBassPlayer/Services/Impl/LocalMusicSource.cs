@@ -31,6 +31,8 @@ public sealed class LocalMusicSource : IMusicSource
     /// </summary>
     public async Task<IEnumerable<Playlist>> GetPlaylistsAsync(CancellationToken ct = default)
     {
+        Logging.LogBeforeCall();
+
         ct.ThrowIfCancellationRequested();
         var folders = await _localLibraryService.GetFoldersAsync();
 
@@ -56,6 +58,7 @@ public sealed class LocalMusicSource : IMusicSource
             });
         }
 
+        Logging.LogAfterCall();
         return result;
     }
 

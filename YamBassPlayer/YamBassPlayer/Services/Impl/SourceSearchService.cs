@@ -34,6 +34,8 @@ public sealed class SourceSearchService : ISourceSearchService
 	/// <inheritdoc />
 	public async Task<IEnumerable<Track>> SearchAsync(string sourceId, string query, int maxResults = int.MaxValue)
 	{
+		Logging.LogBeforeCall();
+
 		ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
 
 		if (string.IsNullOrWhiteSpace(query) || maxResults <= 0)
@@ -41,39 +43,52 @@ public sealed class SourceSearchService : ISourceSearchService
 
 		var source = GetRequiredSource(sourceId);
 		var tracks = await source.SearchAsync(query);
+		Logging.LogAfterCall();
 		return tracks.Take(maxResults).ToList();
 	}
 
 	/// <inheritdoc />
 	public async Task<SearchResult> SearchAllAsync(string sourceId, string query, int maxResults = 20)
 	{
+		Logging.LogBeforeCall();
+
 		ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
 
 		if (string.IsNullOrWhiteSpace(query) || maxResults <= 0)
 			return new SearchResult();
 
 		var source = GetRequiredEntitySource(sourceId);
-		return await source.SearchAllAsync(query, maxResults);
+		var result = await source.SearchAllAsync(query, maxResults);
+		Logging.LogAfterCall();
+		return result;
 	}
 
 	/// <inheritdoc />
 	public async Task<IEnumerable<Track>> GetArtistTracksAsync(string sourceId, string artistId)
 	{
+		Logging.LogBeforeCall();
+
 		ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
 		ArgumentException.ThrowIfNullOrWhiteSpace(artistId);
 
 		var source = GetRequiredEntitySource(sourceId);
-		return await source.GetArtistTracksAsync(artistId);
+		var tracks = await source.GetArtistTracksAsync(artistId);
+		Logging.LogAfterCall();
+		return tracks;
 	}
 
 	/// <inheritdoc />
 	public async Task<IEnumerable<Track>> GetAlbumTracksAsync(string sourceId, string albumId)
 	{
+		Logging.LogBeforeCall();
+
 		ArgumentException.ThrowIfNullOrWhiteSpace(sourceId);
 		ArgumentException.ThrowIfNullOrWhiteSpace(albumId);
 
 		var source = GetRequiredEntitySource(sourceId);
-		return await source.GetAlbumTracksAsync(albumId);
+		var tracks = await source.GetAlbumTracksAsync(albumId);
+		Logging.LogAfterCall();
+		return tracks;
 	}
 
 	private IMusicSource GetRequiredSource(string sourceId)

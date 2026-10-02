@@ -40,6 +40,8 @@ public class TracksPresenter : ITracksPresenter
 
 	public async Task LoadTracksFor(Playlist playlist)
 	{
+		Logging.LogBeforeCall();
+
 		await _trackRepository.SetPlaylist(playlist);
 
 		IEnumerable<Track> trackBatch = await _trackRepository.GetCachedTracksOrMinimum(TracksPerBatch);
@@ -55,6 +57,7 @@ public class TracksPresenter : ITracksPresenter
 		}
 
 		_view.SetPlayingTrackId(_playbackQueue.CurrentTrackId);
+		Logging.LogAfterCall();
 	}
 
 	private void ViewOnTrackSelected(int trackNumber)

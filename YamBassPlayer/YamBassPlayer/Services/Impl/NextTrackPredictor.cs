@@ -37,6 +37,8 @@ public sealed class NextTrackPredictor : INextTrackPredictor
 	/// </summary>
 	public NextTrackRecommendation GetNext(string prev, string current, string prev2)
 	{
+		Logging.LogBeforeCall();
+
 		var notLoaded = !TryEnsureLoaded();
 		if (notLoaded || _engine is null || _keyToTrack is null)
 		{
@@ -64,6 +66,7 @@ public sealed class NextTrackPredictor : INextTrackPredictor
 		// PredictedLabel — это Key-индекс (uint), декодируем в строковый trackId по карте.
 		if (_keyToTrack.TryGetValue(random, out var trackId))
 		{
+			Logging.LogAfterCall();
 			return new NextTrackRecommendation
 			{
 				TrackId = trackId,

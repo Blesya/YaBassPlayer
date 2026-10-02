@@ -25,6 +25,8 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 
 	public PlaylistState? Load()
 	{
+		Logging.LogBeforeCall();
+
 		lock (_sync)
 		{
 			try
@@ -36,6 +38,7 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 				if (dto is null || dto.Version != CurrentVersion)
 					return null;
 
+				Logging.LogAfterCall();
 				return new PlaylistState
 				{
 					Playlists = dto.Playlists.Select(ToPlaylist).ToList(),
@@ -55,6 +58,8 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 
 	public void Save(PlaylistState state)
 	{
+		Logging.LogBeforeCall();
+
 		lock (_sync)
 		{
 			try
@@ -81,6 +86,8 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 				// Ошибка записи кэша не критична для работы приложения.
 			}
 		}
+
+		Logging.LogAfterCall();
 	}
 
 	private static Playlist ToPlaylist(PlaylistDto dto) =>

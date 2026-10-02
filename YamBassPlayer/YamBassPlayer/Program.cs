@@ -1,4 +1,5 @@
 using Autofac;
+using Serilog;
 using Terminal.Gui;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Extensions;
@@ -12,10 +13,14 @@ internal class Program
 {
 	private static async Task Main(string[] args)
 	{
+		Logging.Initialize();
+		Log.Information("Запуск YamBassPlayer. Каталог: {BaseDirectory}", AppDomain.CurrentDomain.BaseDirectory);
+
 		try
 		{
 			if (!AuthService.HasToken())
 			{
+				Log.Information("Токен не найден, запрашиваем у пользователя");
 				Application.Init();
 				Themes.InitializeDefaults();
 					
@@ -24,6 +29,7 @@ internal class Program
 
 				if (tokenDialog.Cancelled || string.IsNullOrWhiteSpace(tokenDialog.Token))
 				{
+					Log.Information("Ввод токена отменён пользователем");
 					Application.Shutdown();
 					return;
 				}
@@ -37,6 +43,7 @@ internal class Program
 
 			if (!authorized)
 			{
+				Log.Warning("Авторизация не удалась, приложение будет закрыто");
 				Application.Init();
 				MessageBox.ErrorQuery("Ошибка авторизации", 
 					"Не удалось авторизоваться. Проверьте токен.", "OK");
@@ -45,6 +52,7 @@ internal class Program
 			}
 
 			ServicesProvider.Initialise(authService);
+			Log.Information("Сервисы инициализированы");
 
 			IAudioPlayer audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
 			audioPlayer.Init();
@@ -57,11 +65,18 @@ internal class Program
 
 			Themes.ApplySavedTheme();
 
+			Log.Information("Запуск пользовательского интерфейса");
 			Application.Run();
 		}
 		catch (Exception exception)
 		{
-			exception.Handle();
+			Log.Fatal(exception, "Необработанное исключение при работе приложения");
+			exception.Handle(logException: false);
+		}
+		finally
+		{
+			Log.Information("Завершение работы YamBassPlayer");
+			Logging.Close();
 		}
 	}
 }

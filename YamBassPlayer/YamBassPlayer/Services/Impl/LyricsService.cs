@@ -23,6 +23,8 @@ public sealed class LyricsService : ILyricsService
 
 	public async Task<string?> GetLyricsAsync(Track track)
 	{
+		Logging.LogBeforeCall();
+
 		// Local tracks use file paths as IDs — the Yandex API cannot handle them
 		if (track.SourceType == SourceIds.Local)
 			return null;
@@ -41,6 +43,7 @@ public sealed class LyricsService : ILyricsService
 			if (fullLyrics is not null)
 				await SaveLyricsAsync(track.Id, fullLyrics);
 
+			Logging.LogAfterCall();
 			return fullLyrics;
 		}
 		catch (Exception ex)
