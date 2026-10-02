@@ -167,6 +167,7 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 	private void OnPlaylistSelected(Playlist playlist)
 	{
+		Logging.LogUserAction($"выбран плейлист «{playlist.PlaylistName}» ({playlist.Type})");
 		_currentPlaylist = playlist;
 		_view.MarkAsPlaying(playlist);
 		PlaylistChosen?.Invoke(playlist);

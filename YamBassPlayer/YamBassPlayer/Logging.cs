@@ -32,6 +32,17 @@ public static class Logging
 		[CallerFilePath] string filePath = "")
 		=> Log.Debug("Завершение вызова: {Class}.{Method}", GetClassName(filePath), methodName);
 
+	/// <summary>
+	/// Пишет в лог осмысленное действие пользователя: кнопку, пункт меню, горячую клавишу,
+	/// выбор плейлиста или трека, введённую команду. В отличие от трассировки
+	/// <see cref="LogBeforeCall"/>/<see cref="LogAfterCall"/> пишется на уровне Information.
+	/// </summary>
+	public static void LogUserAction(
+		string action,
+		[CallerMemberName] string methodName = "",
+		[CallerFilePath] string filePath = "")
+		=> Log.Information("Действие пользователя: {Action} ({Class}.{Method})", action, GetClassName(filePath), methodName);
+
 	public static void Initialize()
 	{
 		try

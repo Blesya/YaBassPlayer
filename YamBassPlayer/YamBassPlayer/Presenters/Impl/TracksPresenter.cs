@@ -66,6 +66,7 @@ public class TracksPresenter : ITracksPresenter
 		if (trackNumber < 0 || trackNumber >= allTrackIds.Count)
 			return;
 
+		Logging.LogUserAction($"воспроизведение трека №{trackNumber + 1} из списка");
 		_playbackQueue.SetQueue(allTrackIds, trackNumber);
 	}
 

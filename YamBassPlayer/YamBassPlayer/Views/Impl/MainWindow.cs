@@ -222,6 +222,7 @@ public sealed class MainWindow : Window
 		_tracksViewMenuItem.Title = _tracksView.IsTilesActive
 			? "Вид треков: Плитки"
 			: "Вид треков: Таблица";
+		Logging.LogUserAction($"вид треков: {(_tracksView.IsTilesActive ? "плитки" : "таблица")}");
 	}
 
 	private void RestoreSpectrumSettings()
@@ -248,6 +249,7 @@ public sealed class MainWindow : Window
 		_spectrum.CycleMode();
 		_spectrumModeButton.Text = _spectrum.ModeDisplayName;
 		AppConfiguration.SaveSpectrumMode(_spectrum.CurrentModeIndex);
+		Logging.LogUserAction($"режим визуализации: {_spectrum.ModeDisplayName}");
 	}
 
 	private void CycleSpectrumFreq()
@@ -257,5 +259,6 @@ public sealed class MainWindow : Window
 		_spectrum.MaxFrequencyHz = freq;
 		_spectrumFreqButton.Text = freq >= 22050 ? "▲ 22k" : $"▲ {freq / 1000}k";
 		AppConfiguration.SaveSpectrumFrequency(freq);
+		Logging.LogUserAction($"частота визуализации: {freq} Гц");
 	}
 }

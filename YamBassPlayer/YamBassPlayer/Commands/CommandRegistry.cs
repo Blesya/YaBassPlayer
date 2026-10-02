@@ -30,10 +30,10 @@ public sealed class CommandRegistry
 
 	public CommandResult Execute(string raw)
 	{
-		Logging.LogBeforeCall();
-
 		if (string.IsNullOrWhiteSpace(raw))
 			return CommandResult.Error("Пустая команда. Введите help");
+
+		Logging.LogUserAction($"команда «{raw}»");
 
 		var parts = raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 		string verb = parts[0];
@@ -57,7 +57,6 @@ public sealed class CommandRegistry
 		if (!_commands.TryGetValue(verb, out var command))
 			return CommandResult.Error($"Неизвестная команда: {verb}. Введите help");
 
-		Logging.LogAfterCall();
 		return command.Execute(args);
 	}
 }

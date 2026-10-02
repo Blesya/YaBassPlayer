@@ -1,3 +1,4 @@
+using Serilog;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
@@ -160,6 +161,8 @@ public sealed class SearchAndLoadPlaylistUseCase
 			ParentTag = isYandex ? SourceIds.Yandex : SourceIds.Local
 		};
 
+		Log.Information("Открыт временный плейлист: «{PlaylistName}» ({TrackCount} треков)",
+			playlist.PlaylistName, playlist.TrackCount);
 		await _trackRepository.SetPlaylist(playlist);
 		await _tracksPresenter.LoadTracksFor(playlist);
 		setWindowTitle($"{playlist.PlaylistName} : {playlist.Description}");

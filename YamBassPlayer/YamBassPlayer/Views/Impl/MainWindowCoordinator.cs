@@ -1,4 +1,5 @@
 using System.Threading;
+using Serilog;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
@@ -160,11 +161,27 @@ public sealed class MainWindowCoordinator : IDisposable
 
 		_window.KeyPress += e =>
 		{
-			if (e.KeyEvent.Key == Key.F5) { _nowPlayingPresenter.ShowNowPlaying(); e.Handled = true; }
-			if (e.KeyEvent.Key == Key.F8) { _largeTrackInfoPresenter.ShowLargeTrackInfo(); e.Handled = true; }
-			if (e.KeyEvent.Key == Key.F9) { ShowMyWave(); e.Handled = true; }
+			if (e.KeyEvent.Key == Key.F5)
+			{
+				Logging.LogUserAction("горячая клавиша F5 — визуализация");
+				_nowPlayingPresenter.ShowNowPlaying();
+				e.Handled = true;
+			}
+			if (e.KeyEvent.Key == Key.F8)
+			{
+				Logging.LogUserAction("горячая клавиша F8 — крупное инфо");
+				_largeTrackInfoPresenter.ShowLargeTrackInfo();
+				e.Handled = true;
+			}
+			if (e.KeyEvent.Key == Key.F9)
+			{
+				Logging.LogUserAction("горячая клавиша F9 — «Моя волна»");
+				ShowMyWave();
+				e.Handled = true;
+			}
 			if (e.KeyEvent.Key == (Key)(int)'~' || e.KeyEvent.Key == (Key)(int)'ё' || e.KeyEvent.Key == (Key)(int)'Ё')
 			{
+				Logging.LogUserAction("горячая клавиша «~» — фокус на командной строке");
 				_commandInputView.FocusInput();
 				e.Handled = true;
 			}
@@ -187,6 +204,7 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	private async Task LoadPlaylistAsync(Playlist playlist)
 	{
+		Log.Information("Загрузка плейлиста: «{PlaylistName}» ({Type})", playlist.PlaylistName, playlist.Type);
 		_playbackPresenter.SetPlaylistType(playlist.Type);
 		await _tracksPresenter.LoadTracksFor(playlist);
 		_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
@@ -207,6 +225,9 @@ public sealed class MainWindowCoordinator : IDisposable
 			? PlaybackMode.Sequential
 			: PlaybackMode.Shuffle;
 		_playStatusPresenter.SetPlaybackMode(_playbackQueue.Mode);
+		Logging.LogUserAction(_playbackQueue.Mode == PlaybackMode.Shuffle
+			? "режим перемешивания"
+			: "последовательный режим");
 	}
 
 	// ── Общие обработчики воспроизведения (кнопки + командные интенты) ─────
@@ -215,55 +236,67 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		if (_audioPlayer.IsPlayed)
 		{
+			Logging.LogUserAction("пауза");
 			_audioPlayer.Pause();
 			_listenTimer.OnPause();
 			return;
 		}
+		Logging.LogUserAction("воспроизведение");
 		_audioPlayer.Resume();
 		_listenTimer.OnResume();
 	}
 
 	private void ResumePlayback()
 	{
+		Logging.LogUserAction("воспроизведение (команда)");
 		_audioPlayer.Resume();
 		_listenTimer.OnResume();
 	}
 
 	private void PausePlayback()
 	{
+		Logging.LogUserAction("пауза (команда)");
 		_audioPlayer.Pause();
 		_listenTimer.OnPause();
 	}
 
 	private void StopPlayback()
 	{
+		Logging.LogUserAction("остановка воспроизведения");
 		_audioPlayer.Stop();
 		_listenTimer.OnTrackStopOrChange();
 	}
 
 	private void NextTrack()
 	{
+		Logging.LogUserAction("следующий трек");
 		_playbackPresenter.MarkMyWaveSkipPending();
 		_playbackQueue.Next();
 	}
 
 	private void PrevTrack()
 	{
+		Logging.LogUserAction("предыдущий трек");
 		_playbackQueue.Previous();
 	}
 
 	private void RestartTrack()
 	{
+		Logging.LogUserAction("рестарт трека");
 		_audioPlayer.SeekToPercent(0);
 		_audioPlayer.Resume();
 		_listenTimer.OnResume();
 	}
 
 	private void SeekTo(int percent)
-		=> _audioPlayer.SeekToPercent(percent);
+	{
+		Logging.LogUserAction($"перемотка на {percent}%");
+		_audioPlayer.SeekToPercent(percent);
+	}
 
 	private void SetShuffle(bool shuffle)
 	{
+		Logging.LogUserAction(shuffle ? "режим перемешивания" : "последовательный режим");
 		_playbackQueue.Mode = shuffle ? PlaybackMode.Shuffle : PlaybackMode.Sequential;
 		_playStatusPresenter.SetPlaybackMode(_playbackQueue.Mode);
 	}
@@ -274,13 +307,17 @@ public sealed class MainWindowCoordinator : IDisposable
 		if (index < 0 || index >= trackIds.Count)
 			return;
 
+		Logging.LogUserAction($"воспроизведение трека №{index + 1}");
 		_playbackQueue.SetQueue(trackIds, index);
 	}
 
 	// ── Queue ─────────────────────────────────────────────────────────────
 
 	private void ShowCurrentQueue()
-		=> ShowCurrentQueueAsync().Forget();
+	{
+		Logging.LogUserAction("просмотр очереди");
+		ShowCurrentQueueAsync().Forget();
+	}
 
 	private async Task ShowCurrentQueueAsync()
 	{
@@ -310,13 +347,22 @@ public sealed class MainWindowCoordinator : IDisposable
 	// ── Search / Favorites ────────────────────────────────────────────────
 
 	public void ToggleFavoriteCommandAsync(string sourceId, string trackId)
-		=> _toggleFavoriteUseCase.ExecuteAsync(sourceId, trackId).Forget();
+	{
+		Logging.LogUserAction($"переключение избранного ({sourceId})");
+		_toggleFavoriteUseCase.ExecuteAsync(sourceId, trackId).Forget();
+	}
 
 	public void RunSearchAsync(string source, string query, SearchEntityKind kind = SearchEntityKind.Tracks)
-		=> _searchAndLoadPlaylistUseCase.SearchAndLoadAsync(source, query, kind, SetWindowTitle).Forget();
+	{
+		Logging.LogUserAction($"поиск ({source}): «{query}»");
+		_searchAndLoadPlaylistUseCase.SearchAndLoadAsync(source, query, kind, SetWindowTitle).Forget();
+	}
 
 	public void ShowYandexSearchDialog()
-		=> ShowYandexSearchDialogAsync().Forget();
+	{
+		Logging.LogUserAction("поиск по Яндекс.Музыке");
+		ShowYandexSearchDialogAsync().Forget();
+	}
 
 	private async Task ShowYandexSearchDialogAsync()
 	{
@@ -334,7 +380,10 @@ public sealed class MainWindowCoordinator : IDisposable
 	}
 
 	public void ShowLocalSearchDialog()
-		=> ShowLocalSearchDialogAsync().Forget();
+	{
+		Logging.LogUserAction("локальный поиск");
+		ShowLocalSearchDialogAsync().Forget();
+	}
 
 	private async Task ShowLocalSearchDialogAsync()
 	{
@@ -354,15 +403,22 @@ public sealed class MainWindowCoordinator : IDisposable
 	// ── Radio / Wave ──────────────────────────────────────────────────────
 
 	public void ShowMyWave()
-		=> _showMyWaveUseCase.ShowAsync(SetWindowTitle).Forget();
+	{
+		Logging.LogUserAction("запуск «Моей волны»");
+		_showMyWaveUseCase.ShowAsync(SetWindowTitle).Forget();
+	}
 
 	public void ShowMyWaveByTrack()
-		=> _showMyWaveUseCase.ShowByTrackAsync(SetWindowTitle).Forget();
+	{
+		Logging.LogUserAction("«Моя волна» по текущему треку");
+		_showMyWaveUseCase.ShowByTrackAsync(SetWindowTitle).Forget();
+	}
 
 	// ── Local library ─────────────────────────────────────────────────────
 
 	public void ShowAddLocalFolderDialog()
 	{
+		Logging.LogUserAction("добавление локальной папки");
 		var od = new OpenDialog("Добавить папку", "Выберите папку с музыкой")
 		{
 			CanChooseDirectories = true,
@@ -373,15 +429,20 @@ public sealed class MainWindowCoordinator : IDisposable
 		if (!od.Canceled && od.FilePath != null)
 		{
 			string path = od.FilePath.ToString()!;
+			Log.Information("Выбрана локальная папка: {Path}", path);
 			Task.Run(() => _scanLibraryUseCase.AddFolderAsync(path)).Forget();
 		}
 	}
 
 	public void ShowLocalFolderManagerDialog()
-		=> _scanLibraryUseCase.ShowFolderManagerAsync().Forget();
+	{
+		Logging.LogUserAction("управление локальными папками");
+		_scanLibraryUseCase.ShowFolderManagerAsync().Forget();
+	}
 
 	public void ScanLocalLibrary()
 	{
+		Logging.LogUserAction("сканирование локальной библиотеки");
 		Task.Run(async () =>
 		{
 			int? count = await _scanLibraryUseCase.ScanAllFoldersAsync();
@@ -393,12 +454,17 @@ public sealed class MainWindowCoordinator : IDisposable
 	}
 
 	public void RefreshPlaylistTree()
-		=> _playlistsPresenter.LoadPlaylistTree();
+	{
+		Logging.LogUserAction("обновление дерева плейлистов");
+		_playlistsPresenter.LoadPlaylistTree();
+	}
 
 	// ── Menu actions forwarded ────────────────────────────────────────────
 
 	public void RecommendNextTrack()
 	{
+		Logging.LogUserAction("рекомендация следующего трека");
+
 		try
 		{
 			if (_currentTrackId == null)
@@ -438,20 +504,46 @@ public sealed class MainWindowCoordinator : IDisposable
 		}
 	}
 
-	public void ShowEqualizer() => _equalizerPresenter.ShowEqualizerDialog();
-	public void ShowDbStats() => _dbStatsPresenter.ShowStatisticsDialog();
-	public void ShowNowPlaying() => _nowPlayingPresenter.ShowNowPlaying();
-	public void ShowLargeTrackInfo() => _largeTrackInfoPresenter.ShowLargeTrackInfo();
-	public void ShowAbout() => AboutDialog.Show();
+	public void ShowEqualizer()
+	{
+		Logging.LogUserAction("эквалайзер");
+		_equalizerPresenter.ShowEqualizerDialog();
+	}
+
+	public void ShowDbStats()
+	{
+		Logging.LogUserAction("статистика базы данных");
+		_dbStatsPresenter.ShowStatisticsDialog();
+	}
+
+	public void ShowNowPlaying()
+	{
+		Logging.LogUserAction("визуализация «Сейчас играет»");
+		_nowPlayingPresenter.ShowNowPlaying();
+	}
+
+	public void ShowLargeTrackInfo()
+	{
+		Logging.LogUserAction("крупное инфо о треке");
+		_largeTrackInfoPresenter.ShowLargeTrackInfo();
+	}
+
+	public void ShowAbout()
+	{
+		Logging.LogUserAction("о программе");
+		AboutDialog.Show();
+	}
 
 	private void SetWindowTitle(string title) => _window.Title = title;
 
 	public void StopApplication()
 	{
+		Logging.LogUserAction("выход из приложения");
 		_startupCts?.Cancel();
 		int result = MessageBox.Query("Выход", "Вы уверены, что хотите выйти?", "Да", "Нет");
 		if (result == 0)
 		{
+			Log.Information("Выход подтверждён пользователем");
 			_audioPlayer.Free();
 			Application.RequestStop();
 			Console.Clear();

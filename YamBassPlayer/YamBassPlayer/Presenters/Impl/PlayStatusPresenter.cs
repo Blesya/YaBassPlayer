@@ -105,14 +105,14 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 
 	private async Task ToggleFavoriteAsync(string sourceId, string sourceName)
 	{
-		Logging.LogBeforeCall();
-
 		if (string.IsNullOrWhiteSpace(_currentTrackId)
 			|| !_trackFavoriteService.SupportsSource(sourceId)
 			|| !IsFavoriteSourceApplicable(sourceId))
 		{
 			return;
 		}
+
+		Logging.LogUserAction($"переключение избранного ({sourceName})");
 
 		try
 		{
@@ -126,7 +126,6 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 			}
 
 			UpdateFavoriteState(sourceId);
-			Logging.LogAfterCall();
 		}
 		catch (HttpRequestException)
 		{
