@@ -212,6 +212,69 @@ public sealed class PlaybackPresenterTests
         });
     }
 
+    // ── Перекрытие запросов (быстрые клики) ───────────────────────────────
+
+    [Test]
+    public async Task PlaySelectedTrackAsync_WhenSupersededByNewerRequest_DoesNotPlayStaleTrack()
+    {
+        SetupTrack("t1");
+        SetupTrack("t2");
+
+        var staleDownloadStarted = new TaskCompletionSource();
+        var staleDownloadRelease = new TaskCompletionSource<string>();
+        _trackFileProvider
+            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
+            .Returns(async (string _, IProgress<DownloadProgress> __) =>
+            {
+                staleDownloadStarted.SetResult();
+                return await staleDownloadRelease.Task;
+            });
+        _trackFileProvider
+            .Setup(p => p.DownloadTrackAsync("t2", It.IsAny<IProgress<DownloadProgress>>()))
+            .ReturnsAsync("/tmp/t2.mp3");
+
+        Task stalePlay = _presenter.PlaySelectedTrackAsync("t1");
+        await staleDownloadStarted.Task;
+
+        await _presenter.PlaySelectedTrackAsync("t2");
+
+        staleDownloadRelease.SetResult("/tmp/t1.mp3");
+        await stalePlay;
+
+        Assert.Multiple(() =>
+        {
+            _audioPlayer.Verify(a => a.Play("/tmp/t1.mp3", It.IsAny<string>()), Times.Never);
+            _audioPlayer.Verify(a => a.Play("/tmp/t2.mp3", It.IsAny<string>()), Times.Once);
+            _listenTimer.Verify(l => l.OnTrackStart("t1", It.IsAny<ListenSource>()), Times.Never);
+        });
+    }
+
+    [Test]
+    public async Task PlaySelectedTrackAsync_SameTrackClickedTwice_PlaysOnceForLatestRequest()
+    {
+        SetupTrack("t1");
+
+        var downloadStarted = new TaskCompletionSource();
+        var downloadRelease = new TaskCompletionSource<string>();
+        _trackFileProvider
+            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
+            .Returns(async (string _, IProgress<DownloadProgress> __) =>
+            {
+                downloadStarted.TrySetResult();
+                return await downloadRelease.Task;
+            });
+
+        Task first = _presenter.PlaySelectedTrackAsync("t1");
+        await downloadStarted.Task;
+        Task second = _presenter.PlaySelectedTrackAsync("t1");
+
+        downloadRelease.SetResult("/tmp/t1.mp3");
+        await Task.WhenAll(first, second);
+
+        _audioPlayer.Verify(a => a.Play("/tmp/t1.mp3", It.IsAny<string>()), Times.Once);
+        _listenTimer.Verify(l => l.OnTrackStart("t1", ListenSource.Regular), Times.Once);
+    }
+
     // ── Предзагрузка следующего трека ─────────────────────────────────────
 
     [Test]

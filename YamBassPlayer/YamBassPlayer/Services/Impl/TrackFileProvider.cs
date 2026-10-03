@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Serilog;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
@@ -17,6 +18,13 @@ public class TrackFileProvider : ITrackFileProvider
 	private readonly AuthStorage _storage;
 	private readonly string _tracksFolder;
 	private readonly ITrackSourceDetector _sourceDetector;
+
+	/// <summary>
+	/// Активные загрузки по идентификатору трека. Повторный запрос того же трека
+	/// присоединяется к уже идущей загрузке, а не запускает вторую (иначе две задачи
+	/// пишут в один и тот же файл и получают ошибку доступа).
+	/// </summary>
+	private readonly ConcurrentDictionary<string, Lazy<DownloadJob>> _inFlight = new();
 
 	public TrackFileProvider(YandexMusicApi api, AuthStorage storage, string tracksFolder, ITrackSourceDetector sourceDetector)
 	{
@@ -43,14 +51,53 @@ public class TrackFileProvider : ITrackFileProvider
 		return File.Exists(GetTrackPath(trackId));
 	}
 
-	public async Task<string> DownloadTrackAsync(string trackId, IProgress<DownloadProgress>? progress = null)
+	public Task<string> DownloadTrackAsync(string trackId, IProgress<DownloadProgress>? progress = null)
 	{
 		Logging.LogBeforeCall();
 
 		// Local tracks: trackId is the absolute file path — no download needed
 		if (_sourceDetector.IsLocal(trackId))
-			return File.Exists(trackId) ? trackId : string.Empty;
+			return Task.FromResult(File.Exists(trackId) ? trackId : string.Empty);
 
+		// Lazy гарантирует, что при гонке GetOrAdd фабрика выполнится ровно один раз,
+		// поэтому дублирующая загрузка не стартует.
+		Lazy<DownloadJob> lazy = _inFlight.GetOrAdd(
+			trackId,
+			_ => new Lazy<DownloadJob>(() => new DownloadJob(report => DownloadCoreAsync(trackId, report), progress)));
+
+		DownloadJob job;
+		try
+		{
+			job = lazy.Value;
+		}
+		catch
+		{
+			_inFlight.TryRemove(trackId, out _);
+			throw;
+		}
+
+		job.AddObserver(progress);
+
+		Task<string> task = job.Task;
+		// Убираем только свою запись: если к моменту завершения появилась новая загрузка,
+		// её не трогаем.
+		_ = task.ContinueWith(
+			_ => _inFlight.TryRemove(new KeyValuePair<string, Lazy<DownloadJob>>(trackId, lazy)),
+			TaskScheduler.Default);
+
+		return task;
+	}
+
+	public async Task<string> GetTrackFilePathAsync(string trackId)
+	{
+		if (_sourceDetector.IsLocal(trackId))
+			return trackId;
+
+		return GetTrackPath(trackId);
+	}
+
+	private async Task<string> DownloadCoreAsync(string trackId, Action<DownloadProgress> report)
+	{
 		try
 		{
 			string filePath = GetTrackPath(trackId);
@@ -58,7 +105,7 @@ public class TrackFileProvider : ITrackFileProvider
 			if (File.Exists(filePath))
 			{
 				Log.Debug("Трек {TrackId} уже скачан: {FilePath}", trackId, filePath);
-				ReportCached(filePath, progress);
+				ReportCached(filePath, report);
 				return filePath;
 			}
 
@@ -71,10 +118,9 @@ public class TrackFileProvider : ITrackFileProvider
 			}
 
 			Log.Information("Скачивание трека {TrackId}", trackId);
-			await DownloadToFileAsync(track, filePath, progress);
+			await DownloadToFileAsync(track, filePath, report);
 			Log.Information("Трек {TrackId} скачан: {FilePath}", trackId, filePath);
 
-			Logging.LogAfterCall();
 			return filePath;
 		}
 		catch (Exception e)
@@ -85,31 +131,21 @@ public class TrackFileProvider : ITrackFileProvider
 		}
 	}
 
-	public async Task<string> GetTrackFilePathAsync(string trackId)
+	private static void ReportCached(string filePath, Action<DownloadProgress> report)
 	{
-		if (_sourceDetector.IsLocal(trackId))
-			return trackId;
-
-		return GetTrackPath(trackId);
-	}
-
-	private static void ReportCached(string filePath, IProgress<DownloadProgress>? progress)
-	{
-		if (progress == null)
-			return;
-
 		long size = new FileInfo(filePath).Length;
-		progress.Report(new DownloadProgress(size, size));
+		report(new DownloadProgress(size, size));
 	}
 
 	/// <summary>
 	/// Streams the track into a temporary ".part" file and only promotes it to the final
 	/// path once the whole file is written, so an interrupted download is never mistaken
-	/// for a cached one by <see cref="IsTrackDownloaded"/>.
+	/// for a cached one by <see cref="IsTrackDownloaded"/>. The temp name is unique per
+	/// download, so a stray concurrent writer can never collide with it.
 	/// </summary>
-	private async Task DownloadToFileAsync(YTrack track, string filePath, IProgress<DownloadProgress>? progress)
+	private async Task DownloadToFileAsync(YTrack track, string filePath, Action<DownloadProgress> report)
 	{
-		string tempPath = $"{filePath}.part";
+		string tempPath = $"{filePath}.{Guid.NewGuid():N}.part";
 
 		try
 		{
@@ -125,13 +161,21 @@ public class TrackFileProvider : ITrackFileProvider
 			await using (var stream = await response.Content.ReadAsStreamAsync())
 			await using (var file = File.Create(tempPath))
 			{
-				await CopyWithProgressAsync(stream, file, totalBytes, progress);
+				await CopyWithProgressAsync(stream, file, totalBytes, report);
+			}
+
+			// Defensive: another process may have finished the same track while we were
+			// downloading. Never overwrite an existing (possibly playing) file.
+			if (File.Exists(filePath))
+			{
+				ReportCached(filePath, report);
+				return;
 			}
 
 			File.Move(tempPath, filePath, overwrite: true);
 
 			long finalSize = new FileInfo(filePath).Length;
-			progress?.Report(new DownloadProgress(finalSize, totalBytes > 0 ? totalBytes : finalSize));
+			report(new DownloadProgress(finalSize, totalBytes > 0 ? totalBytes : finalSize));
 		}
 		finally
 		{
@@ -140,7 +184,7 @@ public class TrackFileProvider : ITrackFileProvider
 		}
 	}
 
-	private static async Task CopyWithProgressAsync(Stream source, Stream destination, long totalBytes, IProgress<DownloadProgress>? progress)
+	private static async Task CopyWithProgressAsync(Stream source, Stream destination, long totalBytes, Action<DownloadProgress> report)
 	{
 		var buffer = new byte[CopyBufferSize];
 		long copied = 0;
@@ -153,9 +197,6 @@ public class TrackFileProvider : ITrackFileProvider
 			await destination.WriteAsync(buffer.AsMemory(0, read));
 			copied += read;
 
-			if (progress == null)
-				continue;
-
 			if (totalBytes > 0)
 			{
 				int percent = (int)Math.Min(copied * 100 / totalBytes, MaxPercentDuringCopy);
@@ -163,13 +204,47 @@ public class TrackFileProvider : ITrackFileProvider
 					continue;
 
 				lastPercent = percent;
-				progress.Report(new DownloadProgress(copied, totalBytes));
+				report(new DownloadProgress(copied, totalBytes));
 			}
 			else if (copied - lastIndeterminateReport >= IndeterminateReportStepBytes)
 			{
 				lastIndeterminateReport = copied;
-				progress.Report(new DownloadProgress(copied, 0));
+				report(new DownloadProgress(copied, 0));
 			}
+		}
+	}
+
+	/// <summary>
+	/// Одна загрузка трека, к которой могут присоединиться несколько вызывающих.
+	/// Прогресс рассылается всем наблюдателям.
+	/// </summary>
+	private sealed class DownloadJob
+	{
+		private readonly object _lock = new();
+		private readonly List<IProgress<DownloadProgress>?> _observers;
+
+		public Task<string> Task { get; }
+
+		public DownloadJob(Func<Action<DownloadProgress>, Task<string>> core, IProgress<DownloadProgress>? first)
+		{
+			_observers = [first];
+			Task = core(Report);
+		}
+
+		public void AddObserver(IProgress<DownloadProgress>? observer)
+		{
+			lock (_lock)
+				_observers.Add(observer);
+		}
+
+		private void Report(DownloadProgress progress)
+		{
+			IProgress<DownloadProgress>?[] observers;
+			lock (_lock)
+				observers = _observers.ToArray();
+
+			foreach (var observer in observers)
+				observer?.Report(progress);
 		}
 	}
 }

@@ -23,6 +23,19 @@ public sealed class PlaybackPresenter(
 	private string? _currentMyWaveTrackId;
 	private bool _myWaveSkipPending;
 
+	/// <summary>
+	/// Номер последнего запроса на воспроизведение. Растёт при каждом вызове
+	/// <see cref="PlaySelectedTrackAsync"/>, поэтому устаревшие (перекрытые) запросы
+	/// не запускают воспроизведение и не перетирают статус.
+	/// </summary>
+	private int _playRequestVersion;
+
+	/// <summary>
+	/// Синхронизирует фиксацию «кто сейчас играет»: проверка актуальности запроса и
+	/// сам запуск воспроизведения выполняются как одна атомарная операция.
+	/// </summary>
+	private readonly object _playLock = new();
+
 	public void SetPlaylistType(PlaylistType playlistType)
 	{
 		_currentPlaylistType = playlistType;
@@ -43,58 +56,69 @@ public sealed class PlaybackPresenter(
 	{
 		Logging.LogBeforeCall();
 
+		int requestVersion = Interlocked.Increment(ref _playRequestVersion);
+
 		try
 		{
-			if (_currentPlaylistType == PlaylistType.MyWave && _currentMyWaveTrackId != null)
-			{
-				double played = audioPlayer.GetCurrentPosition().TotalSeconds;
-				if (_myWaveSkipPending)
-					_ = myWavePresenter.NotifyTrackSkippedAsync(_currentMyWaveTrackId, played);
-				else
-					_ = myWavePresenter.NotifyTrackFinishedAsync(_currentMyWaveTrackId, played);
-
-				_myWaveSkipPending = false;
-			}
-
 			Track track = await trackInfoProvider.GetTrackInfoById(trackId);
+			if (!IsCurrentRequest(requestVersion))
+				return;
 
 			string downloadTitle = $"Загружается трек: {track.Artist} - {track.Title}";
 			playStatusPresenter.SetTitle(downloadTitle);
 			var downloadProgress = new ActionProgress<DownloadProgress>(progress =>
 			{
+				if (!IsCurrentRequest(requestVersion))
+					return;
+
 				string formatted = FormatDownloadProgress(progress);
 				playStatusPresenter.SetTitle($"{downloadTitle} ({formatted})");
 				playStatusPresenter.SetPlayStatus($"Загрузка: {formatted}");
 			});
+
 			string filePath = await trackFileProvider.DownloadTrackAsync(trackId, downloadProgress);
+
 			if (string.IsNullOrWhiteSpace(filePath))
 				return;
 
-			playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
-			Console.Title = $"{track.Artist} - {track.Title}";
-			audioPlayer.Play(filePath);
-
-			var source = _currentPlaylistType switch
+			// Пока качалось, пользователь мог выбрать другой трек — тогда этот запрос
+			// больше не должен ничего воспроизводить (загрузка остаётся в кэше).
+			// Проверка и запуск под одним замком, чтобы устаревший запрос не проскочил
+			// между ними и не перебил более новый.
+			lock (_playLock)
 			{
-				PlaylistType.MyWave => ListenSource.MyWave,
-				_ => ListenSource.Regular
-			};
+				if (!IsCurrentRequest(requestVersion))
+					return;
 
-			listenTimer.OnTrackStart(trackId, source);
-			playStatusPresenter.SetCurrentTrack(track.Id, track.SourceType);
+				NotifyMyWavePreviousTrack();
 
-			if (_currentPlaylistType == PlaylistType.MyWave)
-			{
-				_currentMyWaveTrackId = trackId;
-				_ = myWavePresenter.NotifyTrackStartedAsync(trackId);
+				playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
+				Console.Title = $"{track.Artist} - {track.Title}";
+				audioPlayer.Play(filePath);
 
-				if (!playbackQueue.HasNext)
-					_ = myWavePresenter.FetchMoreTracksAsync();
+				var source = _currentPlaylistType switch
+				{
+					PlaylistType.MyWave => ListenSource.MyWave,
+					_ => ListenSource.Regular
+				};
+
+				listenTimer.OnTrackStart(trackId, source);
+				playStatusPresenter.SetCurrentTrack(track.Id, track.SourceType);
+
+				if (_currentPlaylistType == PlaylistType.MyWave)
+				{
+					_currentMyWaveTrackId = trackId;
+					_ = myWavePresenter.NotifyTrackStartedAsync(trackId);
+
+					if (!playbackQueue.HasNext)
+						_ = myWavePresenter.FetchMoreTracksAsync();
+				}
 			}
 		}
 		finally
 		{
-			playStatusPresenter.SetTitle("Управление воспроизведением");
+			if (IsCurrentRequest(requestVersion))
+				playStatusPresenter.SetTitle("Управление воспроизведением");
 			Logging.LogAfterCall();
 		}
 	}
@@ -103,6 +127,8 @@ public sealed class PlaybackPresenter(
 	{
 		Logging.LogBeforeCall();
 
+		int requestVersion = Volatile.Read(ref _playRequestVersion);
+
 		try
 		{
 			var nextTrackId = playbackQueue.PeekNextTrackId;
@@ -110,17 +136,47 @@ public sealed class PlaybackPresenter(
 				return;
 
 			Track nextTrack = await trackInfoProvider.GetTrackInfoById(nextTrackId);
+			if (requestVersion != Volatile.Read(ref _playRequestVersion))
+				return;
+
 			string preloadTitle = $"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}";
 			playStatusPresenter.SetTitle(preloadTitle);
 			var downloadProgress = new ActionProgress<DownloadProgress>(progress =>
-				playStatusPresenter.SetTitle($"{preloadTitle} ({FormatDownloadProgress(progress)})"));
+			{
+				if (requestVersion != Volatile.Read(ref _playRequestVersion))
+					return;
+
+				playStatusPresenter.SetTitle($"{preloadTitle} ({FormatDownloadProgress(progress)})");
+			});
 			await trackFileProvider.DownloadTrackAsync(nextTrackId, downloadProgress);
 		}
 		finally
 		{
-			playStatusPresenter.SetTitle("Управление воспроизведением");
+			if (requestVersion == Volatile.Read(ref _playRequestVersion))
+				playStatusPresenter.SetTitle("Управление воспроизведением");
 			Logging.LogAfterCall();
 		}
+	}
+
+	private bool IsCurrentRequest(int version) => version == Volatile.Read(ref _playRequestVersion);
+
+	/// <summary>
+	/// Уведомляет «Мою волну» о судьбе предыдущего трека. Вызывается только перед
+	/// фактическим стартом нового воспроизведения, чтобы устаревшие запросы не
+	/// отправляли ложные уведомления.
+	/// </summary>
+	private void NotifyMyWavePreviousTrack()
+	{
+		if (_currentPlaylistType != PlaylistType.MyWave || _currentMyWaveTrackId == null)
+			return;
+
+		double played = audioPlayer.GetCurrentPosition().TotalSeconds;
+		if (_myWaveSkipPending)
+			_ = myWavePresenter.NotifyTrackSkippedAsync(_currentMyWaveTrackId, played);
+		else
+			_ = myWavePresenter.NotifyTrackFinishedAsync(_currentMyWaveTrackId, played);
+
+		_myWaveSkipPending = false;
 	}
 
 	private static string FormatDownloadProgress(DownloadProgress progress)

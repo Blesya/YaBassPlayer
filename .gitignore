@@ -2,4 +2,12 @@
 **/bin/**
 **/obj/**
 **/logs/**
+# Локальные данные плеера и секреты — не коммитить
 /YamBassPlayer/YamBassPlayer/tracks/*
+/YamBassPlayer/YamBassPlayer/covers/*
+/YamBassPlayer/YamBassPlayer/appsettings.json
+/YamBassPlayer/YamBassPlayer/tracks_cache.db
+/YamBassPlayer/YamBassPlayer/tracks_cache.db-*
+/YamBassPlayer/YamBassPlayer/playlist_state.json
+/YamBassPlayer/YamBassPlayer/next_model.zip
+/YamBassPlayer/YamBassPlayer/next_key_map.txt
