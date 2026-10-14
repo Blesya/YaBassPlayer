@@ -1,4 +1,5 @@
-﻿using YamBassPlayer.Enums;
+﻿using Serilog;
+using YamBassPlayer.Enums;
 
 namespace YamBassPlayer.Services.Impl;
 
@@ -42,7 +43,10 @@ public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 	{
 		Logging.LogBeforeCall();
 
-		if (_remaining <= TimeSpan.Zero)
+		// Отсчёт перезапускается, только если трек ещё активен. После успешного
+		// LogListen таймер сбрасывается (_trackId = null), поэтому Resume после
+		// паузы не должен запускать отсчёт с пустым trackId.
+		if (_trackId == null || _remaining <= TimeSpan.Zero)
 			return;
 
 		StartCountdown();
@@ -77,8 +81,15 @@ public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 				LogListen(track, source);
 				ResetInternal();
 			}
-			catch (TaskCanceledException)
+			catch (OperationCanceledException)
 			{
+				// Пауза, смена трека или остановка — отсчёт отменён штатно.
+			}
+			catch (Exception ex)
+			{
+				// Задача запущена «в фоне»: исключение нельзя терять, иначе оно
+				// всплывёт как UnobservedTaskException на finalizer-потоке.
+				Log.Error(ex, "Не удалось записать прослушивание трека {TrackId}", track);
 			}
 		}, localCts.Token);
 	}
