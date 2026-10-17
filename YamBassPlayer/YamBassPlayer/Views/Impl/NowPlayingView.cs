@@ -69,14 +69,14 @@ public sealed class NowPlayingView : Window, INowPlayingView
 			AutoSize = false
 		};
 
-		_spectrum = new SpectrumView(bars: 300)
+		_spectrum = new SpectrumView
 		{
 			X = 0,
 			Y = 4,
 			Width = Dim.Fill(),
 			Height = Dim.Fill(6)
 		};
-		_spectrum.AddRenderer(new BarsRenderer(300) { BarWidth = 4, BarGap = 1 });
+		_spectrum.AddRenderer(new BarsRenderer { BarWidth = 4, BarGap = 1 });
 		_spectrum.AddRenderer(new OscilloscopeRenderer());
 		_spectrum.AddRenderer(new PolarWaveformRenderer());
 		_spectrum.AddRenderer(new LissajousScopeRenderer());

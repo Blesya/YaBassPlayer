@@ -1,12 +1,16 @@
-﻿using Terminal.Gui;
+﻿using System.Text;
+using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
 
 /// <summary>
-/// Список треков в одну колонку. Каждая строка: «№  Исполнитель — Название»,
-/// справа выровнена длительность трека.
+/// Список треков в одну колонку: маркер, номер, исполнитель, название и
+/// длительность. Служебные поля приглушены, исполнитель выделен акцентом,
+/// играющий трек помечен «▶», скачанный — «*» рядом с номером.
+/// Выбранная строка подсвечивается только тогда, когда список действительно
+/// в фокусе — иначе подсветка врала бы о том, где фокус.
 /// Текст выбранной строки бежит строкой (marquee), если не помещается по ширине.
 /// Состояние списка хранится в общей <see cref="ITrackListModel"/>.
 /// </summary>
@@ -14,6 +18,21 @@ public sealed class TracksView : View, ITracksView
 {
 	private const int MarqueeIntervalMs = 250;
 	private const int MarqueePauseTicks = 4;
+
+	private const int MarkerWidth = 2;
+
+	/// <summary>Ширина поля состояния кэша: « 45% », «   * », «     ».</summary>
+	private const int StatusWidth = 5;
+
+	private const int ScrollWidth = 1;
+	private const int HeaderHeight = 1;
+	private const int ColumnGap = 2;
+
+	// Ниже этих ширин служебные колонки убираются, чтобы текст не сжимался в точку.
+	private const int NumberColumnMinWidth = 30;
+	private const int SplitColumnsMinWidth = 46;
+
+	private const string PlayingMarker = "▶ ";
 
 	private readonly ITrackListModel _model;
 
@@ -23,6 +42,9 @@ public sealed class TracksView : View, ITracksView
 	private object? _marqueeToken;
 	private int _marqueeOffset;
 	private int _marqueePause;
+
+	private int _lastItemCount = -1;
+	private int _lastSelectedIndex = -1;
 
 	public event Action<int>? OnTrackSelected;
 	public event Action<int>? OnCellActivated;
@@ -40,13 +62,29 @@ public sealed class TracksView : View, ITracksView
 		Width = Dim.Fill();
 		Height = Dim.Fill();
 		CanFocus = true;
+
+		// Подсветка выбранной строки зависит от фокуса, поэтому смена фокуса
+		// должна перерисовывать список.
+		Enter += _ => SetNeedsDisplay();
+		Leave += _ => SetNeedsDisplay();
 	}
 
-	private int VisibleRows => Math.Max(1, Bounds.Height);
+	private int VisibleRows => Math.Max(1, Bounds.Height - HeaderHeight);
 
+	/// <summary>
+	/// Перерисовка после изменения модели. Бегущая строка перезапускается только когда
+	/// сменился состав списка или выделение: обновление прогресса загрузки приходит
+	/// десятки раз за трек и не должно дёргать анимацию.
+	/// </summary>
 	private void OnModelChanged()
 	{
-		ResetMarquee();
+		if (_model.Items.Count != _lastItemCount || _model.SelectedIndex != _lastSelectedIndex)
+		{
+			_lastItemCount = _model.Items.Count;
+			_lastSelectedIndex = _model.SelectedIndex;
+			ResetMarquee();
+		}
+
 		SetNeedsDisplay();
 	}
 
@@ -65,22 +103,72 @@ public sealed class TracksView : View, ITracksView
 	public void SetFilter(string? filter)
 		=> _model.SetFilter(filter);
 
-	private string RowText(TrackListItem item)
+	public void SetDownloadState(string trackId, TrackDownloadState state)
+		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
+
+	// ── Раскладка колонок ─────────────────────────────────────────────────
+
+	/// <summary>
+	/// Ширины полей строки. Нулевая ширина означает, что колонка не помещается
+	/// в текущую ширину списка и не рисуется.
+	/// </summary>
+	private readonly record struct RowColumns(int Number, int Artist, int Title, int Duration, int Scroll)
+	{
+		public static RowColumns For(int width, int digits, int durationWidth, bool showScroll)
+		{
+			int number = width >= NumberColumnMinWidth ? digits + StatusWidth : 0;
+			int scroll = showScroll ? ScrollWidth : 0;
+
+			int flex = Math.Max(0, width - MarkerWidth - number - durationWidth - scroll);
+			if (flex >= SplitColumnsMinWidth)
+			{
+				int artist = flex * 2 / 5;
+				return new RowColumns(number, artist, flex - artist - ColumnGap, durationWidth, scroll);
+			}
+
+			return new RowColumns(number, flex, 0, durationWidth, scroll);
+		}
+
+		public int NamesWidth => Artist + (Title > 0 ? Title + ColumnGap : 0);
+	}
+
+	private static int DurationWidth(IReadOnlyList<TrackListItem> items)
+	{
+		int max = 0;
+		foreach (TrackListItem item in items)
+		{
+			int length = item.Track.DurationMs.ToShortDuration().Length;
+			if (length > max)
+				max = length;
+		}
+
+		// +1 — разделитель между названием и временем.
+		return max == 0 ? 0 : max + 1;
+	}
+
+	private static string ArtistTitle(TrackListItem item)
 	{
 		string artist = item.Track.Artist ?? "";
 		string title = item.Track.Title ?? "";
-		string artistTitle = string.IsNullOrEmpty(artist) ? title : $"{artist} — {title}";
-		string playing = item.Track.Id == _model.PlayingTrackId ? "▶ " : "";
-		return playing + item.Number + "  " + artistTitle;
+		return string.IsNullOrEmpty(artist) ? title : $"{artist} — {title}";
 	}
+
+	private RowColumns ColumnsFor(int width, IReadOnlyList<TrackListItem> items)
+		=> RowColumns.For(
+			width,
+			Math.Max(1, items.Count.ToString().Length),
+			DurationWidth(items),
+			items.Count > VisibleRows);
+
+	// ── Отрисовка ─────────────────────────────────────────────────────────
 
 	public override void Redraw(Rect bounds)
 	{
 		base.Redraw(bounds);
 
 		int width = bounds.Width;
-		string blankLine = GetBlankLine(width);
 		Driver.SetAttribute(ColorScheme.Normal);
+		string blankLine = GetBlankLine(width);
 		for (int y = 0; y < bounds.Height; y++)
 		{
 			Move(0, y);
@@ -89,35 +177,175 @@ public sealed class TracksView : View, ITracksView
 
 		var items = _model.Items;
 		if (items.Count == 0)
+		{
+			DrawEmptyState(bounds);
 			return;
+		}
 
-		for (int row = 0; row < bounds.Height; row++)
+		RowColumns columns = ColumnsFor(width, items);
+		DrawHeader(columns);
+
+		for (int row = 0; row < VisibleRows; row++)
 		{
 			int idx = row + _model.ScrollOffset;
 			if (idx >= items.Count)
 				break;
 
-			bool isSelected = idx == _model.SelectedIndex;
-			bool isPlaying = items[idx].Track.Id == _model.PlayingTrackId;
+			DrawRow(row + HeaderHeight, idx, items[idx], columns);
+		}
 
-			var attr = isSelected
-				? ColorScheme.Focus
-				: isPlaying ? ColorScheme.HotNormal : ColorScheme.Normal;
-			Driver.SetAttribute(attr);
+		if (columns.Scroll > 0)
+			DrawScrollIndicator(items.Count);
+	}
 
-			            string text = RowText(items[idx]);
-			string duration = items[idx].Track.DurationMs.ToShortDuration();
-			int reserve = duration.Length == 0 ? 0 : duration.Length + 1;
-			int contentWidth = Math.Max(0, width - reserve);
+	private void DrawHeader(RowColumns c)
+	{
+		var line = new StringBuilder(new string(' ', MarkerWidth));
 
-			string content = isSelected && text.Length > contentWidth
-				? MarqueeWindow(text, _marqueeOffset, contentWidth)
-				: PadOrTruncate(text, contentWidth);
+		if (c.Number > 0)
+			line.Append("№".PadLeft(c.Number - StatusWidth)).Append(new string(' ', StatusWidth));
 
-			string render = reserve == 0 ? content : content + " " + duration;
+		line.Append(c.Title > 0
+			? PadOrTruncate("Исполнитель", c.Artist) + new string(' ', ColumnGap) + PadOrTruncate("Название", c.Title)
+			: PadOrTruncate("Исполнитель — название", c.Artist));
 
-			Move(0, row);
-			Driver.AddStr(render.Length > width ? render[..width] : render);
+		if (c.Duration > 0)
+			line.Append("Время".PadLeft(c.Duration));
+
+		Driver.SetAttribute(Themes.DimFor(ColorScheme));
+		Move(0, 0);
+		Driver.AddStr(line.ToString());
+	}
+
+	private void DrawRow(int y, int index, TrackListItem item, RowColumns c)
+	{
+		bool isSelected = index == _model.SelectedIndex;
+		bool isPlaying = item.Track.Id == _model.PlayingTrackId;
+		bool focused = isSelected && HasFocus;
+
+		string marker = isPlaying ? PlayingMarker : new string(' ', MarkerWidth);
+
+		Move(0, y);
+
+		// Строка с фокусом подсвечивается целиком: цветные поля на фоне
+		// подсветки читаются плохо, а так выделение однозначно.
+		if (focused)
+		{
+			Driver.SetAttribute(ColorScheme.Focus);
+			Driver.AddStr(marker);
+			Driver.AddStr(RowBody(item, c));
+			return;
+		}
+
+		Driver.SetAttribute(isPlaying ? ColorScheme.HotNormal : Themes.DimFor(ColorScheme));
+		Driver.AddStr(marker);
+
+		if (c.Number > 0)
+		{
+			Driver.SetAttribute(Themes.DimFor(ColorScheme));
+			Driver.AddStr(NumberField(item, c));
+		}
+
+		if (c.Artist > 0)
+		{
+			if (c.Title > 0)
+			{
+				Driver.SetAttribute(ColorScheme.HotNormal);
+				Driver.AddStr(PadOrTruncate(item.Track.Artist ?? "", c.Artist));
+				Driver.SetAttribute(isPlaying ? ColorScheme.HotNormal : ColorScheme.Normal);
+				Driver.AddStr(new string(' ', ColumnGap));
+				Driver.AddStr(PadOrTruncate(item.Track.Title ?? "", c.Title));
+			}
+			else
+			{
+				Driver.SetAttribute(isPlaying ? ColorScheme.HotNormal : ColorScheme.Normal);
+				Driver.AddStr(PadOrTruncate(ArtistTitle(item), c.Artist));
+			}
+		}
+
+		if (c.Duration > 0)
+		{
+			Driver.SetAttribute(Themes.DimFor(ColorScheme));
+			Driver.AddStr(item.Track.DurationMs.ToShortDuration().PadLeft(c.Duration));
+		}
+	}
+
+	/// <summary>Номер трека и состояние кэша: «12», « 45%» пока качается, «*» когда скачан.</summary>
+	private static string NumberField(TrackListItem item, RowColumns c)
+		=> item.Number.PadLeft(c.Number - StatusWidth) + StatusField(item);
+
+	/// <summary>Поле состояния кэша постоянной ширины, чтобы колонки не разъезжались.</summary>
+	private static string StatusField(TrackListItem item)
+	{
+		TrackDownloadState download = item.Download;
+		return download.Status switch
+		{
+			TrackDownloadStatus.Downloading => download.ToShortProgress().PadLeft(StatusWidth - 1) + " ",
+			TrackDownloadStatus.Cached => "*".PadLeft(StatusWidth - 1) + " ",
+			TrackDownloadStatus.Failed => "!".PadLeft(StatusWidth - 1) + " ",
+			_ => new string(' ', StatusWidth)
+		};
+	}
+
+	/// <summary>Тело строки одним цветом — для подсвеченной строки и для бегущей строки.</summary>
+	private string RowBody(TrackListItem item, RowColumns c)
+	{
+		var body = new StringBuilder();
+
+		if (c.Number > 0)
+			body.Append(NumberField(item, c));
+
+		if (c.Artist > 0)
+			body.Append(NamesField(item, c, marquee: true));
+
+		if (c.Duration > 0)
+			body.Append(item.Track.DurationMs.ToShortDuration().PadLeft(c.Duration));
+
+		return body.ToString();
+	}
+
+	/// <summary>
+	/// Поля исполнителя и названия. Если имя целиком не помещается, оно бежит
+	/// строкой; иначе каждое поле выравнивается по своей колонке.
+	/// </summary>
+	private string NamesField(TrackListItem item, RowColumns c, bool marquee)
+	{
+		string combined = ArtistTitle(item);
+		if (c.Title <= 0)
+			return PadOrTruncate(combined, c.Artist);
+
+		if (marquee && combined.Length > c.NamesWidth)
+			return MarqueeWindow(combined, _marqueeOffset, c.NamesWidth);
+
+		return PadOrTruncate(item.Track.Artist ?? "", c.Artist)
+			+ new string(' ', ColumnGap)
+			+ PadOrTruncate(item.Track.Title ?? "", c.Title);
+	}
+
+	private void DrawEmptyState(Rect bounds)
+	{
+		const string message = "Список пуст";
+		Driver.SetAttribute(Themes.DimFor(ColorScheme));
+		Move(Math.Max(0, (bounds.Width - message.Length) / 2), Math.Max(0, bounds.Height / 2));
+		Driver.AddStr(message);
+	}
+
+	/// <summary>Тонкая полоса прокрутки в последней колонке списка.</summary>
+	private void DrawScrollIndicator(int itemCount)
+	{
+		int trackHeight = VisibleRows;
+		int thumbHeight = Math.Max(1, trackHeight * trackHeight / Math.Max(1, itemCount));
+		int maxOffset = Math.Max(1, itemCount - trackHeight);
+		int thumbTop = (int)Math.Round((double)_model.ScrollOffset / maxOffset * (trackHeight - thumbHeight));
+		thumbTop = Math.Clamp(thumbTop, 0, Math.Max(0, trackHeight - thumbHeight));
+
+		int x = Math.Max(0, Bounds.Width - ScrollWidth);
+		for (int row = 0; row < trackHeight; row++)
+		{
+			bool isThumb = row >= thumbTop && row < thumbTop + thumbHeight;
+			Driver.SetAttribute(isThumb ? ColorScheme.Normal : Themes.DimFor(ColorScheme));
+			Move(x, row + HeaderHeight);
+			Driver.AddStr(isThumb ? "█" : "│");
 		}
 	}
 
@@ -132,30 +360,32 @@ public sealed class TracksView : View, ITracksView
 		return _blankLine;
 	}
 
-	    private static string PadOrTruncate(string text, int width)
-	    {
-	        if (width <= 0)
-	            return string.Empty;
+	private static string PadOrTruncate(string text, int width)
+	{
+		if (width <= 0)
+			return string.Empty;
 
-	        if (string.IsNullOrEmpty(text))
-	            return new string(' ', width);
+		if (string.IsNullOrEmpty(text))
+			return new string(' ', width);
 
-	        return text.Length >= width
-	            ? text[..(width - 1)] + "…"
-	            : text.PadRight(width);
-	    }
+		return text.Length >= width
+			? text[..(width - 1)] + "…"
+			: text.PadRight(width);
+	}
 
-	    private static string MarqueeWindow(string text, int offset, int width)
-	    {
-	        if (width <= 0)
-	            return string.Empty;
+	private static string MarqueeWindow(string text, int offset, int width)
+	{
+		if (width <= 0)
+			return string.Empty;
 
-	        if (string.IsNullOrEmpty(text) || text.Length <= width)
-	            return (text ?? "").PadRight(width);
+		if (string.IsNullOrEmpty(text) || text.Length <= width)
+			return (text ?? "").PadRight(width);
 
-	        int safe = Math.Clamp(offset, 0, text.Length - width);
-	        return text.Substring(safe, width);
-	    }
+		int safe = Math.Clamp(offset, 0, text.Length - width);
+		return text.Substring(safe, width);
+	}
+
+	// ── Ввод ──────────────────────────────────────────────────────────────
 
 	public override bool ProcessKey(KeyEvent kb)
 	{
@@ -228,7 +458,7 @@ public sealed class TracksView : View, ITracksView
 			if (!HasFocus)
 				SetFocus();
 
-			int index = me.Y + _model.ScrollOffset;
+			int index = me.Y - HeaderHeight + _model.ScrollOffset;
 			if (index >= 0 && index < _model.Items.Count && _model.Select(index))
 			{
 				OnTrackSelected?.Invoke(_model.SelectedIndex);
@@ -240,7 +470,7 @@ public sealed class TracksView : View, ITracksView
 
 		if (me.Flags.HasFlag(MouseFlags.Button1DoubleClicked))
 		{
-			int index = me.Y + _model.ScrollOffset;
+			int index = me.Y - HeaderHeight + _model.ScrollOffset;
 			if (index >= 0 && index < _model.Items.Count)
 			{
 				_model.Select(index);
@@ -264,17 +494,13 @@ public sealed class TracksView : View, ITracksView
 		_marqueePause = 0;
 		_marqueeToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(MarqueeIntervalMs), _ =>
 		{
-			int width = Math.Max(1, Bounds.Width);
 			TrackListItem item = _model.Items[_model.SelectedIndex];
-			string text = RowText(item);
+			int namesWidth = ColumnsFor(Math.Max(1, Bounds.Width), _model.Items).NamesWidth;
+			string combined = ArtistTitle(item);
 
-			string duration = item.Track.DurationMs.ToShortDuration();
-			int contentWidth = Math.Max(1, width - (duration.Length == 0 ? 0 : duration.Length + 1));
+			if (namesWidth > 0 && combined.Length > namesWidth)
+				AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, combined.Length, namesWidth);
 
-			if (text.Length > contentWidth)
-			{
-				AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, text.Length, contentWidth);
-			}
 			SetNeedsDisplay();
 			return true;
 		});

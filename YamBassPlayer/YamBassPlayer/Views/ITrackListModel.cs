@@ -3,10 +3,11 @@ using YamBassPlayer.Models;
 namespace YamBassPlayer.Views;
 
 /// <summary>
-/// Элемент списка треков: сам трек и предвычисленный номер для отображения
-/// (с «*» у скачанных). Номер считает модель, вьюхи только рендерят.
+/// Элемент списка треков: сам трек, предвычисленный номер для отображения
+/// и состояние локального кэша (скачан / качается на N% / ошибка).
+/// Их считает модель, вьюхи только рендерят.
 /// </summary>
-public readonly record struct TrackListItem(Track Track, string Number);
+public readonly record struct TrackListItem(Track Track, string Number, TrackDownloadState Download);
 
 /// <summary>
 /// Общая модель списка треков: данные хранятся один раз для таблицы и плиток.
@@ -30,6 +31,12 @@ public interface ITrackListModel
 	void SetFilter(string? filter);
 	void SetPlayingTrackId(string? trackId);
 	void SetLoadingMore(bool value);
+
+	/// <summary>
+	/// Обновляет состояние кэша одного трека. Список не пересобирается: меняется
+	/// только строка, поэтому прогресс загрузки виден без перезагрузки плейлиста.
+	/// </summary>
+	void SetDownloadState(string trackId, TrackDownloadState state);
 
 	bool MoveUp(int step);
 	bool MoveDown(int step);

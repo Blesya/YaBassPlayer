@@ -64,6 +64,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 
 		Application.MainLoop?.Invoke(() =>
 		{
+			_view.SetPlaying(_audioPlayer.IsPlayed);
 			_view.SetProgress(percent);
 			_view.SetTime(current, duration);
 		});

@@ -18,7 +18,7 @@ public sealed class SpectrumRendererTests : ViewTestBase
 
     private static ISpectrumRenderer[] AllRenderers() =>
     [
-        new BarsRenderer(10),
+        new BarsRenderer(),
         new OscilloscopeRenderer(),
         new PolarWaveformRenderer(),
         new LissajousScopeRenderer(),
@@ -81,7 +81,7 @@ public sealed class SpectrumRendererTests : ViewTestBase
     [Test]
     public void BarsRenderer_Reset_AllowsRenderingAgain()
     {
-        var renderer = new BarsRenderer(10);
+        var renderer = new BarsRenderer();
         var host = CreateHost();
 
         renderer.Render(new Rect(0, 0, Width, Height), Driver, host, SampleData(128), 22050);
@@ -90,13 +90,30 @@ public sealed class SpectrumRendererTests : ViewTestBase
         Assert.DoesNotThrow(() => renderer.Render(new Rect(0, 0, Width, Height), Driver, host, SampleData(128), 22050));
     }
 
+    [Test]
+    public void BarsRenderer_FillsTheWholeWidthRegardlessOfBarCount()
+    {
+        var renderer = new BarsRenderer();
+        var host = CreateHost();
+        var data = Enumerable.Repeat(1f, 128).ToArray();
+
+        renderer.Render(new Rect(0, 0, Width, Height), Driver, host, data, 22050);
+
+        string bottomRow = RenderText(Height, Width).Split(Environment.NewLine)[Height - 1];
+        Assert.Multiple(() =>
+        {
+            Assert.That(bottomRow[0], Is.EqualTo('█'));
+            Assert.That(bottomRow[Width - 1], Is.EqualTo('█'), "полосы должны доходить до правого края");
+        });
+    }
+
     // ── SpectrumView: переключение режимов и рендер ───────────────────────
 
     [Test]
     public void SpectrumView_CycleMode_WrapsAround()
     {
-        var view = AddToTop(new SpectrumView(10) { Width = Width, Height = Height });
-        view.AddRenderer(new BarsRenderer(10));
+        var view = AddToTop(new SpectrumView() { Width = Width, Height = Height });
+        view.AddRenderer(new BarsRenderer());
         view.AddRenderer(new OscilloscopeRenderer());
 
         Assert.That(view.ModeCount, Is.EqualTo(2));
@@ -111,8 +128,8 @@ public sealed class SpectrumRendererTests : ViewTestBase
     [Test]
     public void SpectrumView_SelectMode_WrapsNegativeIndex()
     {
-        var view = AddToTop(new SpectrumView(10) { Width = Width, Height = Height });
-        view.AddRenderer(new BarsRenderer(10));
+        var view = AddToTop(new SpectrumView() { Width = Width, Height = Height });
+        view.AddRenderer(new BarsRenderer());
         view.AddRenderer(new OscilloscopeRenderer());
 
         view.SelectMode(-1);
@@ -123,8 +140,8 @@ public sealed class SpectrumRendererTests : ViewTestBase
     [Test]
     public void SpectrumView_SetDataThenRedraw_DoesNotThrow()
     {
-        var view = AddToTop(new SpectrumView(10) { Width = Width, Height = Height });
-        view.AddRenderer(new BarsRenderer(10));
+        var view = AddToTop(new SpectrumView() { Width = Width, Height = Height });
+        view.AddRenderer(new BarsRenderer());
 
         view.SetData(SampleData(128));
 

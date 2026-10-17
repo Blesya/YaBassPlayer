@@ -144,4 +144,86 @@ public sealed class SeekBarViewTests : ViewTestBase
         view.Fraction = -5f;
         Assert.That(view.Fraction, Is.EqualTo(0f));
     }
+
+    // ── Время по краям дорожки ────────────────────────────────────────────
+
+    [Test]
+    public void SetTime_DerivesFractionFromPositionAndDuration()
+    {
+        var view = CreateView();
+
+        view.SetTime(TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(360));
+
+        Assert.That(view.Fraction, Is.EqualTo(0.25f).Within(0.001f));
+    }
+
+    [Test]
+    public void SetTime_WithoutDuration_KeepsFractionAtZero()
+    {
+        var view = CreateView();
+
+        view.SetTime(TimeSpan.FromSeconds(90), TimeSpan.Zero);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(view.Fraction, Is.Zero);
+            Assert.That(view.ShowsTime, Is.False);
+        });
+    }
+
+    [Test]
+    public void Redraw_WithDuration_ShowsElapsedAndTotalOnTheEdges()
+    {
+        var view = CreateView(40);
+        view.SetTime(TimeSpan.FromSeconds(83), TimeSpan.FromMinutes(5));
+
+        view.Redraw(new Rect(0, 0, 40, 1));
+
+        string text = RenderText(1, 40).TrimEnd();
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.StartWith("01:23"));
+            Assert.That(text, Does.EndWith("05:00"));
+        });
+    }
+
+    [Test]
+    public void Redraw_WithoutDuration_ShowsOnlyTrack()
+    {
+        var view = CreateView(20);
+
+        view.Redraw(new Rect(0, 0, 20, 1));
+
+        Assert.That(RenderText(1, 20).TrimEnd(), Does.Not.Contain(":"));
+    }
+
+    [Test]
+    public void Click_OnElapsedTime_DoesNotSeek()
+    {
+        var view = CreateView(40);
+        view.SetTime(TimeSpan.FromSeconds(83), TimeSpan.FromMinutes(5));
+
+        int? seeked = null;
+        view.SeekRequested += percent => seeked = percent;
+
+        view.MouseEvent(Click(1));
+
+        Assert.That(seeked, Is.Null);
+    }
+
+    [Test]
+    public void Click_OnTrack_SeekesWithinBarGeometry()
+    {
+        var view = CreateView(40);
+        view.SetTime(TimeSpan.FromSeconds(83), TimeSpan.FromMinutes(5));
+        (int start, int barWidth) = view.BarGeometry(40);
+
+        int? seeked = null;
+        view.SeekRequested += percent => seeked = percent;
+
+        view.MouseEvent(Click(start + barWidth / 2));
+
+        Assert.That(seeked, Is.Not.Null);
+        Assert.That(seeked!.Value, Is.InRange(45, 55));
+    }
 }

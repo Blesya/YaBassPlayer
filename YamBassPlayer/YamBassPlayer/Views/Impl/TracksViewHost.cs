@@ -69,11 +69,15 @@ public sealed class TracksViewHost : View, ITracksView
 		SetNeedsDisplay();
 
 		if (HasFocus)
-		{
-			var active = (View)(_useTiles ? _tiles : _table);
-			active.SetFocus();
-		}
+			FocusActive();
 	}
+
+	/// <summary>
+	/// Ставит фокус на активное представление — таблицу или плитки. Сам хост
+	/// клавиши не обрабатывает, поэтому фокус должен стоять на дочернем виде.
+	/// </summary>
+	public void FocusActive()
+		=> ((View)(_useTiles ? _tiles : _table)).SetFocus();
 
 	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
 		=> Application.MainLoop.Invoke(() => _model.SetTracks(tracks, isCached));
@@ -89,4 +93,7 @@ public sealed class TracksViewHost : View, ITracksView
 
 	public void SetFilter(string? filter)
 		=> _model.SetFilter(filter);
+
+	public void SetDownloadState(string trackId, TrackDownloadState state)
+		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
 }

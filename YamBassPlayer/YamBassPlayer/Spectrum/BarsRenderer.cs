@@ -11,31 +11,22 @@ public sealed class BarsRenderer : ISpectrumRenderer
     public int BarWidth { get; set; } = 1;
     public int BarGap { get; set; } = 0;
 
-    private readonly float[] _smoothed;
-    private readonly float[] _peaks;
-    private readonly float[] _peakFallSpeed;
-    private readonly int _bars;
-
-    public BarsRenderer(int bars)
-    {
-        _bars = bars;
-        _smoothed = new float[bars];
-        _peaks = new float[bars];
-        _peakFallSpeed = new float[bars];
-        var rnd = new Random();
-        for (int i = 0; i < bars; i++)
-            _peakFallSpeed[i] = 0.05f + (float)rnd.NextDouble() * 0.1f;
-    }
+    private readonly Random _rnd = new();
+    private float[] _smoothed = [];
+    private float[] _peaks = [];
+    private float[] _peakFallSpeed = [];
 
     public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
     {
         if (data.Length == 0) return;
 
         int height = bounds.Height;
-        int cellWidth = BarWidth + BarGap;
-        int numBars = Math.Min(_bars, bounds.Width / Math.Max(1, cellWidth));
+        int cellWidth = Math.Max(1, BarWidth + BarGap);
 
-        if (numBars <= 0) return;
+        // Полос ровно столько, сколько помещается в ширину: число полос — функция
+        // ширины, а не константа, иначе на широкой полосе справа остаётся пусто.
+        int numBars = Math.Max(1, bounds.Width / cellWidth);
+        EnsureCapacity(numBars);
 
         float ratio = Math.Clamp(maxFrequencyHz / 22050f, 0.05f, 1f);
         int usableBins = Math.Max(1, (int)(data.Length * ratio));
@@ -106,6 +97,19 @@ public sealed class BarsRenderer : ISpectrumRenderer
                 }
             }
         }
+    }
+
+    /// <summary>Расширяет буферы под фактическое число полос; состояние сглаживания теряется.</summary>
+    private void EnsureCapacity(int count)
+    {
+        if (_smoothed.Length >= count)
+            return;
+
+        _smoothed = new float[count];
+        _peaks = new float[count];
+        _peakFallSpeed = new float[count];
+        for (int i = 0; i < count; i++)
+            _peakFallSpeed[i] = 0.05f + (float)_rnd.NextDouble() * 0.1f;
     }
 
     public void Reset()

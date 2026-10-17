@@ -192,7 +192,8 @@ public sealed class PlaylistRowsView : View
 
 	private void DrawCard(int x, int y, CardData card, bool isSelected, bool isPlaying, Rect bounds)
 	{
-		var attr = isSelected ? ColorScheme.Focus : ColorScheme.Normal;
+		bool focused = isSelected && HasFocus;
+		var attr = focused ? ColorScheme.Focus : ColorScheme.Normal;
 		Driver.SetAttribute(attr);
 
 		int innerWidth = Math.Max(4, bounds.Width - 2);
@@ -208,7 +209,7 @@ public sealed class PlaylistRowsView : View
 		int titleWidth = Math.Max(1, contentWidth / 3);
 		int albumWidth = Math.Max(1, contentWidth - artistWidth - titleWidth - 2);
 
-		var artistAttr = isSelected ? ColorScheme.HotFocus : ColorScheme.HotNormal;
+		var artistAttr = focused ? ColorScheme.HotFocus : ColorScheme.HotNormal;
 		Driver.SetAttribute(artistAttr);
 		string artistStr = PadOrTruncate(card.Artist, artistWidth);
 		Driver.SetAttribute(attr);

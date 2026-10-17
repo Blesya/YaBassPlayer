@@ -137,6 +137,34 @@ public class PlaylistTreeItemTests
         Assert.That(item.Text, Is.EqualTo("G [2]"));
     }
 
+    [TestCase(PlaylistType.Favorite)]
+    [TestCase(PlaylistType.PlaylistOfTheDaily)]
+    [TestCase(PlaylistType.Cached)]
+    [TestCase(PlaylistType.Top10)]
+    [TestCase(PlaylistType.Queue)]
+    [TestCase(PlaylistType.MyWave)]
+    [TestCase(PlaylistType.LocalFolder)]
+    public void FromPlaylist_TextIsJustNameAndCount(PlaylistType type)
+    {
+        var playlist = new Playlist("P", type) { TrackCount = 1 };
+
+        var item = PlaylistTreeItem.FromPlaylist(playlist);
+
+        Assert.That(item.Text, Is.EqualTo("P (1)"));
+    }
+
+    [Test]
+    public void FromGroup_WithSourceTag_TextIsJustNameAndCount()
+    {
+        var group = new PlaylistGroup("Локальная музыка", new List<Playlist> { new("P", PlaylistType.Custom) });
+        var item = PlaylistTreeItem.FromGroup(group);
+        item.Tag = SourceIds.Local;
+
+        item.UpdateText();
+
+        Assert.That(item.Text, Is.EqualTo("Локальная музыка [1]"));
+    }
+
     [Test]
     public void IsGroup_ReturnsTrue_WhenGroupIsNotNull()
     {

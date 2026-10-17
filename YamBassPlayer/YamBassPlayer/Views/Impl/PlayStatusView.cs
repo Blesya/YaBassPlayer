@@ -8,6 +8,13 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private const string LocalFavoriteButtonLabel = "Локально";
 	private const string YandexFavoriteButtonLabel = "Яндекс";
 
+	private const string PlayButtonLabel = "Играть";
+	private const string PauseButtonLabel = "Пауза";
+	private const string StopButtonLabel = "Стоп";
+	private const string RestartButtonLabel = "Заново";
+	private const string PrevButtonLabel = "Назад";
+	private const string NextButtonLabel = "Вперёд";
+
 	private readonly Label _statusLabel;
 	private readonly FrameView _panel;
 	private readonly Button _playButton;
@@ -16,7 +23,6 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly SeekBarView _seekBar;
 	private readonly Button _prevButton;
 	private readonly Button _nextButton;
-	private readonly Label _timeLabel;
 	private readonly Button _favoriteButton;
 	private readonly Button _yandexFavoriteButton;
 	private readonly Button _queueButton;
@@ -46,11 +52,13 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Height = Dim.Fill()
 		};
 
+		// Транспорт — короткие русские подписи вместо английских: панель компактнее,
+		// а подписи не спорят с языком интерфейса.
 		_playButton = new Button
 		{
 			X = 1,
 			Y = 0,
-			Text = "Play/Pause"
+			Text = PlayButtonLabel
 		};
 		_playButton.Clicked += () => OnPlayClicked?.Invoke();
 
@@ -58,7 +66,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		{
 			X = Pos.Right(_playButton) + 1,
 			Y = 0,
-			Text = "Stop"
+			Text = StopButtonLabel
 		};
 		_stopButton.Clicked += () => OnStopClicked?.Invoke();
 
@@ -66,7 +74,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		{
 			X = Pos.Right(_stopButton) + 1,
 			Y = 0,
-			Text = "Restart"
+			Text = RestartButtonLabel
 		};
 		_restartButton.Clicked += () => OnRestartClicked?.Invoke();
 
@@ -74,7 +82,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		{
 			X = Pos.Right(_restartButton) + 1,
 			Y = 0,
-			Text = "Prev"
+			Text = PrevButtonLabel
 		};
 		_prevButton.Clicked += () => OnPrevClicked?.Invoke();
 
@@ -82,31 +90,13 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		{
 			X = Pos.Right(_prevButton) + 1,
 			Y = 0,
-			Text = "Next"
+			Text = NextButtonLabel
 		};
 		_nextButton.Clicked += () => OnNextClicked?.Invoke();
 
-		_seekBar = new SeekBarView
-		{
-			X = 1,
-			Y = 1,
-			Width = Dim.Fill() - 2,
-			Height = 1
-		};
-		_seekBar.SeekRequested += percent => OnSeekRequested?.Invoke(percent);
-
-		_timeLabel = new Label
-		{
-			X = Pos.Right(_nextButton) + 2,
-			Y = 0,
-			Width = 20,
-			Height = 1,
-			Text = "00:00 / 00:00"
-		};
-
 		_favoriteButton = new Button
 		{
-			X = Pos.Right(_timeLabel) + 2,
+			X = Pos.Right(_nextButton) + 3,
 			Y = 0,
 			Text = GetLocalFavoriteButtonText(isFavorite: false),
 			Enabled = false
@@ -126,7 +116,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		{
 			X = Pos.Right(_yandexFavoriteButton) + 1,
 			Y = 0,
-			Text = "\u2261 Очередь"
+			Text = "Очередь"
 		};
 		_queueButton.Clicked += () => OnQueueClicked?.Invoke();
 
@@ -138,6 +128,16 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_playbackModeButton.Clicked += () => OnPlaybackModeToggled?.Invoke();
 
+		// Прошедшее и оставшееся время рисует сама полоса — по краям дорожки.
+		_seekBar = new SeekBarView
+		{
+			X = 1,
+			Y = 1,
+			Width = Dim.Fill() - 2,
+			Height = 1
+		};
+		_seekBar.SeekRequested += percent => OnSeekRequested?.Invoke(percent);
+
 		_statusLabel = new Label
 		{
 			X = 1,
@@ -147,7 +147,9 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
-		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton, _timeLabel, _favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton, _seekBar, _statusLabel);
+		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton,
+			_favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton,
+			_seekBar, _statusLabel);
 		Add(_panel);
 	}
 
@@ -167,6 +169,16 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		});
 	}
 
+	public void SetPlaying(bool isPlaying)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			string text = isPlaying ? PauseButtonLabel : PlayButtonLabel;
+			if (_playButton.Text?.ToString() != text)
+				_playButton.Text = text;
+		});
+	}
+
 	public void SetTitle(string title)
 	{
 		Application.MainLoop.Invoke(() =>
@@ -179,7 +191,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_timeLabel.Text = $"{current:mm\\:ss} / {duration:mm\\:ss}";
+			_seekBar.SetTime(current, duration);
 		});
 	}
 
@@ -240,8 +252,8 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	}
 
 	private static string GetLocalFavoriteButtonText(bool isFavorite)
-		=> isFavorite ? $"{LocalFavoriteButtonLabel} -" : $"{LocalFavoriteButtonLabel} +";
+		=> isFavorite ? $"{LocalFavoriteButtonLabel} +" : $"{LocalFavoriteButtonLabel} -";
 
 	private static string GetYandexFavoriteButtonText(bool isFavorite)
-		=> isFavorite ? $"{YandexFavoriteButtonLabel} \u2665" : $"{YandexFavoriteButtonLabel} \u2661";
+		=> isFavorite ? $"{YandexFavoriteButtonLabel} +" : $"{YandexFavoriteButtonLabel} -";
 }

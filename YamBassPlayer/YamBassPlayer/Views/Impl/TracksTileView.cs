@@ -128,6 +128,19 @@ public sealed class TracksTileView : View, ITracksView
 	public void SetPlayingTrackId(string? trackId)
 		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
 
+	public void SetDownloadState(string trackId, TrackDownloadState state)
+		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
+
+	/// <summary>Состояние кэша в шапке плитки: «*», « 45%» или пусто.</summary>
+	private static string TileStatus(TrackListItem item)
+		=> item.Download.Status switch
+		{
+			TrackDownloadStatus.Downloading => " " + item.Download.ToShortProgress(),
+			TrackDownloadStatus.Cached => "*",
+			TrackDownloadStatus.Failed => " !",
+			_ => string.Empty
+		};
+
 	public override void Redraw(Rect bounds)
 	{
 		base.Redraw(bounds);
@@ -168,20 +181,21 @@ public sealed class TracksTileView : View, ITracksView
 
 	private void DrawTile(int x, int y, TrackListItem item, bool isSelected, bool isPlaying, Rect bounds)
 	{
-		var attr = isSelected ? ColorScheme.Focus : ColorScheme.Normal;
+		bool focused = isSelected && HasFocus;
+		var attr = focused ? ColorScheme.Focus : ColorScheme.Normal;
 		Driver.SetAttribute(attr);
 
 		int innerWidth = TileWidth - 2;
 
-		// Top border: ┌─── N ──────────────────────┐  or  ┌─── N ────────────────── ▶┐
-		string numberPart = $" {item.Number.Trim()} ";
-		string playingMark = isPlaying ? " ▶ " : "";
-		int dashesAfter = Math.Max(0, innerWidth - numberPart.Length - playingMark.Length);
-		string topLine = "┌" + numberPart + new string('─', dashesAfter) + playingMark + "┐";
+		// Top border: ┌─── 12 45% ────────── ▶┐
+		string numberPart = $" {item.Number.Trim()}{TileStatus(item)} ";
+		string marks = isPlaying ? " ▶ " : " ";
+		int dashesAfter = Math.Max(0, innerWidth - numberPart.Length - marks.Length);
+		string topLine = "┌" + numberPart + new string('─', dashesAfter) + marks + "┐";
 		DrawStringAt(x, y, Truncate(topLine, TileWidth), bounds);
 
 		// Artist line (highlighted)
-		var artistAttr = isSelected ? ColorScheme.HotFocus : ColorScheme.HotNormal;
+		var artistAttr = focused ? ColorScheme.HotFocus : ColorScheme.HotNormal;
 		Driver.SetAttribute(artistAttr);
 		string artistText = isSelected
 			? MarqueeText(item.Track.Artist, _marqueeArtistOffset, innerWidth)

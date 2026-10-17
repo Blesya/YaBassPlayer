@@ -27,7 +27,7 @@ public sealed class TrackListModel : ITrackListModel
 		foreach (Track track in tracks)
 		{
 			number++;
-			_allItems.Add(new TrackListItem(track, PadNumber(number, isCached(track.Id))));
+			_allItems.Add(new TrackListItem(track, number.ToString(), CachedState(isCached(track.Id))));
 		}
 
 		ApplyFilter();
@@ -43,7 +43,7 @@ public sealed class TrackListModel : ITrackListModel
 		foreach (Track track in tracks)
 		{
 			number++;
-			_allItems.Add(new TrackListItem(track, PadNumber(number, isCached(track.Id))));
+			_allItems.Add(new TrackListItem(track, number.ToString(), CachedState(isCached(track.Id))));
 		}
 
 		ApplyFilter();
@@ -73,6 +73,37 @@ public sealed class TrackListModel : ITrackListModel
 	{
 		PlayingTrackId = trackId;
 		Changed?.Invoke();
+	}
+
+	public void SetDownloadState(string trackId, TrackDownloadState state)
+	{
+		if (!ApplyDownloadState(_allItems, trackId, state))
+			return;
+
+		// Фильтр и порядок не меняются — список пересобирается из тех же элементов.
+		ApplyFilter();
+		Changed?.Invoke();
+	}
+
+	private static TrackDownloadState CachedState(bool isCached)
+		=> isCached ? TrackDownloadState.Cached : TrackDownloadState.Idle;
+
+	private static bool ApplyDownloadState(List<TrackListItem> items, string trackId, TrackDownloadState state)
+	{
+		bool changed = false;
+		for (int i = 0; i < items.Count; i++)
+		{
+			if (!string.Equals(items[i].Track.Id, trackId, StringComparison.Ordinal)
+				|| items[i].Download == state)
+			{
+				continue;
+			}
+
+			items[i] = items[i] with { Download = state };
+			changed = true;
+		}
+
+		return changed;
 	}
 
 	public void SetLoadingMore(bool value)
@@ -192,7 +223,4 @@ public sealed class TrackListModel : ITrackListModel
 			(i.Track.Artist ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) ||
 			(i.Track.Title ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)));
 	}
-
-	private static string PadNumber(int n, bool isCached)
-		=> n.ToString().PadLeft(2) + (isCached ? "*" : " ");
 }

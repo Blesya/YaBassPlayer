@@ -44,6 +44,38 @@ public sealed class TracksViewHostTests : ViewTestBase
     // ── Переключение режима ───────────────────────────────────────────────
 
     [Test]
+    public void FocusActive_PutsFocusOnVisibleViewInsteadOfHost()
+    {
+        var (host, tiles, table) = CreateHost();
+
+        host.SetTracksViewMode(false);
+        host.FocusActive();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(table.HasFocus, Is.True);
+            Assert.That(tiles.HasFocus, Is.False);
+            // Хост клавиши не обрабатывает — фокус не должен остаться на нём.
+            Assert.That(host.MostFocused, Is.SameAs(table));
+        });
+    }
+
+    [Test]
+    public void FocusActive_WithTilesActive_FocusesTiles()
+    {
+        var (host, tiles, table) = CreateHost();
+
+        host.SetTracksViewMode(true);
+        host.FocusActive();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tiles.HasFocus, Is.True);
+            Assert.That(table.HasFocus, Is.False);
+        });
+    }
+
+    [Test]
     public void SetTracksViewMode_False_ShowsTableAndHidesTiles()
     {
         var (host, tiles, table) = CreateHost();

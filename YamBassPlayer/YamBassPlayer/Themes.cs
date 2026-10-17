@@ -21,6 +21,20 @@ public static class Themes
 	private static ColorScheme? _defaultMenu;
 	private static ColorScheme? _defaultError;
 
+	/// <summary>
+	/// Цвет второстепенного текста: номера, длительности, счётчики, подсказки.
+	/// Один на все темы: <see cref="Color.DarkGray"/> читается и на чёрном фоне
+	/// тёмных тем, и на светлом фоне светлых.
+	/// </summary>
+	public static Color DimForeground { get; private set; } = Color.DarkGray;
+
+	/// <summary>
+	/// Приглушённый атрибут под конкретную цветовую схему представления: цвет берётся
+	/// из темы, фон — из схемы, чтобы приглушённый текст не выбивался из панели.
+	/// </summary>
+	public static Attribute DimFor(ColorScheme scheme)
+		=> new(DimForeground, scheme.Normal.Background);
+
 	public static void InitializeDefaults()
 	{
 		_defaultBase = Clone(Colors.Base);

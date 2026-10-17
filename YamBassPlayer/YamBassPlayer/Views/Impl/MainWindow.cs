@@ -1,4 +1,4 @@
-	using Autofac;
+using Autofac;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Presenters;
@@ -57,6 +57,13 @@ public sealed class MainWindow : Window
 		Application.Top.Add(menuBar);
 
 		// ── View layout ────────────────────────────────────────────────
+		// Нижняя полоса (снизу вверх): командная строка 2, панель управления 5,
+		// ряд кнопок спектра 1 и сам спектр 10 — итого 18 строк.
+		const int bottomHeight = 18;
+		const int spectrumHeight = 10;
+		const int playlistsWidth = 30;
+		const int panelWidth = 38;
+
 		playStatusView.X = 0;
 		playStatusView.Y = Pos.AnchorEnd(7);
 		playStatusView.Width = Dim.Fill();
@@ -67,11 +74,11 @@ public sealed class MainWindow : Window
 		commandInputView.Width = Dim.Fill();
 		commandInputView.Height = 2;
 
+		// Дерево плейлистов идёт до самой панели управления: спектр больше не
+		// отрезает у него нижнюю часть, потому что начинается правее дерева.
 		playlistsView.X = 0;
-		playlistsView.Width = 30;
-		playlistsView.Height = Dim.Fill(22);
-
-		const int panelWidth = 38;
+		playlistsView.Width = playlistsWidth;
+		playlistsView.Height = Dim.Fill(7);
 
 		_filterField = new TextField("")
 		{
@@ -89,21 +96,23 @@ public sealed class MainWindow : Window
 		tracksView.X = Pos.Right(playlistsView);
 		tracksView.Y = 1;
 		tracksView.Width = Dim.Fill(panelWidth);
-		tracksView.Height = Dim.Fill(8);
+		tracksView.Height = Dim.Fill(bottomHeight + 1);
 
 		trackInfoPanelView.X = Pos.Right(tracksView);
 		trackInfoPanelView.Y = 0;
 		trackInfoPanelView.Width = panelWidth;
-		trackInfoPanelView.Height = Dim.Fill(7);
+		trackInfoPanelView.Height = Dim.Fill(bottomHeight);
 
-		_spectrum = new SpectrumView(bars: 29)
+		// Спектр — широкая полоса под списком треков и панелью инфо: полосам FFT
+		// нужна ширина, а узкий угол внизу слева её не давал.
+		_spectrum = new SpectrumView
 		{
-			X = 0,
-			Y = Pos.Top(playStatusView) - 15,
-			Width = 29,
-			Height = 14
+			X = playlistsWidth,
+			Y = Pos.Top(playStatusView) - (spectrumHeight + 1),
+			Width = Dim.Fill(playlistsWidth),
+			Height = spectrumHeight
 		};
-		_spectrum.AddRenderer(new BarsRenderer(29));
+		_spectrum.AddRenderer(new BarsRenderer());
 		_spectrum.AddRenderer(new OscilloscopeRenderer());
 		_spectrum.AddRenderer(new PolarWaveformRenderer());
 		_spectrum.AddRenderer(new LissajousScopeRenderer());
@@ -114,7 +123,7 @@ public sealed class MainWindow : Window
 
 		_spectrumModeButton = new Button
 		{
-			X = 0,
+			X = playlistsWidth,
 			Y = Pos.Top(playStatusView) - 1,
 			Width = 14,
 			Text = _spectrum.ModeDisplayName
@@ -139,6 +148,13 @@ public sealed class MainWindow : Window
 		Application.Top.Add(_splashScreen);
 		_coordinator.SetWindow(this);
 		_coordinator.WireEvents(_splashScreen);
+
+		// Список треков — основной рабочий элемент: фокус должен стоять на активном
+		// виде (таблица или плитки), иначе подсветка выбранной строки и клавиатура
+		// работают не там, где ждёт пользователь. Сплеш снимается по первому
+		// выбранному плейлисту — тогда возвращаем фокус ещё раз.
+		Loaded += () => tracksView.FocusActive();
+		_playlistsPresenter.PlaylistChosen += _ => tracksView.FocusActive();
 
 		// Initialize playlists (fire-and-forget, was in PlaylistsPresenter constructor)
 		_ = _playlistsPresenter.InitializeAsync();

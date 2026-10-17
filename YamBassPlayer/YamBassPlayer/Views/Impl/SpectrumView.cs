@@ -11,16 +11,14 @@ public sealed class SpectrumView : View
     private ISpectrumRenderer CurrentRenderer => _renderers[_currentIndex];
     private float[] _data = [];
 
-    public int Bars { get; }
     public int MaxFrequencyHz { get; set; } = 22050;
     public SpectrumDataType RequiredDataType => CurrentRenderer.DataType;
     public string ModeDisplayName => CurrentRenderer.DisplayName;
     public int ModeCount => _renderers.Count;
     public int CurrentModeIndex => _currentIndex;
 
-    public SpectrumView(int bars = 25)
+    public SpectrumView()
     {
-        Bars = bars;
         CanFocus = false;
     }
 
