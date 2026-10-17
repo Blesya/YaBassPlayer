@@ -25,6 +25,22 @@ public static class ExceptionExtensions
 		var message = innermost?.Message ?? "Ошибка";
 		var stackTrace = innermost?.StackTrace ?? "Стектрейс отсутствует!";
 		var text = $"{message}\n\n{stackTrace}";
-		ErrorDialog.Show("Произошла непредвиденная ошибка", text);
+		ShowDialog("Произошла непредвиденная ошибка", text);
+	}
+
+	/// <summary>
+	/// Показывает диалог в UI-потоке. <see cref="Handle"/> вызывается из catch после
+	/// await, то есть уже в потоке пула, а Terminal.Gui не потокобезопасен: без
+	/// маршалинга вложенный цикл <c>Application.Run</c> запускается не из того потока.
+	/// </summary>
+	private static void ShowDialog(string title, string text)
+	{
+		if (Application.MainLoop is { } mainLoop)
+		{
+			mainLoop.Invoke(() => ErrorDialog.Show(title, text));
+			return;
+		}
+
+		ErrorDialog.Show(title, text);
 	}
 }

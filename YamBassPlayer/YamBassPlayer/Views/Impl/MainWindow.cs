@@ -156,8 +156,10 @@ public sealed class MainWindow : Window
 		Loaded += () => tracksView.FocusActive();
 		_playlistsPresenter.PlaylistChosen += _ => tracksView.FocusActive();
 
-		// Initialize playlists (fire-and-forget, was in PlaylistsPresenter constructor)
-		_ = _playlistsPresenter.InitializeAsync();
+		// Загрузка дерева плейлистов. Сплеш снимается и по первому выбранному
+		// плейлисту, и по завершении загрузки: если плейлистов не оказалось,
+		// выбора не будет, и заставка осталась бы висеть поверх интерфейса.
+		_ = InitializePlaylistsAsync();
 
 		// Spectrum refresh timer (UI-only concern).
 		// Skips while playback is idle and while a modal (e.g. «Сейчас играет») has its
@@ -174,6 +176,29 @@ public sealed class MainWindow : Window
 					: _audioPlayer.ChannelGetData());
 			return true;
 		});
+	}
+
+	/// <summary>
+	/// Грузит дерево плейлистов и снимает заставку в любом случае — даже если
+	/// плейлистов не оказалось и выбирать нечего. Иначе сплеш остался бы поверх
+	/// интерфейса и приложение было бы заблокировано.
+	/// </summary>
+	private async Task InitializePlaylistsAsync()
+	{
+		try
+		{
+			await _playlistsPresenter.InitializeAsync();
+		}
+		finally
+		{
+			Application.MainLoop.Invoke(RemoveSplashScreen);
+		}
+	}
+
+	private void RemoveSplashScreen()
+	{
+		if (_splashScreen?.SuperView is not null)
+			Application.Top.Remove(_splashScreen);
 	}
 
 	private MenuBar CreateMenuBar()

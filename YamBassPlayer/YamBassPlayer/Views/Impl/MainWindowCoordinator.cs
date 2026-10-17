@@ -135,9 +135,13 @@ public sealed class MainWindowCoordinator : IDisposable
 		_playlistsPresenter.PlaylistChosen += _ =>
 		{
 			// Событие может прийти повторно (фоновое обновление дерева) —
-			// сплеш снимаем только один раз.
-			if (splashScreen.SuperView is not null)
-				Application.Top.Remove(splashScreen);
+			// сплеш снимаем только один раз. Плейлист выбирается уже после await,
+			// поэтому в UI-поток переходим явно.
+			Application.MainLoop.Invoke(() =>
+			{
+				if (splashScreen.SuperView is not null)
+					Application.Top.Remove(splashScreen);
+			});
 		};
 
 		_playStatusPresenter.OnQueueClicked += ShowCurrentQueue;
@@ -207,7 +211,7 @@ public sealed class MainWindowCoordinator : IDisposable
 		Log.Information("Загрузка плейлиста: «{PlaylistName}» ({Type})", playlist.PlaylistName, playlist.Type);
 		_playbackPresenter.SetPlaylistType(playlist.Type);
 		await _tracksPresenter.LoadTracksFor(playlist);
-		_window.Title = $"{playlist.PlaylistName} : {playlist.Description}";
+		SetWindowTitle($"{playlist.PlaylistName} : {playlist.Description}");
 	}
 
 	private void OnPreloadNextTrack(object? sender, EventArgs e)
@@ -338,7 +342,7 @@ public sealed class MainWindowCoordinator : IDisposable
 			};
 
 			await _tracksPresenter.LoadTracksFor(queuePlaylist);
-			_window.Title = $"{queuePlaylist.PlaylistName} : {queuePlaylist.Description}";
+			SetWindowTitle($"{queuePlaylist.PlaylistName} : {queuePlaylist.Description}");
 			_playlistsPresenter.NotifyTransientPlaylistActive(queuePlaylist);
 		}
 		catch (Exception ex) { ex.Handle(); }
@@ -534,7 +538,8 @@ public sealed class MainWindowCoordinator : IDisposable
 		AboutDialog.Show();
 	}
 
-	private void SetWindowTitle(string title) => _window.Title = title;
+	private void SetWindowTitle(string title)
+		=> Application.MainLoop.Invoke(() => _window.Title = title);
 
 	public void StopApplication()
 	{

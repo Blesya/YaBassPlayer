@@ -37,12 +37,14 @@ internal class Program
 			ServicesProvider.Initialise(authService);
 			Log.Information("Сервисы инициализированы");
 
+			// UI поднимаем до инициализации BASS: при неудаче она показывает
+			// MessageBox, а до Application.Init() драйвера ещё нет.
+			Application.Init();
+			Themes.InitializeDefaults();
+
 			IAudioPlayer audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
 			audioPlayer.Init();
 
-			Application.Init();
-			Themes.InitializeDefaults();
-				
 			View mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
 			Application.Top.Add(mainWindow);
 

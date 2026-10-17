@@ -4,7 +4,7 @@ namespace YamBassPlayer.Views.Impl;
 
 /// <summary>
 /// Реализация <see cref="IModalWindowHost"/>: временно переносит <see cref="PlayStatusView"/>
-/// в модальное окно, запускает цикл и в <c>finally</c> возвращает панель исходному родителю.
+/// в модальное окно, запускает цикл и возвращает панель исходному родителю.
 /// </summary>
 public sealed class ModalWindowHost : IModalWindowHost
 {
@@ -21,10 +21,28 @@ public sealed class ModalWindowHost : IModalWindowHost
 	{
 		Toplevel window = view.ModalWindow;
 		View? originalParent = _playStatusView.SuperView;
+		Pos originalY = _playStatusView.Y;
+		bool released = false;
+
+		// Панель обязательно нужно забрать из модального окна до его закрытия:
+		// Application.Run в конце вызывает End → RunState.Dispose → Toplevel.Dispose,
+		// а тот уничтожает все подвьюхи. Оставленная панель исчезает вместе с окном.
+		void Release()
+		{
+			if (released)
+				return;
+
+			released = true;
+			window.Remove(_playStatusView);
+			_playStatusView.Y = originalY;
+			originalParent?.Add(_playStatusView);
+			originalParent?.SetNeedsDisplay();
+		}
 
 		originalParent?.Remove(_playStatusView);
 		_playStatusView.Y = Pos.AnchorEnd(StatusPanelBottomOffset);
 		window.Add(_playStatusView);
+		window.Closed += _ => Release();
 
 		try
 		{
@@ -32,10 +50,7 @@ public sealed class ModalWindowHost : IModalWindowHost
 		}
 		finally
 		{
-			window.Remove(_playStatusView);
-			_playStatusView.Y = Pos.AnchorEnd(StatusPanelBottomOffset);
-			originalParent?.Add(_playStatusView);
-			originalParent?.SetNeedsDisplay();
+			Release();
 		}
 	}
 }

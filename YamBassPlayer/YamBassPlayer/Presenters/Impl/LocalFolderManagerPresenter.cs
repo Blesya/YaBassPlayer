@@ -43,6 +43,9 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         _view.OnCloseClicked -= HandleClose;
     }
 
+    private static void ShowError(string message)
+        => Application.MainLoop.Invoke(() => MessageBox.ErrorQuery("Ошибка", message, "OK"));
+
     private async Task HandleAddFolder()
     {
         try
@@ -77,7 +80,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
         catch (Exception ex)
         {
-            MessageBox.ErrorQuery("Ошибка", $"Не удалось добавить папку: {ex.Message}", "OK");
+            ShowError($"Не удалось добавить папку: {ex.Message}");
         }
     }
 
@@ -96,7 +99,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
         catch (Exception ex)
         {
-            MessageBox.ErrorQuery("Ошибка", $"Не удалось удалить папку: {ex.Message}", "OK");
+            ShowError($"Не удалось удалить папку: {ex.Message}");
         }
     }
 
@@ -122,7 +125,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
         catch (Exception ex)
         {
-            MessageBox.ErrorQuery("Ошибка", $"Не удалось просканировать папку: {ex.Message}", "OK");
+            ShowError($"Не удалось просканировать папку: {ex.Message}");
         }
     }
 
@@ -148,7 +151,7 @@ public sealed class LocalFolderManagerPresenter : ILocalFolderManagerPresenter
         }
         catch (Exception ex)
         {
-            MessageBox.ErrorQuery("Ошибка", $"Не удалось просканировать папки: {ex.Message}", "OK");
+            ShowError($"Не удалось просканировать папки: {ex.Message}");
         }
     }
 
