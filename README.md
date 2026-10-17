@@ -157,7 +157,7 @@ https://github.com/MarshalX/yandex-music-api/discussions/513
 ## Тестирование
 
 ```bash
-dotnet test   # 522 NUnit-теста (команды, модели, сервисы, презентеры, представления, SQLite)
+dotnet test   # 562 NUnit-теста (команды, модели, сервисы, презентеры, представления, SQLite)
 ```
 
 ---

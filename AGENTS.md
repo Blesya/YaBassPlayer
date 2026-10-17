@@ -45,7 +45,7 @@ Run all commands from `YamBassPlayer/` (where `.sln` lives):
 
 ```bash
 dotnet build                          # Compile + copy native BASS DLLs to output
-dotnet test                           # Run 522 NUnit tests (commands, extensions, models, services, presenters, views, SQLite)
+dotnet test                           # Run 562 NUnit tests (commands, extensions, models, services, presenters, views, SQLite)
 dotnet run --project YamBassPlayer    # Launch the TUI
 ```
 
@@ -80,6 +80,7 @@ All commands run from where the `.sln` file lives. Before committing, run both `
 - **Spectrum visualization**: `ISpectrumRenderer` strategy in `Spectrum/`. 8 renderers: BarsRenderer, OscilloscopeRenderer, LissajousScopeRenderer, PolarWaveformRenderer, RingsRenderer, StereoPanScopeRenderer, Tunnel3DRenderer, WaterfallRenderer. Add a new renderer by implementing the interface and calling `_spectrum.AddRenderer()` — no enum or view changes needed.
 - **Database**: SQLite (via Microsoft.Data.Sqlite + SQLitePCLRaw.bundle_e_sqlite3). Single file `tracks_cache.db`. Schema creation and migration live in one place — `IDatabaseInitializer`/`DatabaseInitializer.Initialize()`, called once at startup after `Ioc = builder.Build()` (`PRAGMA user_version = 5`); individual services no longer create or patch tables. Write operations serialized via `IDbWriteLock`.
 - **Local vs. remote detection**: `ITrackSourceDetector.IsLocal(trackId)` → `Path.IsPathRooted(trackId)`. Filepath-like IDs are local; everything else is Yandex.
+- **Download progress**: `ITrackDownloadTracker` (`Services/Impl/TrackDownloadTracker.cs`) is the single source of truth for in-flight downloads. `TrackFileProvider` reports start/progress/outcome there, `TracksPresenter` subscribes and pushes per-track state into `ITrackListModel.SetDownloadState`, and the list renders the state next to the track number: `45%` while downloading, `*` when cached, `!` on failure. Nothing else needs to poll the file system to know a track just got cached.
 - **Themes**: 9 built-in themes (Dark, Light, White, Matrix, Cyberpunk, Nord, Amber, Mint, Default) managed via `Themes.cs`.
 - **Metadata**: TagLibSharp for audio file metadata reading.
 
@@ -105,7 +106,7 @@ All commands run from where the `.sln` file lives. Before committing, run both `
 
 ## Test Structure
 
-The test project contains **522 tests** across **53 fixture files** (helpers like `ViewTestBase`, `FakeUiDispatcher`, `SharedMemoryDbConnectionFactory` are not fixtures):
+The test project contains **562 tests** across **55 fixture files** (helpers like `ViewTestBase`, `FakeUiDispatcher`, `SharedMemoryDbConnectionFactory` are not fixtures):
 - **Commands/**: `CommandRegistryTests`, `CommandInputPresenterTests`, `CommandPipelineTests`
 - **Data/** (SQLite integration): `HistoryServiceTests`, `LocalFavoriteServiceTests`, `SqliteSchemaHelperTests`
 - **Extensions/**: `FileSizeExtensionsTests`, `PlaylistTypeExtensionsTests`, `DurationExtensionsTests`
@@ -113,7 +114,7 @@ The test project contains **522 tests** across **53 fixture files** (helpers lik
 - **Presenters/**: `PlaybackPresenterTests`, `TracksPresenterTests`, `PlaylistsPresenterTests`, `TrackInfoPanelPresenterTests`, `PlayStatusPresenterTests`, `MyWavePresenterTests`, `MyWaveWindowPresenterTests`, `NowPlayingPresenterTests`, `LocalSearchPresenterTests`, `YandexSearchPresenterTests`, `LocalFolderManagerPresenterTests`, `EqualizerPresenterTests`, `DatabaseStatisticsPresenterTests`, `LargeTrackInfoPresenterTests`, `AuthPresenterTests`
 - **Services/**: `CoverMetadataResolverTests`, `EventBusTests`, `MusicSourceRegistryTests`, `PlaybackQueueTests`, `PlaylistLoadStrategyResolverTests`, `PlaylistTreeComposerTests`, `TrackRepositoryCacheTests`, `TrackSourceDetectorTests`, `TrackCatalogTests`, `TrackInfoProviderTests`, `PlaylistStateStoreTests`, `LocalMusicSourceTests`, `LocalAlbumLoadStrategyTests`, `QrCodeRendererTests`
 - **UseCases/**: `SearchAndLoadPlaylistUseCaseTests`, `ToggleFavoriteUseCaseTests`, `ScanLibraryUseCaseTests`, `ShowMyWaveUseCaseTests`
-- **Views/** (headless Terminal.Gui via `FakeDriver`, `[NonParallelizable]`): `TracksViewTests`, `TracksTileViewTests`, `TracksViewHostTests`, `PlaylistRowsViewTests`, `PlaylistsViewTests`, `SpectrumRendererTests`, `SeekBarViewTests`, `ViewFactoryTests`
+- **Views/** (headless Terminal.Gui via `FakeDriver`, `[NonParallelizable]`): `TracksViewTests`, `TracksTileViewTests`, `TracksViewHostTests`, `PlaylistRowsViewTests`, `PlaylistsViewTests`, `PlayStatusViewTests`, `SpectrumRendererTests`, `SeekBarViewTests`, `ViewFactoryTests`
 
 ## Architectural Decisions (owner)
 
