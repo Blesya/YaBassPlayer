@@ -8,4 +8,10 @@ public interface IAppConfiguration
 {
     float[] GetEqualizerBands();
     void SaveEqualizerBands(float[] bands);
+
+    /// <summary>Токен Яндекс.Музыки из конфига, либо <c>null</c>.</summary>
+    string? GetYandexMusicToken();
+
+    /// <summary>Сохраняет токен Яндекс.Музыки в конфиг.</summary>
+    void SaveToken(string token);
 }

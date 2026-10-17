@@ -3,6 +3,7 @@ using Serilog;
 using Terminal.Gui;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Extensions;
+using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 using YamBassPlayer.Views.Impl;
@@ -18,36 +19,18 @@ internal class Program
 
 		try
 		{
-			if (!AuthService.HasToken())
-			{
-				Log.Information("Токен не найден, запрашиваем у пользователя");
-				Application.Init();
-				Themes.InitializeDefaults();
-					
-				var tokenDialog = new TokenInputDialog();
-				Application.Run(tokenDialog);
-
-				if (tokenDialog.Cancelled || string.IsNullOrWhiteSpace(tokenDialog.Token))
-				{
-					Log.Information("Ввод токена отменён пользователем");
-					Application.Shutdown();
-					return;
-				}
-
-				AppConfiguration.SaveToken(tokenDialog.Token);
-				Application.Shutdown();
-			}
-
 			var authService = new AuthService();
-			bool authorized = await authService.AuthorizeFromConfigAsync();
+			bool authorized = await TryAuthorizeAsync(authService);
+
+			// Токена нет или он устарел — показываем окно входа с выбором способа.
+			if (!authorized)
+			{
+				authorized = RunAuthWindow(authService);
+			}
 
 			if (!authorized)
 			{
-				Log.Warning("Авторизация не удалась, приложение будет закрыто");
-				Application.Init();
-				MessageBox.ErrorQuery("Ошибка авторизации", 
-					"Не удалось авторизоваться. Проверьте токен.", "OK");
-				Application.Shutdown();
+				Log.Information("Авторизация не выполнена, приложение будет закрыто");
 				return;
 			}
 
@@ -77,6 +60,40 @@ internal class Program
 		{
 			Log.Information("Завершение работы YamBassPlayer");
 			Logging.Close();
+		}
+	}
+
+	/// <summary>Пытается войти по токену из конфига, не открывая окно.</summary>
+	private static async Task<bool> TryAuthorizeAsync(IAuthService authService)
+	{
+		if (!AuthService.HasToken())
+			return false;
+
+		return await authService.AuthorizeFromConfigAsync();
+	}
+
+	/// <summary>Открывает окно входа с выбором способа (QR-код или токен).</summary>
+	private static bool RunAuthWindow(IAuthService authService)
+	{
+		Log.Information("Требуется вход, открываем окно авторизации");
+		Application.Init();
+		Themes.InitializeDefaults();
+
+		try
+		{
+			var presenter = new AuthPresenter(
+				authService,
+				new QrCodeRenderer(),
+				new AuthView(),
+				new UiDispatcher(),
+				new UiErrorHandler(),
+				new AppConfigurationProvider());
+
+			return presenter.Run();
+		}
+		finally
+		{
+			Application.Shutdown();
 		}
 	}
 }

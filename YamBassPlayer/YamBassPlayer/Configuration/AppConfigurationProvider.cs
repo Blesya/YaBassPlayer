@@ -8,4 +8,8 @@ public sealed class AppConfigurationProvider : IAppConfiguration
     public float[] GetEqualizerBands() => AppConfiguration.GetEqualizerBands();
 
     public void SaveEqualizerBands(float[] bands) => AppConfiguration.SaveEqualizerBands(bands);
+
+    public string? GetYandexMusicToken() => AppConfiguration.GetYandexMusicToken();
+
+    public void SaveToken(string token) => AppConfiguration.SaveToken(token);
 }

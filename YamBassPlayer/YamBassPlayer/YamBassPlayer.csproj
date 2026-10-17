@@ -14,6 +14,7 @@
         <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+        <PackageReference Include="Net.Codecrete.QrCodeGenerator" Version="3.2.1" />
         <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.2" />
         <PackageReference Include="Serilog" Version="4.3.1" />
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
