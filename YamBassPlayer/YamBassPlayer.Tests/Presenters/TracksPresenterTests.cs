@@ -16,6 +16,7 @@ public sealed class TracksPresenterTests
     private Mock<ITrackFileProvider> _fileProvider = null!;
     private Mock<ITrackRepository> _repository = null!;
     private Mock<IPlaybackQueue> _queue = null!;
+    private Mock<ITrackDownloadTracker> _downloadTracker = null!;
     private EventBus _eventBus = null!;
     private TracksPresenter _presenter = null!;
 
@@ -26,13 +27,42 @@ public sealed class TracksPresenterTests
         _fileProvider = new Mock<ITrackFileProvider>();
         _repository = new Mock<ITrackRepository>();
         _queue = new Mock<IPlaybackQueue>();
+        _downloadTracker = new Mock<ITrackDownloadTracker>();
+        _downloadTracker.Setup(t => t.GetActive()).Returns([]);
         _eventBus = new EventBus();
 
         _presenter = new TracksPresenter(
-            _view.Object, _fileProvider.Object, _repository.Object, _queue.Object, _eventBus);
+            _view.Object, _fileProvider.Object, _repository.Object, _queue.Object, _eventBus, _downloadTracker.Object);
     }
 
     private static Track Track(string id) => new($"Title-{id}", $"Artist-{id}", "Album", id);
+
+    // ── Прогресс загрузки ─────────────────────────────────────────────────
+
+    [Test]
+    public void DownloadTracker_Changed_ForwardsStateToView()
+    {
+        var state = new TrackDownloadState(TrackDownloadStatus.Downloading, 45, 450, true);
+
+        _downloadTracker.Raise(t => t.Changed += null, "t1", state);
+
+        _view.Verify(v => v.SetDownloadState("t1", state), Times.Once);
+    }
+
+    [Test]
+    public async Task LoadTracksFor_ReplaysActiveDownloadsIntoFreshList()
+    {
+        var playlist = new Playlist("P", PlaylistType.Favorite);
+        var tracks = new[] { Track("a") };
+        var active = new TrackDownloadState(TrackDownloadStatus.Downloading, 20, 200, true);
+        _repository.Setup(r => r.SetPlaylist(playlist, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
+        _downloadTracker.Setup(t => t.GetActive()).Returns([("a", active)]);
+
+        await _presenter.LoadTracksFor(playlist);
+
+        _view.Verify(v => v.SetDownloadState("a", active), Times.Once);
+    }
 
     // ── Загрузка плейлиста ────────────────────────────────────────────────
 

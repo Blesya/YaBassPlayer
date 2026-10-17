@@ -13,6 +13,7 @@ public class TracksPresenter : ITracksPresenter
 	private readonly ITrackRepository _trackRepository;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly IEventBus _eventBus;
+	private readonly ITrackDownloadTracker _downloadTracker;
 	private readonly Action<TrackChangedEvent> _onTrackChangedHandler;
 
 	private List<Track> _tracks = new();
@@ -23,19 +24,22 @@ public class TracksPresenter : ITracksPresenter
 
 	public IPlaybackQueue PlaybackQueue => _playbackQueue;
 
-	public TracksPresenter(ITracksView view, ITrackFileProvider trackFileProvider, ITrackRepository trackRepository, IPlaybackQueue playbackQueue, IEventBus eventBus)
+	public TracksPresenter(ITracksView view, ITrackFileProvider trackFileProvider, ITrackRepository trackRepository, IPlaybackQueue playbackQueue, IEventBus eventBus, ITrackDownloadTracker downloadTracker)
 	{
 		_view = view;
 		_trackFileProvider = trackFileProvider;
 		_trackRepository = trackRepository;
 		_playbackQueue = playbackQueue;
 		_eventBus = eventBus;
+		_downloadTracker = downloadTracker;
 
 		_view.OnTrackSelected += OnTrackSelected;
 		_view.NeedMoreTracks += () => OnNeedMoreTracks().Forget();
 		_view.OnCellActivated += ViewOnTrackSelected;
 		_onTrackChangedHandler = e => OnPlayingTrackChanged(e.TrackId);
 		_eventBus.Subscribe(_onTrackChangedHandler);
+
+		_downloadTracker.Changed += OnDownloadChanged;
 	}
 
 	public async Task LoadTracksFor(Playlist playlist)
@@ -57,7 +61,25 @@ public class TracksPresenter : ITracksPresenter
 		}
 
 		_view.SetPlayingTrackId(_playbackQueue.CurrentTrackId);
+		ReplayActiveDownloads();
 		Logging.LogAfterCall();
+	}
+
+	/// <summary>
+	/// Состояние загрузки приходит из потока скачивания; в UI-поток его переводит
+	/// сама вьюха. Ошибки загрузки видны в строке трека, пока трек не перезагрузят.
+	/// </summary>
+	private void OnDownloadChanged(string trackId, TrackDownloadState state)
+		=> _view.SetDownloadState(trackId, state);
+
+	/// <summary>
+	/// Список могли пересобрать прямо во время загрузки — досылаем активные состояния,
+	/// иначе прогресс пропадёт до следующего отчёта.
+	/// </summary>
+	private void ReplayActiveDownloads()
+	{
+		foreach ((string trackId, TrackDownloadState state) in _downloadTracker.GetActive())
+			_view.SetDownloadState(trackId, state);
 	}
 
 	private void ViewOnTrackSelected(int trackNumber)
@@ -96,5 +118,6 @@ public class TracksPresenter : ITracksPresenter
 
 		_tracks.AddRange(more);
 		_view.AddTracks(more, _trackFileProvider.IsTrackDownloaded);
+		ReplayActiveDownloads();
 	}
 }

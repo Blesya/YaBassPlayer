@@ -18,6 +18,7 @@ public class TrackFileProvider : ITrackFileProvider
 	private readonly AuthStorage _storage;
 	private readonly string _tracksFolder;
 	private readonly ITrackSourceDetector _sourceDetector;
+	private readonly ITrackDownloadTracker _downloadTracker;
 
 	/// <summary>
 	/// Активные загрузки по идентификатору трека. Повторный запрос того же трека
@@ -26,12 +27,13 @@ public class TrackFileProvider : ITrackFileProvider
 	/// </summary>
 	private readonly ConcurrentDictionary<string, Lazy<DownloadJob>> _inFlight = new();
 
-	public TrackFileProvider(YandexMusicApi api, AuthStorage storage, string tracksFolder, ITrackSourceDetector sourceDetector)
+	public TrackFileProvider(YandexMusicApi api, AuthStorage storage, string tracksFolder, ITrackSourceDetector sourceDetector, ITrackDownloadTracker downloadTracker)
 	{
 		_api = api;
 		_storage = storage;
 		_tracksFolder = tracksFolder;
 		_sourceDetector = sourceDetector;
+		_downloadTracker = downloadTracker;
 
 		if (!Directory.Exists(_tracksFolder))
 		{
@@ -98,6 +100,13 @@ public class TrackFileProvider : ITrackFileProvider
 
 	private async Task<string> DownloadCoreAsync(string trackId, Action<DownloadProgress> report)
 	{
+		// Прогресс уходит и подписчику (панель статуса), и трекеру (список треков).
+		void Report(DownloadProgress progress)
+		{
+			_downloadTracker.ReportProgress(trackId, progress);
+			report(progress);
+		}
+
 		try
 		{
 			string filePath = GetTrackPath(trackId);
@@ -105,9 +114,12 @@ public class TrackFileProvider : ITrackFileProvider
 			if (File.Exists(filePath))
 			{
 				Log.Debug("Трек {TrackId} уже скачан: {FilePath}", trackId, filePath);
-				ReportCached(filePath, report);
+				ReportCached(filePath, Report);
+				_downloadTracker.MarkCached(trackId);
 				return filePath;
 			}
+
+			_downloadTracker.MarkDownloading(trackId);
 
 			var trackResponse = await _api.Track.GetAsync(_storage, trackId);
 			var track = trackResponse?.Result?.FirstOrDefault();
@@ -118,14 +130,16 @@ public class TrackFileProvider : ITrackFileProvider
 			}
 
 			Log.Information("Скачивание трека {TrackId}", trackId);
-			await DownloadToFileAsync(track, filePath, report);
+			await DownloadToFileAsync(track, filePath, Report);
 			Log.Information("Трек {TrackId} скачан: {FilePath}", trackId, filePath);
+			_downloadTracker.MarkCached(trackId);
 
 			return filePath;
 		}
 		catch (Exception e)
 		{
 			Log.Error(e, "Не удалось скачать трек {TrackId}", trackId);
+			_downloadTracker.MarkFailed(trackId);
 			e.Handle(logException: false);
 			return string.Empty;
 		}

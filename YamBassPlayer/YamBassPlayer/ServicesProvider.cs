@@ -71,11 +71,14 @@ public static class ServicesProvider
 		builder.RegisterType<ListenTimer>().As<IListenTimer>().SingleInstance();
 		builder.RegisterType<PlaybackQueue>().As<IPlaybackQueue>().SingleInstance();
 			
+		builder.RegisterType<TrackDownloadTracker>().As<ITrackDownloadTracker>().SingleInstance();
+
 		builder.Register(c => new TrackFileProvider(
 			c.Resolve<YandexMusicApi>(),
 			c.Resolve<AuthStorage>(),
 			TracksFolder,
-			c.Resolve<ITrackSourceDetector>()
+			c.Resolve<ITrackSourceDetector>(),
+			c.Resolve<ITrackDownloadTracker>()
 		)).As<ITrackFileProvider>().SingleInstance();
 
 		builder.Register(c => new CoverProvider(
