@@ -20,5 +20,9 @@ public enum PlaylistType
 	/// <summary>Represents a playlist for a single local-library artist (file-based, not Yandex).</summary>
 	LocalArtist,
 	/// <summary>Represents a playlist for a single local-library album under a specific artist.</summary>
-	LocalAlbum
+	LocalAlbum,
+	/// <summary>Собственный плейлист пользователя в Яндекс.Музыке (создан им).</summary>
+	YandexOwnPlaylist,
+	/// <summary>Чужой плейлист, сохранённый пользователем в Яндекс.Музыке.</summary>
+	YandexLikedPlaylist
 }

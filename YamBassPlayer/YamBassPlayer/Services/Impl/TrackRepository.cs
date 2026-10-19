@@ -84,7 +84,8 @@ public class TrackRepository : ITrackRepository
 			var appPlaylists = await _appPlaylistProvider.GetAppPlaylistsAsync(ct);
 
 			var result = appPlaylists
-				.Concat(yandexPlaylists.Where(p => p.Type is PlaylistType.Custom or PlaylistType.Favorite))
+				.Concat(yandexPlaylists.Where(p => p.Type is PlaylistType.Custom or PlaylistType.Favorite
+					or PlaylistType.YandexOwnPlaylist or PlaylistType.YandexLikedPlaylist))
 				.ToList();
 
 			PersistState(result, yandexPlaylists);

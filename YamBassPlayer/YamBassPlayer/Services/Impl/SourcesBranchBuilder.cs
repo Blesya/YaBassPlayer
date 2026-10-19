@@ -9,6 +9,8 @@ public sealed class SourcesBranchBuilder(
     IMusicSourceRegistry musicSourceRegistry,
     ILocalLibraryService localLibraryService) : ITreeBranchBuilder
 {
+    private const string OwnPlaylistsGroupLabel = "Мои плейлисты";
+
     public int Order => TreeBranchOrder.Sources;
     public bool IsStatic => false;
 
@@ -25,7 +27,7 @@ public sealed class SourcesBranchBuilder(
 
         var localPlaylists = (await localSource.GetPlaylistsAsync(ct)).ToList();
 
-        var yandexNode = PlaylistTreeItem.FromGroup(new PlaylistGroup(yandexSource.DisplayName, yandexPlaylists, isExpanded: false));
+        var yandexNode = BuildYandexRoot(yandexSource.DisplayName, yandexPlaylists);
         yandexNode.Tag = SourceIds.Yandex;
 
         var localNode = await BuildLocalMusicRootAsync(localSource, localPlaylists);
@@ -40,6 +42,58 @@ public sealed class SourcesBranchBuilder(
 
         sourcesRoot.UpdateText();
         return sourcesRoot;
+    }
+
+    /// <summary>
+    /// Узел «Яндекс.Музыка»: «Мои треки» и миксы с лендинга остаются в корне,
+    /// а собственные плейлисты пользователя уезжают в подгруппу «Мои плейлисты».
+    /// </summary>
+    private static PlaylistTreeItem BuildYandexRoot(string displayName, List<Playlist> yandexPlaylists)
+    {
+        var favoritePlaylists = yandexPlaylists
+            .Where(p => p.Type == PlaylistType.Favorite)
+            .ToList();
+        var ownPlaylists = yandexPlaylists
+            .Where(p => p.Type == PlaylistType.YandexOwnPlaylist)
+            .ToList();
+        var flatPlaylists = yandexPlaylists
+            .Where(p => p.Type is not (PlaylistType.Favorite or PlaylistType.YandexOwnPlaylist))
+            .ToList();
+
+        var children = new List<ITreeNode>();
+        children.AddRange(favoritePlaylists.Select(PlaylistTreeItem.FromPlaylist));
+
+        if (ownPlaylists.Count > 0)
+            children.Add(BuildGroupNode(OwnPlaylistsGroupLabel, ownPlaylists, "yandex-own"));
+
+        children.AddRange(flatPlaylists.Select(PlaylistTreeItem.FromPlaylist));
+
+        var yandexNode = new PlaylistTreeItem
+        {
+            Label = displayName,
+            Group = new PlaylistGroup(displayName, yandexPlaylists, isExpanded: false),
+            Children = children,
+            IsExpandedByDefault = false
+        };
+
+        yandexNode.UpdateText();
+        return yandexNode;
+    }
+
+    private static PlaylistTreeItem BuildGroupNode(string label, List<Playlist> playlists, string tag)
+    {
+        var item = new PlaylistTreeItem
+        {
+            Label = label,
+            Children = playlists
+                .Select(PlaylistTreeItem.FromPlaylist)
+                .Cast<ITreeNode>()
+                .ToList(),
+            Tag = tag
+        };
+
+        item.UpdateText();
+        return item;
     }
 
     private async Task<PlaylistTreeItem> BuildLocalMusicRootAsync(IMusicSource localSource, List<Playlist> localPlaylists)

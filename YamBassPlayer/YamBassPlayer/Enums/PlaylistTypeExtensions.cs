@@ -5,7 +5,8 @@ public static class PlaylistTypeExtensions
     public static PlaylistCategory GetCategory(this PlaylistType type) => type switch
     {
         PlaylistType.Favorite or PlaylistType.Custom or PlaylistType.PlaylistOfTheDaily
-            or PlaylistType.LocalFolder or PlaylistType.LocalFavorite => PlaylistCategory.Data,
+            or PlaylistType.LocalFolder or PlaylistType.LocalFavorite
+            or PlaylistType.YandexOwnPlaylist or PlaylistType.YandexLikedPlaylist => PlaylistCategory.Data,
         PlaylistType.Top10 or PlaylistType.TopEvenings or PlaylistType.TopByDay
             or PlaylistType.Cached => PlaylistCategory.Computed,
         PlaylistType.Queue or PlaylistType.MyWave

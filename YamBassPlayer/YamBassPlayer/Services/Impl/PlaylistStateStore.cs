@@ -102,7 +102,9 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 			{
 				FolderId = dto.Payload.FolderId,
 				ArtistName = dto.Payload.ArtistName,
-				AlbumName = dto.Payload.AlbumName
+				AlbumName = dto.Payload.AlbumName,
+				YandexOwnerUid = dto.Payload.YandexOwnerUid,
+				YandexKind = dto.Payload.YandexKind
 			}
 		};
 
@@ -120,7 +122,9 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 			{
 				FolderId = playlist.Payload.FolderId,
 				ArtistName = playlist.Payload.ArtistName,
-				AlbumName = playlist.Payload.AlbumName
+				AlbumName = playlist.Payload.AlbumName,
+				YandexOwnerUid = playlist.Payload.YandexOwnerUid,
+				YandexKind = playlist.Payload.YandexKind
 			}
 		};
 
@@ -151,5 +155,7 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 		public int? FolderId { get; set; }
 		public string? ArtistName { get; set; }
 		public string? AlbumName { get; set; }
+		public string? YandexOwnerUid { get; set; }
+		public string? YandexKind { get; set; }
 	}
 }

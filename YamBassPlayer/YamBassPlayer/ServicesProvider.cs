@@ -127,6 +127,7 @@ public static class ServicesProvider
 		builder.RegisterType<MyWaveLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
 		builder.RegisterType<LocalSearchLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
 		builder.RegisterType<YandexSearchLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
+		builder.RegisterType<YandexPlaylistLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
 		builder.RegisterType<LocalFolderLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
 		builder.RegisterType<LocalArtistLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
 		builder.RegisterType<LocalAlbumLoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();

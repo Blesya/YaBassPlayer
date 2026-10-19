@@ -21,6 +21,15 @@ public class Playlist(string name, PlaylistType type)
 	/// <summary>Типизированные данные, определяющие поведение плейлиста (папка/альбом и т.п.).</summary>
 	public PlaylistPayload? Payload { get; init; }
 
+	/// <summary>
+	/// Ключ кэша треков: у плейлистов Яндекс.Музыки — «владелец:kind», иначе имя.
+	/// Нужен, чтобы одноимённые плейлисты разных владельцев не перетирали друг друга.
+	/// </summary>
+	public string TrackCacheKey =>
+		Payload is { YandexOwnerUid: not null, YandexKind: not null } payload
+			? $"{payload.YandexOwnerUid}:{payload.YandexKind}"
+			: PlaylistName;
+
 	public override string ToString()
 	{
 		return $"{PlaylistName} ({TrackCount})";

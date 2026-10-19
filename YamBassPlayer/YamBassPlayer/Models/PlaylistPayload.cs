@@ -14,4 +14,10 @@ public sealed record PlaylistPayload
 
 	/// <summary>Название альбома (для <c>LocalAlbum</c>).</summary>
 	public string? AlbumName { get; init; }
+
+	/// <summary>Владелец плейлиста Яндекс.Музыки (uid) — для <c>YandexOwnPlaylist</c>/<c>YandexLikedPlaylist</c>.</summary>
+	public string? YandexOwnerUid { get; init; }
+
+	/// <summary>Идентификатор плейлиста Яндекс.Музыки (kind).</summary>
+	public string? YandexKind { get; init; }
 }

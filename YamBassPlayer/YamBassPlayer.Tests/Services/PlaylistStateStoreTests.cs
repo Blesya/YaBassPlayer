@@ -104,6 +104,28 @@ public sealed class PlaylistStateStoreTests
     }
 
     [Test]
+    public void SaveThenLoad_RoundTripsYandexPlaylistPayload()
+    {
+        var playlist = new Playlist("Мой микс", PlaylistType.YandexOwnPlaylist)
+        {
+            SourceId = SourceIds.Yandex,
+            Payload = new PlaylistPayload { YandexOwnerUid = "42", YandexKind = "7" }
+        };
+        var store = new PlaylistStateStore(_path);
+        store.Save(new PlaylistState { Playlists = [playlist] });
+
+        var restored = store.Load()!.Playlists.Single();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(restored.Type, Is.EqualTo(PlaylistType.YandexOwnPlaylist));
+            Assert.That(restored.Payload!.YandexOwnerUid, Is.EqualTo("42"));
+            Assert.That(restored.Payload.YandexKind, Is.EqualTo("7"));
+            Assert.That(restored.TrackCacheKey, Is.EqualTo("42:7"));
+        });
+    }
+
+    [Test]
     public void SaveThenLoad_RoundTripsTrackIdCaches()
     {
         var store = new PlaylistStateStore(_path);

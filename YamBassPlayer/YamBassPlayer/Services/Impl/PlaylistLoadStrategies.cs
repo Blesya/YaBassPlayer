@@ -100,6 +100,32 @@ public sealed class CustomLoadStrategy(
     }
 }
 
+/// <summary>
+/// Собственные и сохранённые плейлисты Яндекс.Музыки: треки тянутся по владельцу и kind
+/// из payload, а не по названию — у разных владельцев названия могут совпадать.
+/// </summary>
+public sealed class YandexPlaylistLoadStrategy(
+    IMusicSourceRegistry musicSourceRegistry,
+    ITrackRepositoryCache cache)
+    : IPlaylistLoadStrategy
+{
+    public bool CanHandle(PlaylistType type)
+        => type is PlaylistType.YandexOwnPlaylist or PlaylistType.YandexLikedPlaylist;
+
+    public async Task<List<string>> LoadTrackIdsAsync(Playlist playlist)
+    {
+        string cacheKey = playlist.TrackCacheKey;
+        if (cache.TryGetCustomPlaylistIds(cacheKey, out var cachedIds))
+            return cachedIds;
+
+        var yandexSource = musicSourceRegistry.GetRequired(SourceIds.Yandex);
+        var trackIds = (await yandexSource.GetPlaylistTrackIdsAsync(playlist)).ToList();
+        cache.SetCustomPlaylistIds(cacheKey, trackIds);
+
+        return trackIds;
+    }
+}
+
 public sealed class ArtistLoadStrategy(ITrackInfoProvider trackInfoProvider) : IPlaylistLoadStrategy
 {
     public bool CanHandle(PlaylistType type) => type == PlaylistType.Artist;

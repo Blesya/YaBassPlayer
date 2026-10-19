@@ -115,4 +115,23 @@ public class PlaylistTests
 
         Assert.That(playlist.ParentTag, Is.Null);
     }
+
+    [Test]
+    public void TrackCacheKey_UsesOwnerAndKind_ForYandexPlaylists()
+    {
+        var playlist = new Playlist("Микс", PlaylistType.YandexOwnPlaylist)
+        {
+            Payload = new PlaylistPayload { YandexOwnerUid = "42", YandexKind = "7" }
+        };
+
+        Assert.That(playlist.TrackCacheKey, Is.EqualTo("42:7"));
+    }
+
+    [Test]
+    public void TrackCacheKey_FallsBackToName_WithoutYandexIds()
+    {
+        var playlist = new Playlist("Микс", PlaylistType.Custom);
+
+        Assert.That(playlist.TrackCacheKey, Is.EqualTo("Микс"));
+    }
 }

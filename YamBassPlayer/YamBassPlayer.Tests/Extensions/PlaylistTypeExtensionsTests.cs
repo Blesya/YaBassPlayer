@@ -10,6 +10,8 @@ public sealed class PlaylistTypeExtensionsTests
     [TestCase(PlaylistType.PlaylistOfTheDaily, PlaylistCategory.Data)]
     [TestCase(PlaylistType.LocalFolder, PlaylistCategory.Data)]
     [TestCase(PlaylistType.LocalFavorite, PlaylistCategory.Data)]
+    [TestCase(PlaylistType.YandexOwnPlaylist, PlaylistCategory.Data)]
+    [TestCase(PlaylistType.YandexLikedPlaylist, PlaylistCategory.Data)]
     [TestCase(PlaylistType.Top10, PlaylistCategory.Computed)]
     [TestCase(PlaylistType.TopEvenings, PlaylistCategory.Computed)]
     [TestCase(PlaylistType.TopByDay, PlaylistCategory.Computed)]
