@@ -45,6 +45,7 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 					FavoriteTrackIds = dto.FavoriteTrackIds ?? [],
 					CustomPlaylistTrackIds = dto.CustomPlaylistTrackIds ?? [],
 					LastPlaylist = dto.LastPlaylist is null ? null : ToPlaylist(dto.LastPlaylist),
+					LastTrackId = dto.LastTrackId,
 					SavedAt = dto.SavedAt
 				};
 			}
@@ -72,7 +73,8 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 					FavoriteTrackIds = state.FavoriteTrackIds.ToList(),
 					CustomPlaylistTrackIds = state.CustomPlaylistTrackIds
 						.ToDictionary(pair => pair.Key, pair => pair.Value),
-					LastPlaylist = state.LastPlaylist is null ? null : FromPlaylist(state.LastPlaylist)
+					LastPlaylist = state.LastPlaylist is null ? null : FromPlaylist(state.LastPlaylist),
+					LastTrackId = state.LastTrackId
 				};
 
 				var directory = Path.GetDirectoryName(filePath);
@@ -136,6 +138,7 @@ public sealed class PlaylistStateStore(string filePath) : IPlaylistStateStore
 		public List<string> FavoriteTrackIds { get; set; } = [];
 		public Dictionary<string, List<string>> CustomPlaylistTrackIds { get; set; } = [];
 		public PlaylistDto? LastPlaylist { get; set; }
+		public string? LastTrackId { get; set; }
 	}
 
 	private sealed class PlaylistDto

@@ -175,6 +175,19 @@ public sealed class PlaylistStateStoreTests
     }
 
     [Test]
+    public void SaveThenLoad_RoundTripsLastTrackId()
+    {
+        var store = new PlaylistStateStore(_path);
+        store.Save(new PlaylistState
+        {
+            Playlists = [new Playlist("P", PlaylistType.Favorite)],
+            LastTrackId = "142978574"
+        });
+
+        Assert.That(store.Load()!.LastTrackId, Is.EqualTo("142978574"));
+    }
+
+    [Test]
     public void Save_CreatesMissingDirectory()
     {
         string nested = Path.Combine(

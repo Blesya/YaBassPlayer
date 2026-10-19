@@ -100,6 +100,13 @@ public sealed class TracksView : View, ITracksView
 	public void SetPlayingTrackId(string? trackId)
 		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
 
+	public void SelectTrack(string trackId)
+		=> Application.MainLoop.Invoke(() =>
+		{
+			if (_model.SelectByTrackId(trackId))
+				_model.EnsureSelectedVisible(VisibleRows);
+		});
+
 	public void SetFilter(string? filter)
 		=> _model.SetFilter(filter);
 

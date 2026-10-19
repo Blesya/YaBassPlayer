@@ -21,5 +21,11 @@ public interface ITrackRepository
     IReadOnlyList<string> GetAllTrackIds();
     PlaylistType? CurrentPlaylistType { get; }
 
+    /// <summary>
+    /// Запоминает трек, который начал играть, чтобы выделить его в списке
+    /// при следующем запуске приложения.
+    /// </summary>
+    void SetLastPlayedTrack(string trackId);
+
     Task<IEnumerable<Track>> GetCachedTracksOrMinimum(int minCount, CancellationToken ct = default);
 }

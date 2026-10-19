@@ -48,6 +48,9 @@ public interface ITrackListModel
 	/// <summary>Ставит выделение на абсолютный индекс (клик мышью), с ограничением.</summary>
 	bool Select(int index);
 
+	/// <summary>Ставит выделение на трек с указанным id. false — такого трека в списке нет.</summary>
+	bool SelectByTrackId(string trackId);
+
 	/// <summary>Прокручивает список на <paramref name="delta"/> элементов, с ограничением.</summary>
 	bool ScrollBy(int delta, int visibleCount);
 

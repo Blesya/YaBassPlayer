@@ -181,6 +181,47 @@ public sealed class TracksPresenterTests
     }
 
     [Test]
+    public void TrackChangedEvent_RemembersLastPlayedTrack()
+    {
+        _eventBus.Publish(new TrackChangedEvent("z"));
+
+        _repository.Verify(r => r.SetLastPlayedTrack("z"), Times.Once);
+    }
+
+    // ── Восстановление выделения ──────────────────────────────────────────
+
+    [Test]
+    public async Task LoadTracksFor_RestoresLastPlayedSelection()
+    {
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
+
+        await LoadThreeTracks();
+
+        _view.Verify(v => v.SelectTrack("b"), Times.Once);
+    }
+
+    [Test]
+    public async Task LoadTracksFor_RestoresSelectionOnlyOnFirstLoad()
+    {
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
+
+        await LoadThreeTracks();
+        await LoadThreeTracks();
+
+        _view.Verify(v => v.SelectTrack("b"), Times.Once);
+    }
+
+    [Test]
+    public async Task LoadTracksFor_WithoutLastTrack_DoesNotSelect()
+    {
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns((PlaylistState?)null);
+
+        await LoadThreeTracks();
+
+        _view.Verify(v => v.SelectTrack(It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
     public void PlaybackQueue_IsExposedAsProperty()
     {
         Assert.That(_presenter.PlaybackQueue, Is.SameAs(_queue.Object));

@@ -19,6 +19,9 @@ public sealed class PlaylistState
 	/// <summary>Плейлист, выбранный в прошлый раз (для восстановления выделения).</summary>
 	public Playlist? LastPlaylist { get; init; }
 
+	/// <summary>Трек, который играл последним (для восстановления выделения в списке).</summary>
+	public string? LastTrackId { get; init; }
+
 	/// <summary>Момент сохранения снимка (UTC).</summary>
 	public DateTime SavedAt { get; init; }
 }

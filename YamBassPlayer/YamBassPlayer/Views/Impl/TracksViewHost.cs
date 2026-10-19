@@ -91,6 +91,15 @@ public sealed class TracksViewHost : View, ITracksView
 	public void SetPlayingTrackId(string? trackId)
 		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
 
+	public void SelectTrack(string trackId)
+		=> Application.MainLoop.Invoke(() =>
+		{
+			if (_useTiles)
+				_tiles.SelectTrack(trackId);
+			else
+				_table.SelectTrack(trackId);
+		});
+
 	public void SetFilter(string? filter)
 		=> _model.SetFilter(filter);
 

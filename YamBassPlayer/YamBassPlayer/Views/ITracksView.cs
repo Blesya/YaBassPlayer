@@ -13,6 +13,9 @@ public interface ITracksView
 	void SetPlayingTrackId(string? trackId);
 	void SetFilter(string? filter);
 
+	/// <summary>Выделяет трек с указанным id и прокручивает список к нему.</summary>
+	void SelectTrack(string trackId);
+
 	/// <summary>Обновляет состояние кэша одного трека без пересборки списка.</summary>
 	void SetDownloadState(string trackId, TrackDownloadState state);
 }

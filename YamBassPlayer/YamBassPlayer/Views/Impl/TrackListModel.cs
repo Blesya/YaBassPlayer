@@ -141,6 +141,30 @@ public sealed class TrackListModel : ITrackListModel
 
 	public bool Select(int index) => MoveSelectionTo(index);
 
+	public bool SelectByTrackId(string trackId)
+	{
+		int index = -1;
+		for (int i = 0; i < _items.Count; i++)
+		{
+			if (string.Equals(_items[i].Track.Id, trackId, StringComparison.Ordinal))
+			{
+				index = i;
+				break;
+			}
+		}
+
+		if (index < 0)
+			return false;
+
+		if (index != SelectedIndex)
+		{
+			SelectedIndex = index;
+			Changed?.Invoke();
+		}
+
+		return true;
+	}
+
 	public bool ScrollBy(int delta, int visibleCount)
 	{
 		if (delta == 0)

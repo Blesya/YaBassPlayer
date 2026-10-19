@@ -18,6 +18,9 @@ public class TracksPresenter : ITracksPresenter
 
 	private List<Track> _tracks = new();
 
+	/// <summary>Выделение последнего игравшего трека восстанавливаем только при первом показе списка.</summary>
+	private bool _restoreSelectionPending = true;
+
 	private const int TracksPerBatch = 100;
 
 	public event Action<Track>? OnTrackChosen;
@@ -58,6 +61,7 @@ public class TracksPresenter : ITracksPresenter
 		else
 		{
 			_view.SetTracks(_tracks, _trackFileProvider.IsTrackDownloaded);
+			RestoreLastPlayedSelection();
 		}
 
 		_view.SetPlayingTrackId(_playbackQueue.CurrentTrackId);
@@ -94,7 +98,24 @@ public class TracksPresenter : ITracksPresenter
 
 	private void OnPlayingTrackChanged(string trackId)
 	{
+		_trackRepository.SetLastPlayedTrack(trackId);
 		_view.SetPlayingTrackId(trackId);
+	}
+
+	/// <summary>
+	/// При запуске выделяем трек, который играл в прошлый раз, — чтобы продолжить
+	/// с того же места списка. Дальше выделение живёт своей жизнью.
+	/// </summary>
+	private void RestoreLastPlayedSelection()
+	{
+		if (!_restoreSelectionPending)
+			return;
+
+		_restoreSelectionPending = false;
+
+		string? lastTrackId = _trackRepository.GetPersistedSnapshot()?.LastTrackId;
+		if (!string.IsNullOrWhiteSpace(lastTrackId))
+			_view.SelectTrack(lastTrackId);
 	}
 
 	private void OnTrackSelected(int index)

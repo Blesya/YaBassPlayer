@@ -128,6 +128,13 @@ public sealed class TracksTileView : View, ITracksView
 	public void SetPlayingTrackId(string? trackId)
 		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
 
+	public void SelectTrack(string trackId)
+		=> Application.MainLoop.Invoke(() =>
+		{
+			if (_model.SelectByTrackId(trackId))
+				_model.EnsureSelectedVisible(VisibleItems, ColumnStep);
+		});
+
 	public void SetDownloadState(string trackId, TrackDownloadState state)
 		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
 

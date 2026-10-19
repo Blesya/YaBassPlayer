@@ -115,6 +115,7 @@ public class TrackRepository : ITrackRepository
 			FavoriteTrackIds = _cache.FavoriteTrackIds.ToList(),
 			CustomPlaylistTrackIds = customPlaylistTrackIds,
 			LastPlaylist = _persistedState?.LastPlaylist ?? _currentPlaylist,
+			LastTrackId = _persistedState?.LastTrackId,
 			SavedAt = DateTime.UtcNow
 		};
 		_persistedStateLoaded = true;
@@ -146,6 +147,29 @@ public class TrackRepository : ITrackRepository
 			FavoriteTrackIds = state.FavoriteTrackIds,
 			CustomPlaylistTrackIds = state.CustomPlaylistTrackIds,
 			LastPlaylist = playlist,
+			LastTrackId = state.LastTrackId,
+			SavedAt = DateTime.UtcNow
+		};
+		_playlistStateStore.Save(_persistedState);
+	}
+
+	/// <inheritdoc />
+	public void SetLastPlayedTrack(string trackId)
+	{
+		if (string.IsNullOrWhiteSpace(trackId))
+			return;
+
+		var state = _persistedState;
+		if (state is null || string.Equals(state.LastTrackId, trackId, StringComparison.Ordinal))
+			return;
+
+		_persistedState = new PlaylistState
+		{
+			Playlists = state.Playlists,
+			FavoriteTrackIds = state.FavoriteTrackIds,
+			CustomPlaylistTrackIds = state.CustomPlaylistTrackIds,
+			LastPlaylist = state.LastPlaylist,
+			LastTrackId = trackId,
 			SavedAt = DateTime.UtcNow
 		};
 		_playlistStateStore.Save(_persistedState);
