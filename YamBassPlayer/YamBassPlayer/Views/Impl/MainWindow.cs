@@ -13,18 +13,27 @@ public sealed class MainWindow : Window
 {
 	private const string YamBassPlayerTitle = "YamBassPlayer";
 
+	/// <summary>Нижняя полоса со спектром: командная строка 2, панель 6, кнопки спектра 1, спектр 10.</summary>
+	private const int BottomHeightWithSpectrum = 19;
+
+	/// <summary>Без спектра остаются командная строка 2, панель 6 и ряд кнопок 1.</summary>
+	private const int BottomHeightWithoutSpectrum = 9;
+
 	private readonly MainWindowCoordinator _coordinator;
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlaybackQueue _playbackQueue;
 	private readonly IAudioPlayer _audioPlayer;
 	private readonly IPlaylistsPresenter _playlistsPresenter;
 	private readonly TracksViewHost _tracksView;
+	private readonly TrackInfoPanelView _trackInfoPanel;
 	private SplashScreenView? _splashScreen;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
 	private Button _spectrumFreqButton = null!;
+	private Button _spectrumToggleButton = null!;
 	private TextField _filterField = null!;
 	private MenuItem _tracksViewMenuItem = null!;
+	private bool _spectrumEnabled = true;
 	private int _freqPresetIndex = 4;
 	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
@@ -51,6 +60,7 @@ public sealed class MainWindow : Window
 		_audioPlayer = audioPlayer;
 		_playlistsPresenter = playlistsPresenter;
 		_tracksView = tracksView;
+		_trackInfoPanel = trackInfoPanelView;
 
 		// ── Menu bar (pure UI composition) ─────────────────────────────
 		MenuBar menuBar = CreateMenuBar();
@@ -59,7 +69,7 @@ public sealed class MainWindow : Window
 		// ── View layout ────────────────────────────────────────────────
 		// Нижняя полоса (снизу вверх): командная строка 2, панель управления 6,
 		// ряд кнопок спектра 1 и сам спектр 10 — итого 19 строк.
-		const int bottomHeight = 19;
+		const int bottomHeight = BottomHeightWithSpectrum;
 		const int spectrumHeight = 10;
 		const int playlistsWidth = 30;
 		const int panelWidth = 38;
@@ -139,9 +149,19 @@ public sealed class MainWindow : Window
 		};
 		_spectrumFreqButton.Clicked += CycleSpectrumFreq;
 
+		_spectrumToggleButton = new Button
+		{
+			X = Pos.Right(_spectrumFreqButton),
+			Y = Pos.Top(playStatusView) - 1,
+			Width = 14,
+			Text = GetSpectrumToggleText(true)
+		};
+		_spectrumToggleButton.Clicked += ToggleSpectrumEnabled;
+
 		RestoreSpectrumSettings();
 
-		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, _filterField, tracksView, trackInfoPanelView, playStatusView, commandInputView);
+		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, _spectrumToggleButton,
+			_filterField, tracksView, trackInfoPanelView, playStatusView, commandInputView);
 
 		// ── Wire presenter events via coordinator ──────────────────────
 		_splashScreen = new SplashScreenView();
@@ -167,7 +187,7 @@ public sealed class MainWindow : Window
 		// and full-view repaints per frame.
 		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
 		{
-			if (!ReferenceEquals(Application.Current, Application.Top) || !_audioPlayer.IsPlayed)
+			if (!_spectrumEnabled || !ReferenceEquals(Application.Current, Application.Top) || !_audioPlayer.IsPlayed)
 				return true;
 
 			_spectrum.SetData(
@@ -283,7 +303,37 @@ public sealed class MainWindow : Window
 		_spectrumFreqButton.Text = _spectrum.MaxFrequencyHz >= 22050
 			? "▲ 22k"
 			: $"▲ {_spectrum.MaxFrequencyHz / 1000}k";
+
+		ApplySpectrumEnabled(AppConfiguration.GetSpectrumEnabled());
 	}
+
+	/// <summary>
+	/// Включает/выключает визуализацию: скрывает сам спектр и его кнопки режима/частоты,
+	/// а освободившиеся строки отдаёт списку треков и панели информации.
+	/// </summary>
+	private void ApplySpectrumEnabled(bool enabled)
+	{
+		_spectrumEnabled = enabled;
+		_spectrum.Visible = enabled;
+		_spectrumModeButton.Visible = enabled;
+		_spectrumFreqButton.Visible = enabled;
+		_spectrumToggleButton.Text = GetSpectrumToggleText(enabled);
+
+		int bottomHeight = enabled ? BottomHeightWithSpectrum : BottomHeightWithoutSpectrum;
+		_tracksView.Height = Dim.Fill(bottomHeight + 1);
+		_trackInfoPanel.Height = Dim.Fill(bottomHeight);
+		SetNeedsDisplay();
+	}
+
+	private void ToggleSpectrumEnabled()
+	{
+		ApplySpectrumEnabled(!_spectrumEnabled);
+		AppConfiguration.SaveSpectrumEnabled(_spectrumEnabled);
+		Logging.LogUserAction($"визуализация: {(_spectrumEnabled ? "включена" : "выключена")}");
+	}
+
+	private static string GetSpectrumToggleText(bool enabled)
+		=> enabled ? "Спектр: вкл" : "Спектр: выкл";
 
 	private void ToggleSpectrumMode()
 	{

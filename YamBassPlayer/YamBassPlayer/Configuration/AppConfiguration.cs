@@ -176,6 +176,22 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>Включена ли визуализация спектра. true — не сохранялась (по умолчанию).</summary>
+	public static bool GetSpectrumEnabled()
+	{
+		try { return LoadJsonNode()["Spectrum"]?["Enabled"]?.GetValue<bool>() ?? true; }
+		catch { return true; }
+	}
+
+	public static void SaveSpectrumEnabled(bool enabled)
+	{
+		var root = LoadJsonNode();
+		var section = root["Spectrum"]?.AsObject() ?? new JsonObject();
+		section["Enabled"] = enabled;
+		root["Spectrum"] = section;
+		SaveJsonNode(root);
+	}
+
 	/// <summary>Возвращает сохранённую громкость в процентах. 100 — не сохранялась.</summary>
 	public static int GetVolumePercent()
 	{
