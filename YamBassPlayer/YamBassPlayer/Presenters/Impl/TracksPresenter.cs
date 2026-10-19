@@ -18,8 +18,8 @@ public class TracksPresenter : ITracksPresenter
 
 	private List<Track> _tracks = new();
 
-	/// <summary>Выделение последнего игравшего трека восстанавливаем только при первом показе списка.</summary>
-	private bool _restoreSelectionPending = true;
+	/// <summary>Трек, выделенный пользователем: переживает перезагрузку списка.</summary>
+	private string? _selectedTrackId;
 
 	private const int TracksPerBatch = 100;
 
@@ -61,7 +61,7 @@ public class TracksPresenter : ITracksPresenter
 		else
 		{
 			_view.SetTracks(_tracks, _trackFileProvider.IsTrackDownloaded);
-			RestoreLastPlayedSelection();
+			RestoreSelection();
 		}
 
 		_view.SetPlayingTrackId(_playbackQueue.CurrentTrackId);
@@ -92,6 +92,7 @@ public class TracksPresenter : ITracksPresenter
 		if (trackNumber < 0 || trackNumber >= allTrackIds.Count)
 			return;
 
+		_selectedTrackId = allTrackIds[trackNumber];
 		Logging.LogUserAction($"воспроизведение трека №{trackNumber + 1} из списка");
 		_playbackQueue.SetQueue(allTrackIds, trackNumber);
 	}
@@ -103,19 +104,15 @@ public class TracksPresenter : ITracksPresenter
 	}
 
 	/// <summary>
-	/// При запуске выделяем трек, который играл в прошлый раз, — чтобы продолжить
-	/// с того же места списка. Дальше выделение живёт своей жизнью.
+	/// После перезагрузки списка возвращаем выделение: сначала на трек, который выбрал
+	/// пользователь, иначе — на последний игравший. Фоновое обновление плейлистов
+	/// перезагружает список, и без этого выделение сбрасывалось на первую строку.
 	/// </summary>
-	private void RestoreLastPlayedSelection()
+	private void RestoreSelection()
 	{
-		if (!_restoreSelectionPending)
-			return;
-
-		_restoreSelectionPending = false;
-
-		string? lastTrackId = _trackRepository.GetPersistedSnapshot()?.LastTrackId;
-		if (!string.IsNullOrWhiteSpace(lastTrackId))
-			_view.SelectTrack(lastTrackId);
+		string? trackId = _selectedTrackId ?? _trackRepository.GetPersistedSnapshot()?.LastTrackId;
+		if (!string.IsNullOrWhiteSpace(trackId))
+			_view.SelectTrack(trackId);
 	}
 
 	private void OnTrackSelected(int index)
@@ -125,6 +122,7 @@ public class TracksPresenter : ITracksPresenter
 			return;
 		}
 
+		_selectedTrackId = _tracks[index].Id;
 		OnTrackChosen?.Invoke(_tracks[index]);
 	}
 

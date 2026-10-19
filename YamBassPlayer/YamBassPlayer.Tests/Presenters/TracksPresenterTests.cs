@@ -201,14 +201,28 @@ public sealed class TracksPresenterTests
     }
 
     [Test]
-    public async Task LoadTracksFor_RestoresSelectionOnlyOnFirstLoad()
+    public async Task LoadTracksFor_RestoresSelectionAfterBackgroundRefresh()
     {
+        // Снимок показали → фон обновил плейлисты и перезагрузил список.
         _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
 
         await LoadThreeTracks();
         await LoadThreeTracks();
 
-        _view.Verify(v => v.SelectTrack("b"), Times.Once);
+        _view.Verify(v => v.SelectTrack("b"), Times.Exactly(2), "Выделение не должно сбрасываться обновлением");
+    }
+
+    [Test]
+    public async Task LoadTracksFor_KeepsUserSelectionAcrossReload()
+    {
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
+        await LoadThreeTracks();
+
+        // Пользователь выделил другой трек.
+        _view.Raise(v => v.OnTrackSelected += null, 2);
+        await LoadThreeTracks();
+
+        _view.Verify(v => v.SelectTrack("c"), Times.Once);
     }
 
     [Test]
