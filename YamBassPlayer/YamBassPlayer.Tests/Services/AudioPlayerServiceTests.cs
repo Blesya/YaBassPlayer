@@ -27,4 +27,13 @@ public sealed class AudioPlayerServiceTests
         Assert.DoesNotThrow(() => service.SetVolumePercent(42));
         Assert.That(service.VolumePercent, Is.EqualTo(42));
     }
+
+    [Test]
+    public void ResumeAndStop_WithoutTrack_DoNotThrow()
+    {
+        var service = new AudioPlayerService(Mock.Of<IBassEqualizer>());
+
+        Assert.DoesNotThrow(() => service.Resume());
+        Assert.DoesNotThrow(() => service.Stop());
+    }
 }

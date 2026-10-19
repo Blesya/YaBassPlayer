@@ -10,6 +10,8 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 {
 	private int _currentStream;
 	private int _volumePercent = AppConfiguration.GetVolumePercent();
+	/// <summary>Файл текущего трека: нужен, чтобы поднять поток после <see cref="Stop"/>.</summary>
+	private string? _currentFilePath;
 	private const double PreloadSecondsBeforeEnd = 30.0;
 	private float[] _fftBuffer = [];
 	private float[] _waveformBuffer = [];
@@ -56,6 +58,8 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 				throw new Exception("Не удалось создать аудиопоток");
 			}
 
+			_currentFilePath = filePath;
+
 			Bass.ChannelSetSync(_currentStream, SyncFlags.End, 0, OnBassTrackEnded);
 			SetupPreloadSync();
 			bassEqualizer.AttachToStream(_currentStream);
@@ -93,8 +97,24 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		{
 			Bass.ChannelPlay(_currentStream);
 		}
+		else
+		{
+			ResumeStoppedTrack();
+		}
 
 		Logging.LogAfterCall();
+	}
+
+	/// <summary>
+	/// Stop освобождает поток, поэтому после него «Играть» и «Заново» раньше не делали
+	/// ничего. Поднимаем поток заново из того же файла — всегда с начала.
+	/// </summary>
+	private void ResumeStoppedTrack()
+	{
+		if (string.IsNullOrWhiteSpace(_currentFilePath) || !File.Exists(_currentFilePath))
+			return;
+
+		Play(_currentFilePath);
 	}
 
 	public void Stop()
@@ -116,6 +136,7 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 	public void Free()
 	{
 		Stop();
+		_currentFilePath = null;
 		Bass.Free();
 	}
 
