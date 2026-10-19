@@ -3,5 +3,7 @@ namespace YamBassPlayer.Enums;
 public enum PlaybackMode
 {
 	Sequential,
-	Shuffle
+	Shuffle,
+	/// <summary>Текущий трек повторяется после окончания.</summary>
+	Repeat
 }

@@ -51,8 +51,8 @@ public sealed record SeekCommandEvent(int Percent);
 /// <summary>Воспроизвести N-й (0-based) трек текущего плейлиста.</summary>
 public sealed record PlayTrackAtCommandEvent(int Index);
 
-/// <summary>Переключить режим воспроизведения (true — случайно).</summary>
-public sealed record ShuffleCommandEvent(bool Shuffle);
+/// <summary>Переключить режим воспроизведения: поочерёдно, случайно или повтор.</summary>
+public sealed record PlaybackModeCommandEvent(PlaybackMode Mode);
 
 /// <summary>
 /// Поиск по медиатеке. Source: "local" или "yandex".

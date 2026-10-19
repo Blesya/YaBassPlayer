@@ -155,7 +155,7 @@ public sealed class MainWindowCoordinator : IDisposable
 		_eventBus.Subscribe((PreviousCommandEvent _) => PrevTrack());
 		_eventBus.Subscribe((RestartCommandEvent _) => RestartTrack());
 		_eventBus.Subscribe((SeekCommandEvent e) => SeekTo(e.Percent));
-		_eventBus.Subscribe((ShuffleCommandEvent e) => SetShuffle(e.Shuffle));
+		_eventBus.Subscribe((PlaybackModeCommandEvent e) => SetPlaybackMode(e.Mode));
 		_eventBus.Subscribe((PlayTrackAtCommandEvent e) => PlayTrackAt(e.Index));
 		_eventBus.Subscribe((SearchCommandEvent e) => RunSearchAsync(e.Source, e.Query, e.Kind));
 		_eventBus.Subscribe((LikeCommandEvent e) => ToggleFavoriteCommandAsync(e.SourceId, e.TrackId));
@@ -225,13 +225,16 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	private void OnPlaybackModeToggled()
 	{
-		_playbackQueue.Mode = _playbackQueue.Mode == PlaybackMode.Shuffle
-			? PlaybackMode.Sequential
-			: PlaybackMode.Shuffle;
-		_playStatusPresenter.SetPlaybackMode(_playbackQueue.Mode);
-		Logging.LogUserAction(_playbackQueue.Mode == PlaybackMode.Shuffle
-			? "режим перемешивания"
-			: "последовательный режим");
+		// Кнопка листает три состояния: поочерёдно → случайно → повтор.
+		PlaybackMode next = _playbackQueue.Mode switch
+		{
+			PlaybackMode.Sequential => PlaybackMode.Shuffle,
+			PlaybackMode.Shuffle => PlaybackMode.Repeat,
+			_ => PlaybackMode.Sequential
+		};
+
+		SetPlaybackMode(next);
+		Logging.LogUserAction(DescribePlaybackMode(next));
 	}
 
 	// ── Общие обработчики воспроизведения (кнопки + командные интенты) ─────
@@ -298,12 +301,19 @@ public sealed class MainWindowCoordinator : IDisposable
 		_audioPlayer.SeekToPercent(percent);
 	}
 
-	private void SetShuffle(bool shuffle)
+	private void SetPlaybackMode(PlaybackMode mode)
 	{
-		Logging.LogUserAction(shuffle ? "режим перемешивания" : "последовательный режим");
-		_playbackQueue.Mode = shuffle ? PlaybackMode.Shuffle : PlaybackMode.Sequential;
-		_playStatusPresenter.SetPlaybackMode(_playbackQueue.Mode);
+		_playbackQueue.Mode = mode;
+		_playStatusPresenter.SetPlaybackMode(mode);
+		Logging.LogUserAction(DescribePlaybackMode(mode));
 	}
+
+	private static string DescribePlaybackMode(PlaybackMode mode) => mode switch
+	{
+		PlaybackMode.Shuffle => "режим перемешивания",
+		PlaybackMode.Repeat => "режим повтора трека",
+		_ => "последовательный режим"
+	};
 
 	private void PlayTrackAt(int index)
 	{

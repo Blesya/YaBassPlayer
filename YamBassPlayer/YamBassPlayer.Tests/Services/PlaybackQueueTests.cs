@@ -171,6 +171,15 @@ public sealed class PlaybackQueueTests
         Assert.That(_queue.PeekNextTrackId, Is.Null);
     }
 
+    [Test]
+    public void PeekNextTrackId_Repeat_ReturnsNull()
+    {
+        _queue.SetQueue(new[] { "a", "b" });
+        _queue.Mode = PlaybackMode.Repeat;
+
+        Assert.That(_queue.PeekNextTrackId, Is.Null, "В повторе следующий трек не нужен и не предзагружается");
+    }
+
     // ──────────────── SetQueue ────────────────
 
     [Test]
@@ -411,6 +420,13 @@ public sealed class PlaybackQueueTests
         Assert.That(_queue.Mode, Is.EqualTo(PlaybackMode.Sequential));
     }
 
+    [Test]
+    public void Mode_CanSetToRepeat()
+    {
+        _queue.Mode = PlaybackMode.Repeat;
+        Assert.That(_queue.Mode, Is.EqualTo(PlaybackMode.Repeat));
+    }
+
     // ──────────────── AddToQueue ────────────────
 
     [Test]
@@ -475,6 +491,45 @@ public sealed class PlaybackQueueTests
         _queue.SetQueue(new[] { "a", "b" }, startIndex: 1);
         _mockAudioPlayer.Raise(m => m.OnTrackEnded += null, EventArgs.Empty);
         Assert.That(_queue.CurrentTrackId, Is.EqualTo("a"));
+    }
+
+    [Test]
+    public void OnTrackEnded_Repeat_StaysOnSameTrack()
+    {
+        _queue.SetQueue(new[] { "a", "b" });
+        _queue.Mode = PlaybackMode.Repeat;
+        string? changed = null;
+        _queue.OnTrackChanged += id => changed = id;
+
+        _mockAudioPlayer.Raise(m => m.OnTrackEnded += null, EventArgs.Empty);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_queue.CurrentTrackId, Is.EqualTo("a"));
+            Assert.That(changed, Is.EqualTo("a"), "Тот же трек должен стартовать заново");
+        });
+    }
+
+    [Test]
+    public void OnTrackEnded_Repeat_WithSingleTrack_StaysOnIt()
+    {
+        _queue.SetQueue(new[] { "a" });
+        _queue.Mode = PlaybackMode.Repeat;
+
+        _mockAudioPlayer.Raise(m => m.OnTrackEnded += null, EventArgs.Empty);
+
+        Assert.That(_queue.CurrentTrackId, Is.EqualTo("a"));
+    }
+
+    [Test]
+    public void Next_Repeat_StillAdvancesManually()
+    {
+        _queue.SetQueue(new[] { "a", "b" });
+        _queue.Mode = PlaybackMode.Repeat;
+
+        _queue.Next();
+
+        Assert.That(_queue.CurrentTrackId, Is.EqualTo("b"), "Кнопка «Вперёд» двигает очередь и в повторе");
     }
 
     // ──────────────── TrackIds ────────────────

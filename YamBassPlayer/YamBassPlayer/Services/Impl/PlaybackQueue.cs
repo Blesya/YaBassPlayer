@@ -57,7 +57,7 @@ public class PlaybackQueue : IPlaybackQueue
 		{
 			lock (_syncLock)
 			{
-				if (_trackIds.Count == 0) return null;
+				if (_trackIds.Count == 0 || _mode == PlaybackMode.Repeat) return null;
 				return _mode == PlaybackMode.Shuffle
 					? _trackIds[EnsureShuffleNextLocked()]
 					: HasNext ? _trackIds[_currentIndex + 1] : null;
@@ -217,6 +217,18 @@ public class PlaybackQueue : IPlaybackQueue
 
 	private void OnTrackEnded(object? sender, EventArgs e)
 	{
+		// Повтор: тот же трек стартует заново, очередь не двигается.
+		if (_mode == PlaybackMode.Repeat)
+		{
+			lock (_syncLock)
+			{
+				if (_currentIndex >= 0 && _currentIndex < _trackIds.Count)
+					RaiseTrackChanged(_trackIds[_currentIndex]);
+			}
+
+			return;
+		}
+
 		Next();
 	}
 }

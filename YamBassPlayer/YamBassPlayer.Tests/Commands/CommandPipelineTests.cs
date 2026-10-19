@@ -78,6 +78,43 @@ public sealed class CommandPipelineTests
         });
     }
 
+    // ──────────────── ModeCommand ────────────────
+
+    [TestCase("seq", PlaybackMode.Sequential)]
+    [TestCase("shuffle", PlaybackMode.Shuffle)]
+    [TestCase("repeat", PlaybackMode.Repeat)]
+    [TestCase("повтор", PlaybackMode.Repeat)]
+    public void ModeCommand_PublishesRequestedMode(string argument, PlaybackMode expected)
+    {
+        var bus = new EventBus();
+        PlaybackModeCommandEvent? received = null;
+        bus.Subscribe((PlaybackModeCommandEvent e) => received = e);
+
+        var result = new ModeCommand(bus).Execute(new[] { argument });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.True);
+            Assert.That(received?.Mode, Is.EqualTo(expected));
+        });
+    }
+
+    [Test]
+    public void ModeCommand_UnknownMode_ReturnsError()
+    {
+        var bus = new EventBus();
+        PlaybackModeCommandEvent? received = null;
+        bus.Subscribe((PlaybackModeCommandEvent e) => received = e);
+
+        var result = new ModeCommand(bus).Execute(new[] { "loop" });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            Assert.That(received, Is.Null);
+        });
+    }
+
     // ──────────────── VolumeCommand ────────────────
 
     [Test]

@@ -1,3 +1,4 @@
+using YamBassPlayer.Enums;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Events;
 
@@ -141,30 +142,35 @@ public sealed class SeekCommand(IEventBus eventBus) : ICommand
 	}
 }
 
-/// <summary>mode — режим воспроизведения: seq/последовательно или shuffle/случайно.</summary>
+/// <summary>mode — режим воспроизведения: seq/последовательно, shuffle/случайно или repeat/повтор.</summary>
 public sealed class ModeCommand(IEventBus eventBus) : ICommand
 {
 	public string Name => "mode";
-	public string Description => "mode <seq|shuffle> — режим воспроизведения.";
+	public string Description => "mode <seq|shuffle|repeat> — режим воспроизведения.";
 	public IReadOnlyList<string> Aliases => [];
 
 	public CommandResult Execute(string[] args)
 	{
 		if (args.Length == 0)
-			return CommandResult.Error("Укажите режим: mode seq или mode shuffle");
+			return CommandResult.Error("Укажите режим: mode seq, mode shuffle или mode repeat");
 
-		string mode = args[0].ToLowerInvariant() switch
+		PlaybackMode? mode = args[0].ToLowerInvariant() switch
 		{
-			"seq" or "sequential" or "последовательно" or "по-очереди" or "поочередно" => "seq",
-			"shuffle" or "random" or "случайно" or "перемешать" => "shuffle",
-			_ => string.Empty
+			"seq" or "sequential" or "последовательно" or "по-очереди" or "поочередно" => PlaybackMode.Sequential,
+			"shuffle" or "random" or "случайно" or "перемешать" => PlaybackMode.Shuffle,
+			"repeat" or "one" or "повтор" or "повторять" => PlaybackMode.Repeat,
+			_ => null
 		};
 
-		if (mode.Length == 0)
-			return CommandResult.Error("Некорректный режим. Ожидается seq или shuffle");
+		if (mode is null)
+			return CommandResult.Error("Некорректный режим. Ожидается seq, shuffle или repeat");
 
-		bool shuffle = mode == "shuffle";
-		eventBus.Publish(new ShuffleCommandEvent(shuffle));
-		return CommandResult.Ok(shuffle ? "Режим: случайно" : "Режим: поочерёдно");
+		eventBus.Publish(new PlaybackModeCommandEvent(mode.Value));
+		return CommandResult.Ok(mode.Value switch
+		{
+			PlaybackMode.Shuffle => "Режим: случайно",
+			PlaybackMode.Repeat => "Режим: повтор",
+			_ => "Режим: поочерёдно"
+		});
 	}
 }

@@ -118,6 +118,10 @@ public sealed class PlayStatusViewTests : ViewTestBase
         Pump();
         Assert.That(Render(view, WideWidth), Does.Contain("Случайно"));
 
+        view.SetPlaybackMode(PlaybackMode.Repeat);
+        Pump();
+        Assert.That(Render(view, WideWidth), Does.Contain("Повтор"));
+
         view.SetPlaybackMode(PlaybackMode.Sequential);
         Pump();
         Assert.That(Render(view, WideWidth), Does.Contain("Поочерёдно"));

@@ -266,7 +266,12 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_playbackModeButton.Text = mode == PlaybackMode.Shuffle ? "Случайно" : "Поочерёдно";
+			_playbackModeButton.Text = mode switch
+			{
+				PlaybackMode.Shuffle => "Случайно",
+				PlaybackMode.Repeat => "Повтор",
+				_ => "Поочерёдно"
+			};
 		});
 	}
 
