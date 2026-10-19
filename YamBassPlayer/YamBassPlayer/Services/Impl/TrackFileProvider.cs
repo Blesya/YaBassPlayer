@@ -4,6 +4,7 @@ using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
+using Yandex.Music.Api.Models.Common;
 using Yandex.Music.Api.Models.Track;
 
 namespace YamBassPlayer.Services.Impl;
@@ -130,7 +131,21 @@ public class TrackFileProvider : ITrackFileProvider
 			}
 
 			Log.Information("Скачивание трека {TrackId}", trackId);
-			await DownloadToFileAsync(track, filePath, Report);
+
+			// У недоступного в регионе трека Яндекс может прислать замену — официальные
+			// клиенты играют именно её. Ключ для download-info берём от замены.
+			YTrack downloadTrack = track.Available || track.Substituted is null
+				? track
+				: track.Substituted;
+
+			Log.Information(
+				"Скачивание трека {TrackId}: ключ {TrackKey}, доступен {Available}, только по подписке {PremiumOnly}",
+				trackId, downloadTrack.GetKey(), track.Available, track.AvailableForPremiumUsers);
+
+			if (!ReferenceEquals(downloadTrack, track))
+				Log.Information("Трек {TrackId} недоступен, используется замена {SubstituteId}", track.Id, downloadTrack.Id);
+
+			await DownloadToFileAsync(downloadTrack, filePath, Report);
 			Log.Information("Трек {TrackId} скачан: {FilePath}", trackId, filePath);
 			_downloadTracker.MarkCached(trackId);
 
@@ -138,11 +153,26 @@ public class TrackFileProvider : ITrackFileProvider
 		}
 		catch (Exception e)
 		{
-			Log.Error(e, "Не удалось скачать трек {TrackId}", trackId);
+			// YErrorResponse не кладёт текст ошибки в Message, поэтому достаём его
+			// из тела ответа — иначе в логе остаётся бесполезное «Exception of type ...».
+			string reason = DescribeDownloadError(e);
+			Log.Error(e, "Не удалось скачать трек {TrackId}: {Reason}", trackId, reason);
 			_downloadTracker.MarkFailed(trackId);
-			e.Handle(logException: false);
+			new InvalidOperationException(reason).Handle(logException: false);
 			return string.Empty;
 		}
+	}
+
+	private static string DescribeDownloadError(Exception exception)
+	{
+		if (exception is YErrorResponse { Error: { } error })
+		{
+			string? message = string.IsNullOrWhiteSpace(error.Message) ? error.Name : error.Message;
+			if (!string.IsNullOrWhiteSpace(message))
+				return $"Яндекс.Музыка: {message}";
+		}
+
+		return exception.Message;
 	}
 
 	private static void ReportCached(string filePath, Action<DownloadProgress> report)
