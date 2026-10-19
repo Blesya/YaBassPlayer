@@ -81,7 +81,8 @@ public sealed class CustomLoadStrategy(
     public bool CanHandle(PlaylistType type) => type == PlaylistType.Custom;
     public async Task<List<string>> LoadTrackIdsAsync(Playlist playlist)
     {
-        if (cache.TryGetCustomPlaylistIds(playlist.PlaylistName, out var cachedIds))
+        string cacheKey = playlist.TrackCacheKey;
+        if (cache.TryGetCustomPlaylistIds(cacheKey, out var cachedIds))
             return cachedIds;
 
         var yandexSource = musicSourceRegistry.GetRequired(SourceIds.Yandex);
@@ -94,7 +95,7 @@ public sealed class CustomLoadStrategy(
 
         var tracks = (await yandexSource.GetPlaylistTracksAsync(found, 0, int.MaxValue)).ToList();
         var trackIds = tracks.Select(t => t.Id).ToList();
-        cache.SetCustomPlaylistIds(playlist.PlaylistName, trackIds);
+        cache.SetCustomPlaylistIds(cacheKey, trackIds);
 
         return trackIds;
     }

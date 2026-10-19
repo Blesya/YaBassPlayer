@@ -81,7 +81,12 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
                 {
                     Description = yResponse.Result.Description,
                     TrackCount = yResponse.Result.TrackCount,
-                    SourceId = SourceIds.Yandex
+                    SourceId = SourceIds.Yandex,
+                    Payload = new PlaylistPayload
+                    {
+                        YandexOwnerUid = yResponse.Result.Owner?.Uid,
+                        YandexKind = yResponse.Result.Kind
+                    }
                 });
             }
 
@@ -90,7 +95,7 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
             playlists.AddRange(await GetOwnPlaylistsSafeAsync());
             playlists.AddRange(await GetLikedPlaylistsSafeAsync());
 
-            _playlistsCache = playlists;
+            _playlistsCache = PlaylistDeduplicator.ByYandexIdentity(playlists);
             Logging.LogAfterCall();
             return _playlistsCache;
         }

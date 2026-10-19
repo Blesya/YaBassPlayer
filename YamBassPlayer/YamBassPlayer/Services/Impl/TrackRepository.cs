@@ -105,8 +105,8 @@ public class TrackRepository : ITrackRepository
 		var customPlaylistTrackIds = new Dictionary<string, List<string>>();
 		foreach (var playlist in yandexPlaylists.Where(p => p.Type == PlaylistType.Custom))
 		{
-			if (_cache.TryGetCustomPlaylistIds(playlist.PlaylistName, out var trackIds))
-				customPlaylistTrackIds[playlist.PlaylistName] = trackIds.ToList();
+			if (_cache.TryGetCustomPlaylistIds(playlist.TrackCacheKey, out var trackIds))
+				customPlaylistTrackIds[playlist.TrackCacheKey] = trackIds.ToList();
 		}
 
 		_persistedState = new PlaylistState

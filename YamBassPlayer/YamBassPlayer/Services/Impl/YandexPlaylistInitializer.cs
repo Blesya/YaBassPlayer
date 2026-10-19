@@ -30,7 +30,7 @@ public sealed class YandexPlaylistInitializer(
         foreach (var customPlaylist in yandexPlaylists.Where(p => p.Type == PlaylistType.Custom))
         {
             var trackIds = (await YandexSource.GetPlaylistTrackIdsAsync(customPlaylist, ct)).ToList();
-            cache.SetCustomPlaylistIds(customPlaylist.PlaylistName, trackIds);
+            cache.SetCustomPlaylistIds(customPlaylist.TrackCacheKey, trackIds);
         }
 
         return favoriteTrackIds.Length;
