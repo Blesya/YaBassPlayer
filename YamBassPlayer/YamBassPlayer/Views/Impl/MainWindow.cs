@@ -57,17 +57,17 @@ public sealed class MainWindow : Window
 		Application.Top.Add(menuBar);
 
 		// ── View layout ────────────────────────────────────────────────
-		// Нижняя полоса (снизу вверх): командная строка 2, панель управления 5,
-		// ряд кнопок спектра 1 и сам спектр 10 — итого 18 строк.
-		const int bottomHeight = 18;
+		// Нижняя полоса (снизу вверх): командная строка 2, панель управления 6,
+		// ряд кнопок спектра 1 и сам спектр 10 — итого 19 строк.
+		const int bottomHeight = 19;
 		const int spectrumHeight = 10;
 		const int playlistsWidth = 30;
 		const int panelWidth = 38;
 
 		playStatusView.X = 0;
-		playStatusView.Y = Pos.AnchorEnd(7);
+		playStatusView.Y = Pos.AnchorEnd(8);
 		playStatusView.Width = Dim.Fill();
-		playStatusView.Height = 5;
+		playStatusView.Height = 6;
 
 		commandInputView.X = 0;
 		commandInputView.Y = Pos.AnchorEnd(2);

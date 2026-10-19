@@ -9,6 +9,8 @@ public interface IPlayStatusView
 	event Action? OnPrevClicked;
 	event Action? OnNextClicked;
 	event Action<int>? OnSeekRequested;
+	event Action<int>? OnVolumeChangeRequested;
+	void SetVolume(int percent);
 	event Action? OnLocalFavoriteToggleClicked;
 	void SetPlayStatus(string status);
 	void SetProgress(int percent);

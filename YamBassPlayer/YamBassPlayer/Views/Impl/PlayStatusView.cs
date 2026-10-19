@@ -21,6 +21,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly Button _stopButton;
 	private readonly Button _restartButton;
 	private readonly SeekBarView _seekBar;
+	private readonly VolumeBarView _volumeBar;
 	private readonly Button _prevButton;
 	private readonly Button _nextButton;
 	private readonly Button _favoriteButton;
@@ -33,6 +34,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action? OnPrevClicked;
 	public event Action? OnNextClicked;
 	public event Action<int>? OnSeekRequested;
+	public event Action<int>? OnVolumeChangeRequested;
 	public event Action? OnLocalFavoriteToggleClicked;
 	public event Action? OnYandexFavoriteToggleClicked;
 	public event Action? OnQueueClicked;
@@ -42,7 +44,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public PlayStatusView()
 	{
 		Width = Dim.Fill();
-		Height = 5;
+		Height = 6;
 
 		_panel = new FrameView("Управление воспроизведением")
 		{
@@ -147,9 +149,18 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Готов к работе"
 		};
 
+		_volumeBar = new VolumeBarView
+		{
+			X = 1,
+			Y = 3,
+			Width = Dim.Fill() - 2,
+			Height = 1
+		};
+		_volumeBar.VolumeChangeRequested += percent => OnVolumeChangeRequested?.Invoke(percent);
+
 		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton,
 			_favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton,
-			_seekBar, _statusLabel);
+			_seekBar, _statusLabel, _volumeBar);
 		Add(_panel);
 	}
 
@@ -184,6 +195,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		Application.MainLoop.Invoke(() =>
 		{
 			_panel.Title = title;
+		});
+	}
+
+	public void SetVolume(int percent)
+	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_volumeBar.Percent = percent;
 		});
 	}
 

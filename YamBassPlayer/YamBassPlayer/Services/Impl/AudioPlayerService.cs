@@ -1,6 +1,7 @@
 using ManagedBass;
 using Serilog;
 using Terminal.Gui;
+using YamBassPlayer.Configuration;
 using YamBassPlayer.Extensions;
 
 namespace YamBassPlayer.Services.Impl;
@@ -8,6 +9,7 @@ namespace YamBassPlayer.Services.Impl;
 public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 {
 	private int _currentStream;
+	private int _volumePercent = AppConfiguration.GetVolumePercent();
 	private const double PreloadSecondsBeforeEnd = 30.0;
 	private float[] _fftBuffer = [];
 	private float[] _waveformBuffer = [];
@@ -17,6 +19,8 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 
 	public bool IsPlayed =>
 		Bass.ChannelIsActive(_currentStream) == PlaybackState.Playing;
+
+	public int VolumePercent => _volumePercent;
 
 	public void Init()
 	{
@@ -55,6 +59,7 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 			Bass.ChannelSetSync(_currentStream, SyncFlags.End, 0, OnBassTrackEnded);
 			SetupPreloadSync();
 			bassEqualizer.AttachToStream(_currentStream);
+			ApplyVolume();
 			Bass.ChannelPlay(_currentStream);
 
 			Log.Information("Воспроизведение: {TrackName} ({FilePath})",
@@ -248,6 +253,30 @@ public class AudioPlayerService(IBassEqualizer bassEqualizer) : IAudioPlayer
 		{
 			ex.Handle();
 		}
+	}
+
+	public void SetVolumePercent(int percent)
+	{
+		int clamped = Math.Clamp(percent, 0, 100);
+		if (clamped == _volumePercent)
+			return;
+
+		_volumePercent = clamped;
+		ApplyVolume();
+		AppConfiguration.SaveVolumePercent(clamped);
+		Log.Information("Громкость: {Percent}%", clamped);
+	}
+
+	/// <summary>
+	/// Громкость живёт на потоке BASS, поэтому применяется и сразу (если поток уже
+	/// создан), и при каждом <see cref="Play"/> — иначе новый трек стартовал бы со 100%.
+	/// </summary>
+	private void ApplyVolume()
+	{
+		if (!IsStreamActive)
+			return;
+
+		Bass.ChannelSetAttribute(_currentStream, ChannelAttribute.Volume, _volumePercent / 100.0);
 	}
 
 	public float[] ChannelGetData()

@@ -78,6 +78,65 @@ public sealed class CommandPipelineTests
         });
     }
 
+    // ──────────────── VolumeCommand ────────────────
+
+    [Test]
+    public void VolumeCommand_WithoutArgs_ReportsCurrentVolume()
+    {
+        var audio = new Mock<IAudioPlayer>();
+        audio.Setup(a => a.VolumePercent).Returns(70);
+
+        var result = new VolumeCommand(audio.Object).Execute([]);
+
+        Assert.That(result.Message, Does.Contain("70%"));
+        audio.Verify(a => a.SetVolumePercent(It.IsAny<int>()), Times.Never);
+    }
+
+    [Test]
+    public void VolumeCommand_WithAbsoluteValue_SetsVolume()
+    {
+        var audio = new Mock<IAudioPlayer>();
+
+        _ = new VolumeCommand(audio.Object).Execute(new[] { "35" });
+
+        audio.Verify(a => a.SetVolumePercent(35), Times.Once);
+    }
+
+    [Test]
+    public void VolumeCommand_WithRelativeValue_ChangesVolume()
+    {
+        var audio = new Mock<IAudioPlayer>();
+        audio.Setup(a => a.VolumePercent).Returns(70);
+
+        _ = new VolumeCommand(audio.Object).Execute(new[] { "-15" });
+
+        audio.Verify(a => a.SetVolumePercent(55), Times.Once);
+    }
+
+    [Test]
+    public void VolumeCommand_ClampsOutOfRangeValue()
+    {
+        var audio = new Mock<IAudioPlayer>();
+
+        _ = new VolumeCommand(audio.Object).Execute(new[] { "150" });
+
+        audio.Verify(a => a.SetVolumePercent(100), Times.Once);
+    }
+
+    [Test]
+    public void VolumeCommand_WithGarbage_ReturnsError()
+    {
+        var audio = new Mock<IAudioPlayer>();
+
+        var result = new VolumeCommand(audio.Object).Execute(new[] { "громче" });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Success, Is.False);
+            audio.Verify(a => a.SetVolumePercent(It.IsAny<int>()), Times.Never);
+        });
+    }
+
     // ──────────────── SearchCommand: режимы -t / -ar / -alb ────────────────
 
     [Test]

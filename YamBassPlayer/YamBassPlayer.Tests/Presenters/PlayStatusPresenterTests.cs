@@ -50,6 +50,31 @@ public sealed class PlayStatusPresenterTests
     }
 
     [Test]
+    public void Constructor_AppliesVolumeFromAudioPlayer()
+    {
+        _audioPlayer.Setup(a => a.VolumePercent).Returns(70);
+
+        _ = CreatePresenter();
+
+        _view.Verify(v => v.SetVolume(70), Times.AtLeastOnce);
+    }
+
+    [Test]
+    public void ViewVolumeChangeRequested_UpdatesAudioPlayerAndView()
+    {
+        _ = CreatePresenter();
+        _audioPlayer.Setup(a => a.VolumePercent).Returns(40);
+
+        _view.Raise(v => v.OnVolumeChangeRequested += null, 40);
+
+        Assert.Multiple(() =>
+        {
+            _audioPlayer.Verify(a => a.SetVolumePercent(40), Times.Once);
+            _view.Verify(v => v.SetVolume(40), Times.AtLeastOnce);
+        });
+    }
+
+    [Test]
     public void ViewQueueModeAndRestartEvents_AreBubbled()
     {
         var presenter = CreatePresenter();

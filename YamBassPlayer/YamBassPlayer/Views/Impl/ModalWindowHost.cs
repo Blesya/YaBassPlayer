@@ -8,7 +8,7 @@ namespace YamBassPlayer.Views.Impl;
 /// </summary>
 public sealed class ModalWindowHost : IModalWindowHost
 {
-	private const int StatusPanelBottomOffset = 5;
+	private const int StatusPanelBottomOffset = 6;
 
 	private readonly PlayStatusView _playStatusView;
 

@@ -222,6 +222,7 @@ public static class ServicesProvider
 		builder.RegisterType<ModeCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<QueueCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<EqualizerCommand>().As<ICommand>().SingleInstance();
+		builder.RegisterType<VolumeCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<NowCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<SearchCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<LikeYandexCommand>().As<ICommand>().SingleInstance();

@@ -176,6 +176,22 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>Возвращает сохранённую громкость в процентах. 100 — не сохранялась.</summary>
+	public static int GetVolumePercent()
+	{
+		try { return LoadJsonNode()["Playback"]?["Volume"]?.GetValue<int>() ?? 100; }
+		catch { return 100; }
+	}
+
+	public static void SaveVolumePercent(int percent)
+	{
+		var root = LoadJsonNode();
+		var section = root["Playback"]?.AsObject() ?? new JsonObject();
+		section["Volume"] = percent;
+		root["Playback"] = section;
+		SaveJsonNode(root);
+	}
+
 	/// <summary>
 	/// Returns the list of local music folders from configuration.
 	/// Reads <c>LocalMusic:Folders</c> as a JSON string array, or a single

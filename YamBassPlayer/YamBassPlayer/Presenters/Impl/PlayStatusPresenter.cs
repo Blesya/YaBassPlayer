@@ -45,6 +45,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnPlaybackModeToggled += () => OnPlaybackModeToggled?.Invoke();
 		_view.OnRestartClicked += () => OnRestartClicked?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
+		_view.OnVolumeChangeRequested += OnVolumeChangeRequested;
 		_view.OnLocalFavoriteToggleClicked += () => OnLocalFavoriteToggleClickedHandler().Forget();
 		_view.OnYandexFavoriteToggleClicked += () => OnYandexFavoriteToggleClickedHandler().Forget();
 
@@ -54,6 +55,18 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_timer.Start();
 
 		UpdateFavoriteStates();
+		_view.SetVolume(_audioPlayer.VolumePercent);
+	}
+
+	/// <summary>
+	/// Громкость меняют и полоса в панели, и команда <c>volume</c> (она работает с сервисом
+	/// напрямую), поэтому вью обновляется из одного места — здесь.
+	/// </summary>
+	private void OnVolumeChangeRequested(int percent)
+	{
+		_audioPlayer.SetVolumePercent(percent);
+		_view.SetVolume(_audioPlayer.VolumePercent);
+		Logging.LogUserAction($"громкость: {_audioPlayer.VolumePercent}%");
 	}
 
 	private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
@@ -67,6 +80,7 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 			_view.SetPlaying(_audioPlayer.IsPlayed);
 			_view.SetProgress(percent);
 			_view.SetTime(current, duration);
+			_view.SetVolume(_audioPlayer.VolumePercent);
 		});
 	}
 

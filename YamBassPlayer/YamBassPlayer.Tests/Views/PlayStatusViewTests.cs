@@ -11,7 +11,7 @@ public sealed class PlayStatusViewTests : ViewTestBase
     // FakeDriver в тестах — 80x25, поэтому панель проверяется в ширину, которая
     // в него помещается; правый край проверяется сдвигом панели влево.
     private const int Width = 76;
-    private const int Height = 5;
+    private const int Height = 6;
     private const int WideWidth = 140;
     private const int RightShift = -40;
 
@@ -72,6 +72,22 @@ public sealed class PlayStatusViewTests : ViewTestBase
         {
             Assert.That(text, Does.Contain("01:23"));
             Assert.That(text, Does.Contain("05:00"));
+        });
+    }
+
+    [Test]
+    public void SetVolume_ShowsVolumeBarWithPercent()
+    {
+        var view = CreateView();
+
+        view.SetVolume(70);
+        Pump();
+
+        string text = Render(view);
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("Громкость"));
+            Assert.That(text, Does.Contain(" 70%"));
         });
     }
 
