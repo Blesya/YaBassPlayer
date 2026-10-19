@@ -13,13 +13,13 @@ YaBassPlayer/                         # Workspace root
     │   ├── ServicesProvider.cs      # Autofac DI wiring (all com. registrations)
     │   ├── AutofacExtensions.cs     # Helper extensions for Autofac registration
     │   ├── Themes.cs                # TUI theme management (9 themes)
-    │   ├── Services/                # 39 interfaces + Impl/ subfolder (51 files)
+    │   ├── Services/                # 40 interfaces + Impl/ subfolder (53 files)
     │   ├── Presenters/              # 16 interfaces + Impl/ subfolder (16 files)
     │   ├── Views/                   # 18 interfaces + Impl/ subfolder (29 files)
     │   ├── Commands/                # In-app command console, split by concern: PlaybackCommands, EqualizerCommands, InfoCommands, LikeCommands, QueueCommands, SearchCommand
     │   ├── UseCases/                # Application layer (search/favorite/scan/my-wave use cases)
-    │   ├── Models/                  # 13 model classes
-    │   ├── Enums/                   # 8 enums (+ PlaylistTypeExtensions)
+    │   ├── Models/                  # 15 model classes
+    │   ├── Enums/                   # 9 enums (+ PlaylistTypeExtensions)
     │   ├── Configuration/           # AppConfiguration.cs + IAppConfiguration/AppConfigurationProvider
     │   ├── Spectrum/                # ISpectrumRenderer strategy (8 renderers)
     │   ├── Constants/               # AuthConst.cs
@@ -32,7 +32,7 @@ YaBassPlayer/                         # Workspace root
         ├── Extensions/              # 3 test files
         ├── Models/                  # 3 test files
         ├── Presenters/              # 16 test files
-        ├── Services/                # 14 test files
+        ├── Services/                # 15 test files
         ├── UseCases/                # 4 test files
         └── Views/                   # 9 test files (headless Terminal.Gui via FakeDriver)
 ```
@@ -45,7 +45,7 @@ Run all commands from `YamBassPlayer/` (where `.sln` lives):
 
 ```bash
 dotnet build                          # Compile + copy native BASS DLLs to output
-dotnet test                           # Run 562 NUnit tests (commands, extensions, models, services, presenters, views, SQLite)
+dotnet test                           # Run 579 NUnit tests (commands, extensions, models, services, presenters, views, SQLite)
 dotnet run --project YamBassPlayer    # Launch the TUI
 ```
 
@@ -73,7 +73,7 @@ All commands run from where the `.sln` file lives. Before committing, run both `
 - **UI Framework**: Terminal.Gui (v1.19.0) for TUI.
 - **Audio**: ManagedBass via `IAudioPlayer` — play, pause, stop, seek, 10-band equalizer, FFT. Native BASS libraries for Windows (bass.dll, bass_fx.dll), macOS (libbass.dylib, libbass_fx.dylib), and Linux (libbass.so).
 - **Music sources**: `IMusicSource` for Yandex.Music and local files, auto-registered via `IMusicSourceRegistry`.
-- **Auth (Yandex.Music)**: `IAuthService`/`AuthService` wraps the library's `YandexMusicApi`. `Program.cs` first tries the token from `appsettings.json`; if it is missing or rejected it opens `AuthView` (full-screen `Dialog`) driven by `AuthPresenter`, offering **QR login** or **token** entry. QR: `StartQrAuthorizationAsync()` opens a session and returns a link, `QrCodeRenderer` (`IQrCodeRenderer`) renders it as text using half-block characters via `Net.Codecrete.QrCodeGenerator`, and the presenter polls `CheckQrAuthorizationAsync()` every 2s (5 min lifetime) until confirmed. On success the token is saved through `IAppConfiguration.SaveToken`. `IAppConfiguration` and `IErrorHandler` are injected so the presenter is unit-testable; QR polling uses `IUiDispatcher`.
+- **Auth (Yandex.Music)**: `IAuthService`/`AuthService` wraps the library's `YandexMusicApi`. `Program.cs` first tries the token from `appsettings.json`; if it is missing or rejected it silently renews it with the saved refresh token (`TryRefreshAsync`), and only then opens `AuthView` (full-screen `Dialog`) driven by `AuthPresenter`, offering **device-code login**, **QR login** or **token** entry. Device code (OAuth Device Flow, the default): `StartDeviceAuthorizationAsync()` asks `oauth.yandex.ru/device/code` through `DeviceAuthorizationService` (`IDeviceAuthorizationService`, plain `HttpClient`), the view shows the short `user_code` and `https://ya.ru/device` (the code is copied to the OS clipboard through `Terminal.Gui.Clipboard`, the «Копировать код» button repeats it), and the presenter polls `CheckDeviceAuthorizationAsync()` every `interval` seconds (5 min lifetime) until confirmed; the result carries `access_token` + `refresh_token`, both saved through `IAppConfiguration`. QR: `StartQrAuthorizationAsync()` opens a library session and returns a link, `QrCodeRenderer` (`IQrCodeRenderer`) renders it as text using half-block characters via `Net.Codecrete.QrCodeGenerator`, and the presenter polls `CheckQrAuthorizationAsync()` every 2s (5 min lifetime) until confirmed. `IAppConfiguration` and `IErrorHandler` are injected so the presenter is unit-testable; polling uses `IUiDispatcher`.
 - **Playlist loading**: Strategy pattern — `IPlaylistLoadStrategy` with strategies resolved by `PlaylistLoadStrategyResolver` per `PlaylistType`.
 - **Fast startup**: `IPlaylistStateStore` persists a JSON snapshot (`playlist_state.json`, gitignored) of the last run's playlist list, favourite/custom track IDs and last selected playlist. `PlaylistsPresenter.InitializeAsync` renders that snapshot instantly, then `RefreshAsync` re-fetches from the sources and re-renders (the splash is removed on the first `PlaylistChosen`). `ITrackRepository.GetPersistedSnapshot()` primes the in-memory track-id caches from the snapshot so the restored playlist draws without network access.
 - **Command console**: `CommandInputView` (2 rows: result line + input) under `PlayStatusView`, bridged by `CommandInputPresenter` to a `CommandRegistry` (parser + resolver by name/alias). Each command implements `ICommand` and is registered per-class as `ICommand`. Commands that change playback publish typed command intents (e.g. `PlayTrackAtCommandEvent`, `PauseCommandEvent`, `SeekCommandEvent`) on the `IEventBus`; `MainWindowCoordinator` subscribes and reuses the same handlers as the UI buttons (`TogglePlayPause`, `StopPlayback`, `NextTrack`, `PlayTrackAt`…), keeping cross-cutting concerns (listen-timer, «Моя волна») in one place. Add a command by implementing `ICommand` + one DI line — no parser/UI changes. Available: `play|p [N]`, `pause|ps`, `toggle|t`, `stop|s`, `next|n`, `prev|b`, `restart|r`, `seek <0-100>`, `mode <seq|shuffle>`, `queue|q`, `eq [reset|<1-10> <0-10>]`, `search|find [ya] [-t|-ar|-alb] <текст>`, `now|track`, `clear`, `likeyandex|ly`, `likelocal|ll`, `help|?`. Non-playback command intents (e.g. `SearchCommandEvent`) are also published on the `IEventBus`; `MainWindowCoordinator` handles them by running the async work and loading the resulting transient playlist (same pipeline as the search dialogs: search → `*SearchTracks` cache → `Playlist` → `SetPlaylist` → `LoadTracksFor` → `NotifyTransientPlaylistActive`).
@@ -106,13 +106,13 @@ All commands run from where the `.sln` file lives. Before committing, run both `
 
 ## Test Structure
 
-The test project contains **562 tests** across **55 fixture files** (helpers like `ViewTestBase`, `FakeUiDispatcher`, `SharedMemoryDbConnectionFactory` are not fixtures):
+The test project contains **579 tests** across **56 fixture files** (helpers like `ViewTestBase`, `FakeUiDispatcher`, `SharedMemoryDbConnectionFactory` are not fixtures):
 - **Commands/**: `CommandRegistryTests`, `CommandInputPresenterTests`, `CommandPipelineTests`
 - **Data/** (SQLite integration): `HistoryServiceTests`, `LocalFavoriteServiceTests`, `SqliteSchemaHelperTests`
 - **Extensions/**: `FileSizeExtensionsTests`, `PlaylistTypeExtensionsTests`, `DurationExtensionsTests`
 - **Models/**: `PlaylistTests`, `PlaylistTreeItemTests`, `TrackTests`
 - **Presenters/**: `PlaybackPresenterTests`, `TracksPresenterTests`, `PlaylistsPresenterTests`, `TrackInfoPanelPresenterTests`, `PlayStatusPresenterTests`, `MyWavePresenterTests`, `MyWaveWindowPresenterTests`, `NowPlayingPresenterTests`, `LocalSearchPresenterTests`, `YandexSearchPresenterTests`, `LocalFolderManagerPresenterTests`, `EqualizerPresenterTests`, `DatabaseStatisticsPresenterTests`, `LargeTrackInfoPresenterTests`, `AuthPresenterTests`
-- **Services/**: `CoverMetadataResolverTests`, `EventBusTests`, `MusicSourceRegistryTests`, `PlaybackQueueTests`, `PlaylistLoadStrategyResolverTests`, `PlaylistTreeComposerTests`, `TrackRepositoryCacheTests`, `TrackSourceDetectorTests`, `TrackCatalogTests`, `TrackInfoProviderTests`, `PlaylistStateStoreTests`, `LocalMusicSourceTests`, `LocalAlbumLoadStrategyTests`, `QrCodeRendererTests`
+- **Services/**: `CoverMetadataResolverTests`, `EventBusTests`, `MusicSourceRegistryTests`, `PlaybackQueueTests`, `PlaylistLoadStrategyResolverTests`, `PlaylistTreeComposerTests`, `TrackRepositoryCacheTests`, `TrackSourceDetectorTests`, `TrackCatalogTests`, `TrackInfoProviderTests`, `PlaylistStateStoreTests`, `LocalMusicSourceTests`, `LocalAlbumLoadStrategyTests`, `QrCodeRendererTests`, `DeviceAuthorizationServiceTests`
 - **UseCases/**: `SearchAndLoadPlaylistUseCaseTests`, `ToggleFavoriteUseCaseTests`, `ScanLibraryUseCaseTests`, `ShowMyWaveUseCaseTests`
 - **Views/** (headless Terminal.Gui via `FakeDriver`, `[NonParallelizable]`): `TracksViewTests`, `TracksTileViewTests`, `TracksViewHostTests`, `PlaylistRowsViewTests`, `PlaylistsViewTests`, `PlayStatusViewTests`, `SpectrumRendererTests`, `SeekBarViewTests`, `ViewFactoryTests`
 

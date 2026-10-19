@@ -1,6 +1,7 @@
 using Serilog;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
+using YamBassPlayer.Models;
 using Yandex.Music.Api;
 using Yandex.Music.Api.Common;
 using Yandex.Music.Api.Models.Account;
@@ -9,8 +10,18 @@ namespace YamBassPlayer.Services.Impl;
 
 public class AuthService : IAuthService
 {
+    private readonly IDeviceAuthorizationService _deviceAuthorization;
+    private readonly IAppConfiguration _configuration;
+
     private AuthStorage? _storage;
     private YandexMusicApi? _api;
+    private DeviceCodeChallenge? _deviceCode;
+
+    public AuthService(IDeviceAuthorizationService deviceAuthorization, IAppConfiguration configuration)
+    {
+        _deviceAuthorization = deviceAuthorization;
+        _configuration = configuration;
+    }
 
     public bool IsAuthorized { get; private set; }
         
@@ -24,6 +35,12 @@ public class AuthService : IAuthService
     {
         string? token = AppConfiguration.GetYandexMusicToken();
         return !string.IsNullOrWhiteSpace(token);
+    }
+
+    public static bool HasRefreshToken()
+    {
+        string? refreshToken = AppConfiguration.GetRefreshToken();
+        return !string.IsNullOrWhiteSpace(refreshToken);
     }
 
     public async Task<bool> AuthorizeAsync(string token)
@@ -58,11 +75,36 @@ public class AuthService : IAuthService
 
     public async Task<bool> AuthorizeFromConfigAsync()
     {
-        string? token = AppConfiguration.GetYandexMusicToken();
+        string? token = _configuration.GetYandexMusicToken();
         if (string.IsNullOrWhiteSpace(token))
             return false;
 
         return await AuthorizeAsync(token);
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> TryRefreshAsync()
+    {
+        string? refreshToken = _configuration.GetRefreshToken();
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return false;
+
+        Logging.LogBeforeCall();
+
+        DeviceAuthResult result = await _deviceAuthorization.RefreshAsync(refreshToken);
+        if (!result.IsAuthorized || !await AuthorizeAsync(result.AccessToken!))
+        {
+            Logging.LogAfterCall();
+            return false;
+        }
+
+        _configuration.SaveToken(result.AccessToken!);
+        if (!string.IsNullOrWhiteSpace(result.RefreshToken))
+            _configuration.SaveRefreshToken(result.RefreshToken);
+
+        Log.Information("Токен Яндекс.Музыки продлён по refresh-токену");
+        Logging.LogAfterCall();
+        return true;
     }
 
     /// <inheritdoc/>
@@ -116,6 +158,37 @@ public class AuthService : IAuthService
 
             return QrAuthState.Error;
         }
+    }
+
+    /// <inheritdoc/>
+    public async Task<DeviceCodeChallenge?> StartDeviceAuthorizationAsync()
+    {
+        Logging.LogBeforeCall();
+
+        IsAuthorized = false;
+        _deviceCode = await _deviceAuthorization.RequestCodeAsync();
+
+        Logging.LogAfterCall();
+        return _deviceCode;
+    }
+
+    /// <inheritdoc/>
+    public async Task<DeviceAuthResult> CheckDeviceAuthorizationAsync()
+    {
+        if (_deviceCode == null)
+            return new DeviceAuthResult(DeviceAuthState.Error, null, null, null);
+
+        DeviceAuthResult result = await _deviceAuthorization.PollAsync(_deviceCode.DeviceCode);
+        if (!result.IsAuthorized)
+            return result;
+
+        // OAuth токен выдал, но проверяем его на API Музыки: только после этого
+        // сервис считается авторизованным.
+        if (!await AuthorizeAsync(result.AccessToken!))
+            return new DeviceAuthResult(DeviceAuthState.Error, null, null, null);
+
+        Log.Information("Авторизация по коду устройства выполнена");
+        return result;
     }
 
     private QrAuthState CompleteQrAuthorization()

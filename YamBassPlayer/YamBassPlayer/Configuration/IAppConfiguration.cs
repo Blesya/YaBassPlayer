@@ -14,4 +14,16 @@ public interface IAppConfiguration
 
     /// <summary>Сохраняет токен Яндекс.Музыки в конфиг.</summary>
     void SaveToken(string token);
+
+    /// <summary>Refresh-токен Яндекс.Музыки из конфига, либо <c>null</c>.</summary>
+    string? GetRefreshToken();
+
+    /// <summary>Сохраняет refresh-токен Яндекс.Музыки в конфиг.</summary>
+    void SaveRefreshToken(string refreshToken);
+
+    /// <summary>
+    /// Идентификатор устройства для OAuth Device Flow. Генерируется при первом обращении
+    /// и дальше переиспользуется, чтобы Яндекс не копил токены под разными device_id.
+    /// </summary>
+    string GetOrCreateDeviceId();
 }

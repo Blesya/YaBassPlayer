@@ -3,14 +3,15 @@ using Terminal.Gui;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
+using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Presenters.Impl;
 
 /// <summary>
-/// Оркестрирует вход: запускает получение QR-кода, опрашивает подтверждение,
-/// проверяет введённый токен и сохраняет результат в конфиг.
+/// Оркестрирует вход: получает код для страницы Яндекса и опрашивает подтверждение,
+/// запускает получение QR-кода, проверяет введённый токен и сохраняет результат в конфиг.
 /// </summary>
 public sealed class AuthPresenter : IAuthPresenter
 {
@@ -25,7 +26,7 @@ public sealed class AuthPresenter : IAuthPresenter
 	private readonly TimeSpan _pollInterval;
 	private readonly TimeSpan _qrLifetime;
 
-	private CancellationTokenSource? _qrPolling;
+	private CancellationTokenSource? _polling;
 	private bool _authorized;
 
 	public AuthPresenter(
@@ -72,32 +73,42 @@ public sealed class AuthPresenter : IAuthPresenter
 	{
 		_view.OnMethodSelected += HandleMethodSelected;
 		_view.OnTokenSubmitted += HandleTokenSubmitted;
+		_view.OnDeviceRefreshRequested += HandleDeviceRefresh;
 		_view.OnQrRefreshRequested += HandleQrRefresh;
 		_view.OnOpenLinkRequested += HandleOpenLink;
 		_view.OnCancelRequested += HandleCancel;
 
-		_view.SetMethods([AuthMethod.Qr, AuthMethod.Token]);
-		StartQrFlowAsync().Forget();
+		_view.SetMethods([AuthMethod.Device, AuthMethod.Qr, AuthMethod.Token]);
+		StartDeviceFlowAsync().Forget();
 	}
 
-	/// <summary>Отписывается от событий и останавливает опрос QR.</summary>
+	/// <summary>Отписывается от событий и останавливает опрос.</summary>
 	public void Detach()
 	{
 		_view.OnMethodSelected -= HandleMethodSelected;
 		_view.OnTokenSubmitted -= HandleTokenSubmitted;
+		_view.OnDeviceRefreshRequested -= HandleDeviceRefresh;
 		_view.OnQrRefreshRequested -= HandleQrRefresh;
 		_view.OnOpenLinkRequested -= HandleOpenLink;
 		_view.OnCancelRequested -= HandleCancel;
 
-		CancelQrPolling();
+		CancelPolling();
+	}
+
+	/// <summary>Запрашивает код для входа на сайте и опрашивает подтверждение.</summary>
+	public Task StartDeviceFlowAsync()
+	{
+		CancelPolling();
+		_polling = new CancellationTokenSource();
+		return RunDeviceFlowAsync(_polling.Token);
 	}
 
 	/// <summary>Получает новый QR-код и опрашивает подтверждение входа.</summary>
 	public Task StartQrFlowAsync()
 	{
-		CancelQrPolling();
-		_qrPolling = new CancellationTokenSource();
-		return RunQrFlowAsync(_qrPolling.Token);
+		CancelPolling();
+		_polling = new CancellationTokenSource();
+		return RunQrFlowAsync(_polling.Token);
 	}
 
 	/// <summary>Проверяет введённый токен и при успехе закрывает окно.</summary>
@@ -138,21 +149,28 @@ public sealed class AuthPresenter : IAuthPresenter
 
 	private void HandleMethodSelected(AuthMethod method)
 	{
-		if (method == AuthMethod.Qr)
+		switch (method)
 		{
-			StartQrFlowAsync().Forget();
-			return;
+			case AuthMethod.Device:
+				StartDeviceFlowAsync().Forget();
+				return;
+			case AuthMethod.Qr:
+				StartQrFlowAsync().Forget();
+				return;
+			default:
+				CancelPolling();
+				_view.SetStatus("Вставьте токен Яндекс.Музыки и нажмите «Войти».");
+				return;
 		}
-
-		CancelQrPolling();
-		_view.SetStatus("Вставьте токен Яндекс.Музыки и нажмите «Войти».");
 	}
+
+	private void HandleDeviceRefresh() => StartDeviceFlowAsync().Forget();
 
 	private void HandleQrRefresh() => StartQrFlowAsync().Forget();
 
 	private void HandleCancel()
 	{
-		CancelQrPolling();
+		CancelPolling();
 		_view.Close();
 	}
 
@@ -173,11 +191,116 @@ public sealed class AuthPresenter : IAuthPresenter
 		}
 	}
 
-	private void CancelQrPolling()
+	private void CancelPolling()
 	{
-		_qrPolling?.Cancel();
-		_qrPolling?.Dispose();
-		_qrPolling = null;
+		_polling?.Cancel();
+		_polling?.Dispose();
+		_polling = null;
+	}
+
+	private async Task RunDeviceFlowAsync(CancellationToken token)
+	{
+		try
+		{
+			_uiDispatcher.Invoke(() =>
+			{
+				_view.SetBusy(true);
+				_view.SetStatus("Получаем код для входа…");
+			});
+
+			DeviceCodeChallenge? challenge = await _authService.StartDeviceAuthorizationAsync();
+			if (token.IsCancellationRequested)
+				return;
+
+			if (challenge is null)
+			{
+				_uiDispatcher.Invoke(() =>
+				{
+					_view.SetBusy(false);
+					_view.SetStatus("Не удалось получить код. Проверьте связь и нажмите «Новый код».", isError: true);
+				});
+				return;
+			}
+
+			_uiDispatcher.Invoke(() =>
+			{
+				bool copied = _view.ShowDeviceCode(challenge.UserCode, challenge.VerificationUrl);
+				_view.SetBusy(false);
+				_view.SetStatus(copied
+					? $"Код скопирован в буфер обмена. Вставьте его на {challenge.VerificationUrl}."
+					: $"Откройте {challenge.VerificationUrl} и введите код.");
+			});
+
+			await PollDeviceAsync(challenge, token);
+		}
+		catch (Exception ex)
+		{
+			_errorHandler.Handle(ex);
+			_uiDispatcher.Invoke(() =>
+			{
+				_view.SetBusy(false);
+				_view.SetStatus($"Ошибка входа по коду: {ex.Message}", isError: true);
+			});
+		}
+	}
+
+	private async Task PollDeviceAsync(DeviceCodeChallenge challenge, CancellationToken token)
+	{
+		DateTime deadline = DateTime.UtcNow + challenge.Lifetime;
+		int consecutiveErrors = 0;
+
+		while (!token.IsCancellationRequested)
+		{
+			try
+			{
+				await Task.Delay(challenge.Interval, token);
+			}
+			catch (TaskCanceledException)
+			{
+				return;
+			}
+
+			if (token.IsCancellationRequested)
+				return;
+
+			DeviceAuthResult result = await _authService.CheckDeviceAuthorizationAsync();
+			if (token.IsCancellationRequested)
+				return;
+
+			switch (result.State)
+			{
+				case DeviceAuthState.Authorized:
+					CompleteAuthorization(result.AccessToken, result.RefreshToken);
+					return;
+				case DeviceAuthState.Expired:
+					_uiDispatcher.Invoke(() =>
+						_view.SetStatus("Код устарел. Нажмите «Новый код».", isError: true));
+					return;
+				case DeviceAuthState.Denied:
+					_uiDispatcher.Invoke(() =>
+						_view.SetStatus("Доступ отклонён. Нажмите «Новый код».", isError: true));
+					return;
+				case DeviceAuthState.Error:
+					consecutiveErrors++;
+					if (consecutiveErrors == ErrorTolerance)
+					{
+						_uiDispatcher.Invoke(() =>
+							_view.SetStatus("Нет ответа от Яндекса. Продолжаем ждать подтверждения…"));
+					}
+
+					break;
+				default:
+					consecutiveErrors = 0;
+					break;
+			}
+
+			if (DateTime.UtcNow >= deadline)
+			{
+				_uiDispatcher.Invoke(() =>
+					_view.SetStatus("Код устарел. Нажмите «Новый код».", isError: true));
+				return;
+			}
+		}
 	}
 
 	private async Task RunQrFlowAsync(CancellationToken token)
@@ -280,13 +403,16 @@ public sealed class AuthPresenter : IAuthPresenter
 		}
 	}
 
-	private void CompleteAuthorization()
+	private void CompleteAuthorization(string? token = null, string? refreshToken = null)
 	{
 		_authorized = true;
 
-		string? token = TryGetToken();
-		if (!string.IsNullOrWhiteSpace(token))
-			_appConfiguration.SaveToken(token);
+		string? accessToken = string.IsNullOrWhiteSpace(token) ? TryGetToken() : token;
+		if (!string.IsNullOrWhiteSpace(accessToken))
+			_appConfiguration.SaveToken(accessToken);
+
+		if (!string.IsNullOrWhiteSpace(refreshToken))
+			_appConfiguration.SaveRefreshToken(refreshToken);
 
 		_uiDispatcher.Invoke(() =>
 		{

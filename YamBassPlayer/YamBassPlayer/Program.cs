@@ -19,13 +19,16 @@ internal class Program
 
 		try
 		{
-			var authService = new AuthService();
+			var configuration = new AppConfigurationProvider();
+			var authService = new AuthService(
+				new DeviceAuthorizationService(configuration),
+				configuration);
 			bool authorized = await TryAuthorizeAsync(authService);
 
 			// Токена нет или он устарел — показываем окно входа с выбором способа.
 			if (!authorized)
 			{
-				authorized = RunAuthWindow(authService);
+				authorized = RunAuthWindow(authService, configuration);
 			}
 
 			if (!authorized)
@@ -65,17 +68,20 @@ internal class Program
 		}
 	}
 
-	/// <summary>Пытается войти по токену из конфига, не открывая окно.</summary>
+	/// <summary>
+	/// Пытается войти без окна: сначала токеном из конфига, затем — тихо продлив его
+	/// refresh-токеном (access-токен истёк или был отозван).
+	/// </summary>
 	private static async Task<bool> TryAuthorizeAsync(IAuthService authService)
 	{
-		if (!AuthService.HasToken())
-			return false;
+		if (AuthService.HasToken() && await authService.AuthorizeFromConfigAsync())
+			return true;
 
-		return await authService.AuthorizeFromConfigAsync();
+		return AuthService.HasRefreshToken() && await authService.TryRefreshAsync();
 	}
 
-	/// <summary>Открывает окно входа с выбором способа (QR-код или токен).</summary>
-	private static bool RunAuthWindow(IAuthService authService)
+	/// <summary>Открывает окно входа с выбором способа (код на сайте, QR-код или токен).</summary>
+	private static bool RunAuthWindow(IAuthService authService, IAppConfiguration configuration)
 	{
 		Log.Information("Требуется вход, открываем окно авторизации");
 		Application.Init();
@@ -89,7 +95,7 @@ internal class Program
 				new AuthView(),
 				new UiDispatcher(),
 				new UiErrorHandler(),
-				new AppConfigurationProvider());
+				configuration);
 
 			return presenter.Run();
 		}

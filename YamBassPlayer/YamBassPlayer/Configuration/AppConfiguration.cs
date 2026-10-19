@@ -48,6 +48,40 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	public static string? GetRefreshToken()
+	{
+		try { return LoadJsonNode()["YandexMusic"]?["RefreshToken"]?.GetValue<string>(); }
+		catch { return null; }
+	}
+
+	public static void SaveRefreshToken(string refreshToken)
+	{
+		var root = LoadJsonNode();
+		var section = root["YandexMusic"]?.AsObject() ?? new JsonObject();
+		section["RefreshToken"] = refreshToken;
+		root["YandexMusic"] = section;
+		SaveJsonNode(root);
+	}
+
+	/// <summary>
+	/// Идентификатор устройства для OAuth Device Flow: генерируется один раз и дальше
+	/// переиспользуется, иначе каждый вход создавал бы Яндексу новый токен устройства.
+	/// </summary>
+	public static string GetOrCreateDeviceId()
+	{
+		var root = LoadJsonNode();
+		string? existing = root["YandexMusic"]?["DeviceId"]?.GetValue<string>();
+		if (!string.IsNullOrWhiteSpace(existing))
+			return existing;
+
+		string deviceId = Guid.NewGuid().ToString("N");
+		var section = root["YandexMusic"]?.AsObject() ?? new JsonObject();
+		section["DeviceId"] = deviceId;
+		root["YandexMusic"] = section;
+		SaveJsonNode(root);
+		return deviceId;
+	}
+
 	public static float[] GetEqualizerBands()
 	{
 		try

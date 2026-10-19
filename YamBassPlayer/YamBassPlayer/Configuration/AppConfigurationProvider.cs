@@ -12,4 +12,10 @@ public sealed class AppConfigurationProvider : IAppConfiguration
     public string? GetYandexMusicToken() => AppConfiguration.GetYandexMusicToken();
 
     public void SaveToken(string token) => AppConfiguration.SaveToken(token);
+
+    public string? GetRefreshToken() => AppConfiguration.GetRefreshToken();
+
+    public void SaveRefreshToken(string refreshToken) => AppConfiguration.SaveRefreshToken(refreshToken);
+
+    public string GetOrCreateDeviceId() => AppConfiguration.GetOrCreateDeviceId();
 }

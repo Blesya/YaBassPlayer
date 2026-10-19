@@ -4,7 +4,8 @@ namespace YamBassPlayer.Views;
 
 /// <summary>
 /// Стартовое окно авторизации: слева список способов входа, справа — содержимое
-/// выбранного способа (QR-код или поле для токена), внизу строка состояния и кнопки.
+/// выбранного способа (код на сайте, QR-код или поле для токена), внизу строка
+/// состояния и кнопки.
 /// </summary>
 public interface IAuthView : IModalView
 {
@@ -13,6 +14,9 @@ public interface IAuthView : IModalView
 
 	/// <summary>Пользователь ввёл токен и подтвердил вход.</summary>
 	event Action<string>? OnTokenSubmitted;
+
+	/// <summary>Пользователь запросил новый код для входа по Device Flow.</summary>
+	event Action? OnDeviceRefreshRequested;
 
 	/// <summary>Пользователь запросил новый QR-код.</summary>
 	event Action? OnQrRefreshRequested;
@@ -34,6 +38,10 @@ public interface IAuthView : IModalView
 
 	/// <summary>Пишет текст в строку состояния.</summary>
 	void SetStatus(string text, bool isError = false);
+
+	/// <summary>Показывает код, который пользователь вводит на странице Яндекса, и ссылку на неё.</summary>
+	/// <returns><c>true</c>, если код удалось положить в буфер обмена.</returns>
+	bool ShowDeviceCode(string userCode, string link);
 
 	/// <summary>Показывает QR-код и ссылку, закодированную в нём.</summary>
 	void ShowQrCode(string qrText, string link);

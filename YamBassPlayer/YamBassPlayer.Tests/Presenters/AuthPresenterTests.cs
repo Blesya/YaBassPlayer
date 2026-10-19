@@ -2,6 +2,7 @@ using Moq;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Presenters.Impl;
+using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
 using Yandex.Music.Api.Common;
@@ -21,6 +22,7 @@ public sealed class AuthPresenterTests
     private Mock<IAppConfiguration> _configuration = null!;
     private FakeUiDispatcher _ui = null!;
     private TaskCompletionSource<string> _pendingQrLink = null!;
+    private TaskCompletionSource<DeviceCodeChallenge?> _pendingDeviceCode = null!;
     private AuthPresenter _presenter = null!;
 
     [SetUp]
@@ -35,9 +37,12 @@ public sealed class AuthPresenterTests
 
         _authService.SetupGet(s => s.Storage).Returns(new AuthStorage());
 
-        // По умолчанию получение QR-ссылки «зависает», чтобы тесты не запускали опрос.
+        // По умолчанию получение кодов «зависает», чтобы тесты не запускали опрос.
         _pendingQrLink = new TaskCompletionSource<string>();
         _authService.Setup(s => s.StartQrAuthorizationAsync()).Returns(_pendingQrLink.Task);
+
+        _pendingDeviceCode = new TaskCompletionSource<DeviceCodeChallenge?>();
+        _authService.Setup(s => s.StartDeviceAuthorizationAsync()).Returns(_pendingDeviceCode.Task);
 
         _presenter = new AuthPresenter(
             _authService.Object,
@@ -90,6 +95,81 @@ public sealed class AuthPresenterTests
         _view.Verify(v => v.Close(), Times.Never);
     }
 
+    // ──────────────── Код на сайте ────────────────
+
+    [Test]
+    public async Task StartDeviceFlowAsync_WhenConfirmed_SavesTokensAndCloses()
+    {
+        DeviceCodeChallenge challenge = DeviceChallenge();
+        _authService.Setup(s => s.StartDeviceAuthorizationAsync()).ReturnsAsync(challenge);
+        _authService.Setup(s => s.CheckDeviceAuthorizationAsync())
+            .ReturnsAsync(new DeviceAuthResult(DeviceAuthState.Authorized, "access", "refresh", TimeSpan.FromDays(1)));
+        _view.Setup(v => v.ShowDeviceCode(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
+
+        await _presenter.StartDeviceFlowAsync();
+
+        Assert.That(_presenter.Authorized, Is.True);
+        _view.Verify(v => v.ShowDeviceCode("bc7zfzxu", "https://ya.ru/device"), Times.Once);
+        _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("скопирован")), false), Times.Once);
+        _configuration.Verify(c => c.SaveToken("access"), Times.Once);
+        _configuration.Verify(c => c.SaveRefreshToken("refresh"), Times.Once);
+        _view.Verify(v => v.Close(), Times.Once);
+    }
+
+    [Test]
+    public async Task StartDeviceFlowAsync_ClipboardUnavailable_AsksToTypeCode()
+    {
+        _authService.Setup(s => s.StartDeviceAuthorizationAsync()).ReturnsAsync(DeviceChallenge());
+        _authService.Setup(s => s.CheckDeviceAuthorizationAsync())
+            .ReturnsAsync(new DeviceAuthResult(DeviceAuthState.Expired, null, null, null));
+
+        await _presenter.StartDeviceFlowAsync();
+
+        _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("Откройте")), false), Times.Once);
+    }
+
+    [Test]
+    public async Task StartDeviceFlowAsync_PendingThenAuthorized_ClosesOnConfirmation()
+    {
+        _authService.Setup(s => s.StartDeviceAuthorizationAsync()).ReturnsAsync(DeviceChallenge());
+        _authService.SetupSequence(s => s.CheckDeviceAuthorizationAsync())
+            .ReturnsAsync(Pending())
+            .ReturnsAsync(Pending())
+            .ReturnsAsync(new DeviceAuthResult(DeviceAuthState.Authorized, "access", null, null));
+
+        await _presenter.StartDeviceFlowAsync();
+
+        Assert.That(_presenter.Authorized, Is.True);
+        _view.Verify(v => v.Close(), Times.Once);
+    }
+
+    [Test]
+    public async Task StartDeviceFlowAsync_Expired_ShowsErrorAndKeepsWindowOpen()
+    {
+        _authService.Setup(s => s.StartDeviceAuthorizationAsync()).ReturnsAsync(DeviceChallenge());
+        _authService.Setup(s => s.CheckDeviceAuthorizationAsync())
+            .ReturnsAsync(new DeviceAuthResult(DeviceAuthState.Expired, null, null, null));
+
+        await _presenter.StartDeviceFlowAsync();
+
+        Assert.That(_presenter.Authorized, Is.False);
+        _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("устарел")), true), Times.Once);
+        _view.Verify(v => v.Close(), Times.Never);
+    }
+
+    [Test]
+    public async Task StartDeviceFlowAsync_NoChallenge_ShowsError()
+    {
+        _authService.Setup(s => s.StartDeviceAuthorizationAsync())
+            .ReturnsAsync((DeviceCodeChallenge?)null);
+
+        await _presenter.StartDeviceFlowAsync();
+
+        Assert.That(_presenter.Authorized, Is.False);
+        _view.Verify(v => v.ShowDeviceCode(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("Не удалось получить код")), true), Times.Once);
+    }
+
     // ──────────────── QR-код ────────────────
 
     [Test]
@@ -138,12 +218,14 @@ public sealed class AuthPresenterTests
     // ──────────────── Привязка событий ────────────────
 
     [Test]
-    public void Attach_OffersQrAndTokenMethods()
+    public void Attach_OffersAllMethods()
     {
         _presenter.Attach();
 
         _view.Verify(v => v.SetMethods(It.Is<IReadOnlyList<AuthMethod>>(
-            m => m.Contains(AuthMethod.Qr) && m.Contains(AuthMethod.Token))), Times.Once);
+            m => m.Contains(AuthMethod.Device)
+                 && m.Contains(AuthMethod.Qr)
+                 && m.Contains(AuthMethod.Token))), Times.Once);
 
         _presenter.Detach();
     }
@@ -161,13 +243,26 @@ public sealed class AuthPresenterTests
     }
 
     [Test]
-    public void SelectToken_StopsQrPolling()
+    public void SelectToken_StopsPolling()
     {
         _presenter.Attach();
 
         _view.Raise(v => v.OnMethodSelected += null, AuthMethod.Token);
 
         _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("токен")), false), Times.AtLeastOnce);
+
+        _presenter.Detach();
+    }
+
+    [Test]
+    public void RefreshDevice_RequestsNewCode()
+    {
+        _presenter.Attach();
+        _authService.Invocations.Clear();
+
+        _view.Raise(v => v.OnDeviceRefreshRequested += null);
+
+        _authService.Verify(s => s.StartDeviceAuthorizationAsync(), Times.Once);
 
         _presenter.Detach();
     }
@@ -184,4 +279,9 @@ public sealed class AuthPresenterTests
 
         _presenter.Detach();
     }
+
+    private static DeviceCodeChallenge DeviceChallenge() =>
+        new("dev-code", "bc7zfzxu", "https://ya.ru/device", FastPoll, LongLifetime);
+
+    private static DeviceAuthResult Pending() => new(DeviceAuthState.Pending, null, null, null);
 }
