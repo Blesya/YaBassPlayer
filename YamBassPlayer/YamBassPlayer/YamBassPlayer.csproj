@@ -4,6 +4,8 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <!-- CS0436: вендоренный NetDriver намеренно затеняет internal-типы Terminal.Gui. -->
+        <NoWarn>$(NoWarn);CS0436</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

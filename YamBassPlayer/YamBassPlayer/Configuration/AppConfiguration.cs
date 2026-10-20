@@ -122,6 +122,16 @@ public class AppConfiguration
 		catch { return null; }
 	}
 
+	/// <summary>
+	/// Режим TrueColor: "auto" (по умолчанию — если терминал умеет VT),
+	/// "on" — пробовать всегда, "off" — только 16 цветов.
+	/// </summary>
+	public static string GetTrueColorMode()
+	{
+		try { return LoadJsonNode()["Ui"]?["TrueColor"]?.GetValue<string>() ?? "auto"; }
+		catch { return "auto"; }
+	}
+
 	public static void SaveTheme(string themeName)
 	{
 		var root = LoadJsonNode();

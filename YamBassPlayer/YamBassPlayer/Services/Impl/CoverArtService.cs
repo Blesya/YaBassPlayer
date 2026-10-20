@@ -3,14 +3,17 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using TguiColor = Terminal.Gui.Color;
+using YamBassPlayer.TerminalOutput;
 
 namespace YamBassPlayer.Services.Impl;
 
 /// <summary>
-/// Renders cover images into ASCII art with Floyd–Steinberg dithering.
-/// The heavy image processing runs on the thread pool, and results are cached by
-/// (path, width, height) so switching tracks or opening several windows does not
-/// re-decode the same cover.
+/// Рендерит обложки в ASCII-арт. В обычном режиме — 2×2 блоки с Floyd–Steinberg
+/// и квантованием в 16 цветов; в TrueColor-режиме — полублоки <c>▀</c> с точными
+/// 24-битными цветами (вертикальное разрешение удваивается).
+/// Тяжёлая обработка идёт в пуле потоков, результат кэшируется по
+/// (path, width, height, режим цвета), чтобы переключение треков и несколько окон
+/// не декодировали одну и ту же обложку повторно.
 /// </summary>
 public sealed class CoverArtService : ICoverArtService
 {
@@ -25,13 +28,14 @@ public sealed class CoverArtService : ICoverArtService
 		if (string.IsNullOrWhiteSpace(imagePath) || width <= 0 || height <= 0)
 			return Task.FromResult<CoverArt?>(null);
 
-		var key = new CacheKey(imagePath, width, height);
+		bool trueColor = TerminalColorMode.TrueColor;
+		var key = new CacheKey(imagePath, width, height, trueColor);
 		bool added = false;
 
 		Task<CoverArt?> task = _cache.GetOrAdd(key, k =>
 		{
 			added = true;
-			return Task.Run(() => Render(k.Path, k.Width, k.Height), CancellationToken.None);
+			return Task.Run(() => Render(k.Path, k.Width, k.Height, k.TrueColor), CancellationToken.None);
 		});
 
 		if (added)
@@ -55,7 +59,63 @@ public sealed class CoverArtService : ICoverArtService
 		}
 	}
 
-	private static CoverArt? Render(string imagePath, int targetWidth, int targetHeight)
+	private static CoverArt? Render(string imagePath, int targetWidth, int targetHeight, bool trueColor)
+		=> trueColor
+			? RenderTrueColor(imagePath, targetWidth, targetHeight)
+			: RenderAnsi16(imagePath, targetWidth, targetHeight);
+
+	/// <summary>
+	/// TrueColor: одна клетка — два пикселя по вертикали (верхний в FG, нижний в BG).
+	/// Квантование и дизеринг не нужны, цвет точный.
+	/// </summary>
+	private static CoverArt? RenderTrueColor(string imagePath, int targetWidth, int targetHeight)
+	{
+		try
+		{
+			if (!File.Exists(imagePath))
+				return null;
+
+			using Image<Rgba32> image = Image.Load<Rgba32>(imagePath);
+			image.Mutate(ctx => ctx.Resize(targetWidth, targetHeight * 2));
+
+			int w = image.Width;
+			int h = image.Height;
+			if (w < 1 || h < 2)
+				return null;
+
+			int outH = h / 2;
+			var pixels = new CoverPixel[w * outH];
+
+			for (int y = 0; y < outH; y++)
+			{
+				for (int x = 0; x < w; x++)
+				{
+					Rgba32 top = image[x, y * 2];
+					Rgba32 bottom = image[x, y * 2 + 1];
+
+					TguiColor topAnsi = NearestAnsiColorBasic(top.R, top.G, top.B, out _);
+					TguiColor bottomAnsi = NearestAnsiColorBasic(bottom.R, bottom.G, bottom.B, out _);
+
+					pixels[y * w + x] = new CoverPixel(
+						'▀',
+						new Rgb(top.R, top.G, top.B),
+						new Rgb(bottom.R, bottom.G, bottom.B),
+						topAnsi,
+						bottomAnsi);
+				}
+			}
+
+			return new CoverArt(w, outH, pixels, TrueColor: true);
+		}
+		catch
+		{
+			// Нечитаемое/битое изображение — обложка просто не отображается.
+			return null;
+		}
+	}
+
+	/// <summary>Обычный режим: 2×2 блок → глиф, 16 цветов + Floyd–Steinberg.</summary>
+	private static CoverArt? RenderAnsi16(string imagePath, int targetWidth, int targetHeight)
 	{
 		try
 		{
@@ -223,7 +283,12 @@ public sealed class CoverArtService : ICoverArtService
 		e01 = CalcError(p01, (mask & 4) != 0 ? fgActual : bgActual);
 		e11 = CalcError(p11, (mask & 8) != 0 ? fgActual : bgActual);
 
-		return new CoverPixel(MaskToGlyph(mask), fg, bg);
+		return new CoverPixel(
+			MaskToGlyph(mask),
+			new Rgb(fgActual.R, fgActual.G, fgActual.B),
+			new Rgb(bgActual.R, bgActual.G, bgActual.B),
+			fg,
+			bg);
 	}
 
 	private static (float R, float G, float B) CalcError(Rgba32 original, (byte R, byte G, byte B) actual)
@@ -257,5 +322,5 @@ public sealed class CoverArtService : ICoverArtService
 		return palette[bestIdx].Col;
 	}
 
-	private readonly record struct CacheKey(string Path, int Width, int Height);
+	private readonly record struct CacheKey(string Path, int Width, int Height, bool TrueColor);
 }

@@ -8,6 +8,7 @@ using YamBassPlayer.Models;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
+using YamBassPlayer.TerminalOutput;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer;
@@ -21,6 +22,7 @@ internal class Program
 		SetWindowTitle();
 
 		var consoleWindow = new ConsoleWindow();
+		bool uiInitialized = false;
 
 		try
 		{
@@ -50,7 +52,11 @@ internal class Program
 
 			// UI поднимаем до инициализации BASS: при неудаче она показывает
 			// MessageBox, а до Application.Init() драйвера ещё нет.
-			Application.Init();
+			// Если терминал умеет VT — берём ANSI-драйвер с TrueColor-обложками,
+			// иначе Terminal.Gui поднимет штатный (16 цветов).
+			TrueColorDriverFactory.TryCreate(out ConsoleDriver? driver, out IMainLoopDriver? mainLoopDriver);
+			Application.Init(driver, mainLoopDriver);
+			uiInitialized = true;
 			Themes.InitializeDefaults();
 
 			IAudioPlayer audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
@@ -66,6 +72,10 @@ internal class Program
 			Log.Information("Запуск пользовательского интерфейса");
 			Application.Run();
 
+			// Обязательно: драйвер возвращает терминал в нормальное состояние
+			// (альтернативный экран, курсор, режимы консоли).
+			ShutdownUi(ref uiInitialized);
+
 			// Если пользователь согласился на обновление, апдейтер стартует уже после закрытия UI:
 			// подменять работающий exe и загруженные нативные DLL нельзя.
 			ServicesProvider.Ioc.Resolve<IUpdateInstaller>().LaunchPending();
@@ -77,10 +87,35 @@ internal class Program
 		}
 		finally
 		{
+			// Если исключение случилось до Application.Run(), драйвер всё равно
+			// нужно корректно погасить, иначе терминал останется в alt-screen.
+			ShutdownUi(ref uiInitialized);
+
 			SaveWindowPosition(consoleWindow);
 			SaveWindowSize(consoleWindow);
 			Log.Information("Завершение работы YamBassPlayer");
 			Logging.Close();
+		}
+	}
+
+	/// <summary>
+	/// Завершает Terminal.Gui ровно один раз: возвращает терминал в нормальное
+	/// состояние (альтернативный экран, курсор, режимы консоли).
+	/// </summary>
+	private static void ShutdownUi(ref bool uiInitialized)
+	{
+		if (!uiInitialized)
+			return;
+
+		uiInitialized = false;
+
+		try
+		{
+			Application.Shutdown();
+		}
+		catch (Exception exception)
+		{
+			Log.Warning(exception, "Не удалось корректно завершить Terminal.Gui");
 		}
 	}
 
