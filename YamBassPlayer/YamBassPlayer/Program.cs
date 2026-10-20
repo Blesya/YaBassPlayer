@@ -2,6 +2,7 @@ using Autofac;
 using Serilog;
 using Terminal.Gui;
 using YamBassPlayer.Configuration;
+using YamBassPlayer.Constants;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Presenters.Impl;
@@ -17,6 +18,7 @@ internal class Program
 	{
 		Logging.Initialize();
 		Log.Information("Запуск YamBassPlayer. Каталог: {BaseDirectory}", AppDomain.CurrentDomain.BaseDirectory);
+		SetWindowTitle();
 
 		var consoleWindow = new ConsoleWindow();
 
@@ -83,6 +85,23 @@ internal class Program
 	}
 
 	private static readonly TimeSpan WindowSizeSaveInterval = TimeSpan.FromSeconds(1);
+
+	/// <summary>
+	/// Заголовок терминального окна на старте: имя приложения и версия. Когда
+	/// начнётся воспроизведение, его сменит исполнитель и название трека.
+	/// </summary>
+	private static void SetWindowTitle()
+	{
+		try
+		{
+			Console.Title = AppInfo.WindowTitle;
+		}
+		catch (Exception exception)
+		{
+			// Без консоли (вывод перенаправлен) заголовок ставить некуда — не повод падать.
+			Log.Debug(exception, "Не удалось установить заголовок терминального окна");
+		}
+	}
 
 	/// <summary>
 	/// Восстанавливает сохранённый размер терминального окна. Терминал может

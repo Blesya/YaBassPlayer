@@ -1,5 +1,6 @@
 using Autofac;
 using Terminal.Gui;
+using YamBassPlayer.Constants;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Presenters;
 using YamBassPlayer.Configuration;
@@ -11,8 +12,6 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class MainWindow : Window
 {
-	private const string YamBassPlayerTitle = "YamBassPlayer";
-
 	/// <summary>Нижняя полоса со спектром: командная строка 2, панель 6, кнопки спектра 1, спектр 10.</summary>
 	private const int BottomHeightWithSpectrum = 19;
 
@@ -57,7 +56,7 @@ public sealed class MainWindow : Window
 		PlaylistsView playlistsView,
 		TracksViewHost tracksView,
 		TrackInfoPanelView trackInfoPanelView)
-		: base(YamBassPlayerTitle)
+		: base(AppInfo.WindowTitle)
 	{
 		_coordinator = coordinator;
 		_tracksPresenter = tracksPresenter;

@@ -21,6 +21,9 @@ public static class AppInfo
 	/// <summary>Версия сборки без суффикса коммита: «0.0.1».</summary>
 	public static string Version { get; } = ResolveVersion();
 
+	/// <summary>Заголовок окна на старте: имя приложения и версия, «YamBassPlayer 0.0.1».</summary>
+	public static string WindowTitle { get; } = $"{AppName} {Version}";
+
 	/// <summary>Версия для сравнения с релизом; <c>null</c>, если версия не парсится.</summary>
 	public static System.Version? ParsedVersion { get; } =
 		System.Version.TryParse(Version, out System.Version? parsed) ? parsed : null;
