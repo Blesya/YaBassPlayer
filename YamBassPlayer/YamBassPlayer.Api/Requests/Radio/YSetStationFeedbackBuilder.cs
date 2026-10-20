@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Common;
 using YamBassPlayer.Api.Models.Radio;
 using YamBassPlayer.Api.Models.Track;
 using YamBassPlayer.Api.Requests.Common;
@@ -18,7 +19,7 @@ using YamBassPlayer.Api.Requests.Common.Attributes;
 namespace YamBassPlayer.Api.Requests.Radio
 {
     [YApiRequest(WebRequestMethods.Http.Post, "rotor/station/{type}:{tag}/feedback")]
-    public class YSetStationFeedbackBuilder : YRequestBuilder<string, (YStationFeedbackType type, YStation station, YTrack track, string batchId, double totalPlayedSeconds)>
+    public class YSetStationFeedbackBuilder : YRequestBuilder<YResponse<string>, (YStationFeedbackType type, YStation station, YTrack track, string batchId, double totalPlayedSeconds)>
     {
         public YSetStationFeedbackBuilder(YandexMusicApi yandex, AuthStorage auth) : base(yandex, auth)
         {

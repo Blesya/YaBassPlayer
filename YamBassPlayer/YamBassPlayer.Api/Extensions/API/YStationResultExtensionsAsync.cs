@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+using YamBassPlayer.Api.Models.Common;
 using YamBassPlayer.Api.Models.Radio;
 using YamBassPlayer.Api.Models.Track;
 
@@ -23,7 +24,7 @@ namespace YamBassPlayer.Api.Extensions.API
                 .Result;
         }
 
-        public static Task<string> SendFeedBackAsync(this YStation station, YStationFeedbackType type, YTrack track = null, string batchId = "", double totalPlayedSeconds = 0)
+        public static Task<YResponse<string>> SendFeedBackAsync(this YStation station, YStationFeedbackType type, YTrack track = null, string batchId = "", double totalPlayedSeconds = 0)
         {
             return station.Context.API.Radio.SendStationFeedBackAsync(station.Context.Storage, station, type, track, batchId, totalPlayedSeconds);
         }

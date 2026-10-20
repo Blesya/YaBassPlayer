@@ -91,7 +91,7 @@ namespace YamBassPlayer.Api.API
         /// <param name="batchId">Уникальный идентификатор партии треков. Возвращается при получении треков</param>
         /// <param name="totalPlayedSeconds">Сколько было проиграно секунд трека перед действием</param>
         /// <returns></returns>
-        public string SendStationFeedBack(AuthStorage storage, YStation station, YStationFeedbackType type, YTrack track = null, string batchId = "", double totalPlayedSeconds = 0)
+        public YResponse<string> SendStationFeedBack(AuthStorage storage, YStation station, YStationFeedbackType type, YTrack track = null, string batchId = "", double totalPlayedSeconds = 0)
         {
             return SendStationFeedBackAsync(storage, station, type, track, batchId, totalPlayedSeconds).GetAwaiter().GetResult();
         }

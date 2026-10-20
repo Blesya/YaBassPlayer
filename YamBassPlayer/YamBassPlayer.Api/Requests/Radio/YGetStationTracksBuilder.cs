@@ -34,7 +34,7 @@ namespace YamBassPlayer.Api.Requests.Radio
             if (!string.IsNullOrEmpty(tuple.prevTrackId))
                 query.Add("queue", tuple.prevTrackId);
 
-            return base.GetQueryParams(tuple);
+            return query;
         }
     }
 }

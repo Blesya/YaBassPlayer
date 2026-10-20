@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 
+using YamBassPlayer.Api.Models.Common;
 using YamBassPlayer.Api.Models.Radio;
 using YamBassPlayer.Api.Models.Track;
 
@@ -20,7 +21,7 @@ namespace YamBassPlayer.Api.Extensions.API
             return SetSettings2Async(station, settings).GetAwaiter().GetResult();
         }
 
-        public static string SendFeedBack(this YStation station, YStationFeedbackType type, YTrack track = null, string batchId = "", double totalPlayedSeconds = 0)
+        public static YResponse<string> SendFeedBack(this YStation station, YStationFeedbackType type, YTrack track = null, string batchId = "", double totalPlayedSeconds = 0)
         {
             return SendFeedBackAsync(station, type, track, batchId, totalPlayedSeconds).GetAwaiter().GetResult();
         }
