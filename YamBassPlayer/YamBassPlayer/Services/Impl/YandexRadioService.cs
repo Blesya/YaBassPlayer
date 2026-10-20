@@ -1,3 +1,5 @@
+using Serilog;
+
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Api;
@@ -9,6 +11,9 @@ namespace YamBassPlayer.Services.Impl;
 
 public sealed class YandexRadioService : IYandexRadioService
 {
+	private const string MyWaveType = "user";
+	private const string MyWaveTag = "onyourwave";
+
 	private readonly YandexMusicApi _api;
 	private readonly AuthStorage _storage;
 
@@ -25,7 +30,7 @@ public sealed class YandexRadioService : IYandexRadioService
 		_storage = storage;
 	}
 
-	public Task<bool> StartMyWaveAsync() => StartStationAsync("user", "onyourwave");
+	public Task<bool> StartMyWaveAsync() => StartStationAsync(MyWaveType, MyWaveTag);
 
 	public async Task<bool> StartTrackWaveAsync(string seedTrackId)
 	{
@@ -37,30 +42,66 @@ public sealed class YandexRadioService : IYandexRadioService
 
 	private async Task<bool> StartStationAsync(string type, string tag)
 	{
+		Reset();
+
 		try
 		{
-			Reset();
-			var response = await _api.Radio.GetStationAsync(_storage, type, tag);
-			_station = response?.Result?.FirstOrDefault();
-			return _station != null;
+			// Эндпоинт /rotor/station/{type}:{tag}/info у Яндекса отвечает 451, поэтому
+			// станцию ищем в дашборде рекомендаций, а если её там нет — собираем дескриптор сами.
+			_station = await FindStationInDashboardAsync(type, tag) ?? CreateStation(type, tag);
+			Log.Information("Радиостанция {Type}:{Tag} готова", type, tag);
+			return true;
 		}
-		catch
+		catch (Exception ex)
 		{
+			Log.Warning(ex, "Не удалось запустить радиостанцию {Type}:{Tag}", type, tag);
 			return false;
 		}
+	}
+
+	private async Task<YStation?> FindStationInDashboardAsync(string type, string tag)
+	{
+		try
+		{
+			var response = await _api.Radio.GetStationsDashboardAsync(_storage);
+			return response?.Result?.Stations?
+				.FirstOrDefault(s => s.Station?.Id?.Type == type && s.Station.Id.Tag == tag);
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Не удалось получить дашборд станций, станция {Type}:{Tag} будет собрана локально", type, tag);
+			return null;
+		}
+	}
+
+	private static YStation CreateStation(string type, string tag)
+	{
+		return new YStation {
+			Station = new YStationDescription {
+				Id = new YStationId { Type = type, Tag = tag },
+				IdForFrom = $"{type}-{tag}",
+				Name = "Моя волна"
+			}
+		};
 	}
 
 	public async Task<(IReadOnlyList<string> trackIds, IReadOnlyList<Track> tracks)> FetchNextBatchAsync()
 	{
 		if (_station == null)
+		{
+			Log.Warning("Нельзя получить треки волны: станция не запущена");
 			return ([], []);
+		}
 
 		try
 		{
 			var response = await _api.Radio.GetStationTracksAsync(_storage, _station, _lastTrackId ?? "");
 			var sequence = response?.Result;
 			if (sequence == null)
+			{
+				Log.Warning("Станция {Station} вернула пустой ответ без последовательности треков", StationId);
 				return ([], []);
+			}
 
 			_currentBatchId = sequence.BatchId;
 
@@ -82,10 +123,13 @@ public sealed class YandexRadioService : IYandexRadioService
 			var trackIds = (IReadOnlyList<string>)yTracks.Select(t => t.Id).ToList();
 			var tracks = (IReadOnlyList<Track>)yTracks.Select(t => t.ToTrack()).ToList();
 
+			Log.Information("Станция {Station}: получено треков {Count}", StationId, trackIds.Count);
+
 			return (trackIds, tracks);
 		}
-		catch
+		catch (Exception ex)
 		{
+			Log.Warning(ex, "Не удалось получить треки станции {Station}", StationId);
 			return ([], []);
 		}
 	}
@@ -118,9 +162,10 @@ public sealed class YandexRadioService : IYandexRadioService
 			await _api.Radio.SendStationFeedBackAsync(
 				_storage, _station!, type, track, _currentBatchId ?? "", totalPlayedSeconds);
 		}
-		catch
+		catch (Exception ex)
 		{
 			// Фидбек не критичен — не роняем плеер при ошибке
+			Log.Debug(ex, "Не удалось отправить фидбек {FeedbackType} станции {Station}", type, StationId);
 		}
 	}
 
@@ -131,4 +176,6 @@ public sealed class YandexRadioService : IYandexRadioService
 		_lastTrackId = null;
 		_yTrackCache.Clear();
 	}
+
+	private string StationId => _station?.Station?.IdForFrom ?? "unknown";
 }
