@@ -1,10 +1,9 @@
-name: Release
+name: CI
 
-# CD: версия живёт в YamBassPlayer/Directory.Build.props. Пуш в master, у которого
-# версия ещё не опубликована, собирает Windows-дистрибутив и создаёт GitHub Release
-# v<Version> с zip-архивом. Версия не менялась — релиз не создаётся.
 on:
   push:
+    branches: [ "master" ]
+  pull_request:
     branches: [ "master" ]
   workflow_dispatch:
     inputs:
@@ -12,14 +11,6 @@ on:
         description: "Пересобрать и перезалить уже существующий релиз"
         type: boolean
         default: false
-
-permissions:
-  contents: write
-
-# Два пуша подряд не должны гоняться за один и тот же релиз.
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
 
 env:
   DOTNET_VERSION: "8.0.x"
@@ -29,9 +20,47 @@ env:
   RID: win-x64
 
 jobs:
+  # Проверка кода: пуши в master, pull request, ручной запуск.
+  build:
+    name: build
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # appsettings.json в репозитории нет (секреты), но csproj копирует его в output —
+      # без файла сборка падает с MSB3030.
+      - name: Prepare appsettings.json
+        run: Copy-Item YamBassPlayer/YamBassPlayer/appsettings.example.json YamBassPlayer/YamBassPlayer/appsettings.json
+
+      - name: Build
+        working-directory: ./YamBassPlayer
+        run: dotnet build --configuration Release
+
+      - name: Test
+        working-directory: ./YamBassPlayer
+        run: dotnet test --configuration Release --no-build
+
+  # Поставка: только push в master, только после зелёного build.
+  # Версия живёт в YamBassPlayer/Directory.Build.props. Если релиз v<Version> уже есть,
+  # джоба выходит без работы — релиз создаётся ровно один раз на версию.
   release:
     name: release
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
+    permissions:
+      contents: write
+    # Два пуша подряд не должны гоняться за один и тот же релиз.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
 
     steps:
       - name: Checkout
@@ -75,17 +104,9 @@ jobs:
             "exists=false" >> $env:GITHUB_OUTPUT
           }
 
-      # appsettings.json в репозитории нет (секреты), но csproj копирует его в output —
-      # без файла сборка падает с MSB3030.
       - name: Prepare appsettings.json
         if: steps.exists.outputs.exists == 'false'
-        shell: pwsh
         run: Copy-Item YamBassPlayer/YamBassPlayer/appsettings.example.json YamBassPlayer/YamBassPlayer/appsettings.json
-
-      - name: Test
-        if: steps.exists.outputs.exists == 'false'
-        shell: pwsh
-        run: dotnet test YamBassPlayer/YamBassPlayer.Tests/YamBassPlayer.Tests.csproj --configuration Release
 
       - name: Publish
         if: steps.exists.outputs.exists == 'false'
