@@ -23,6 +23,7 @@ internal class Program
 		try
 		{
 			RestoreWindowSize(consoleWindow);
+			RestoreWindowPosition(consoleWindow);
 
 			var configuration = new AppConfigurationProvider();
 			var authService = new AuthService(
@@ -56,6 +57,7 @@ internal class Program
 			View mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
 			Application.Top.Add(mainWindow);
 			TrackWindowSizeChanges(consoleWindow);
+			TrackWindowPositionChanges(consoleWindow);
 
 			Themes.ApplySavedTheme();
 
@@ -73,6 +75,7 @@ internal class Program
 		}
 		finally
 		{
+			SaveWindowPosition(consoleWindow);
 			SaveWindowSize(consoleWindow);
 			Log.Information("Завершение работы YamBassPlayer");
 			Logging.Close();
@@ -124,6 +127,45 @@ internal class Program
 
 		AppConfiguration.SaveWindowSize(current.Value.Width, current.Value.Height);
 		Log.Information("Размер окна сохранён: {Width}x{Height}", current.Value.Width, current.Value.Height);
+	}
+
+	/// <summary>
+	/// Восстанавливает сохранённое положение окна. Если монитор с этой точкой
+	/// отключили, окно остаётся там, куда его поставил терминал.
+	/// </summary>
+	private static void RestoreWindowPosition(IConsoleWindow consoleWindow)
+	{
+		if (AppConfiguration.GetWindowPosition() is not { } saved)
+			return;
+
+		if (consoleWindow.TrySetPosition(saved))
+			Log.Information("Положение окна восстановлено: {X},{Y}", saved.X, saved.Y);
+		else
+			Log.Information("Не удалось восстановить положение окна {X},{Y}", saved.X, saved.Y);
+	}
+
+	/// <summary>
+	/// Terminal.Gui не сообщает о перемещении окна, поэтому проверяем положение
+	/// раз в секунду: так оно сохранится, даже если окно закрыть крестиком.
+	/// </summary>
+	private static void TrackWindowPositionChanges(IConsoleWindow consoleWindow)
+	{
+		Application.MainLoop.AddTimeout(TimeSpan.FromSeconds(1), _ =>
+		{
+			SaveWindowPosition(consoleWindow);
+			return true;
+		});
+	}
+
+	/// <summary>Сохраняет положение окна в конфиг, если оно отличается от сохранённого.</summary>
+	private static void SaveWindowPosition(IConsoleWindow consoleWindow)
+	{
+		ConsoleWindowPosition? current = consoleWindow.GetPosition();
+		if (current is null || current == AppConfiguration.GetWindowPosition())
+			return;
+
+		AppConfiguration.SaveWindowPosition(current.Value.X, current.Value.Y);
+		Log.Information("Положение окна сохранено: {X},{Y}", current.Value.X, current.Value.Y);
 	}
 
 	/// <summary>

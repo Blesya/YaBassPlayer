@@ -16,4 +16,13 @@ public interface IConsoleWindow
 	/// не применился.
 	/// </summary>
 	bool TrySetSize(ConsoleWindowSize size);
+
+	/// <summary>Текущее положение окна на экране; <c>null</c>, если платформа его не отдаёт.</summary>
+	ConsoleWindowPosition? GetPosition();
+
+	/// <summary>
+	/// Передвигает окно. Возвращает <c>false</c>, если платформа/терминал этого не позволяет
+	/// или сохранённая точка больше не лежит ни на одном мониторе.
+	/// </summary>
+	bool TrySetPosition(ConsoleWindowPosition position);
 }

@@ -6,10 +6,11 @@ using YamBassPlayer.Models;
 namespace YamBassPlayer.Services.Impl;
 
 /// <summary>
-/// Размер терминального окна. Меняется запросом DTTERM/XTWINOPS
+/// Размер и положение терминального окна. Размер меняется запросом DTTERM/XTWINOPS
 /// (<c>CSI 8 ; rows ; cols t</c>): его понимают и conhost, и Windows Terminal 1.23+.
 /// Win32 <c>Console.SetWindowSize</c> для этого не годится — Windows Terminal
-/// рапортует об успехе, но само окно не меняет.
+/// рапортует об успехе, но само окно не меняет. Положение задаётся Win32
+/// <c>SetWindowPos</c> для окна терминала (в WT — его верхнеуровневого окна).
 /// </summary>
 public sealed class ConsoleWindow : IConsoleWindow
 {
@@ -27,6 +28,12 @@ public sealed class ConsoleWindow : IConsoleWindow
 
 	private const int StdOutputHandle = -11;
 	private const uint EnableVirtualTerminalProcessing = 0x0004;
+
+	private const uint GaRootOwner = 3;
+	private const uint MonitorDefaultToNull = 0;
+	private const uint SwpNoSize = 0x0001;
+	private const uint SwpNoZOrder = 0x0004;
+	private const uint SwpNoActivate = 0x0010;
 
 	public ConsoleWindowSize? GetSize()
 	{
@@ -105,6 +112,66 @@ public sealed class ConsoleWindow : IConsoleWindow
 		return true;
 	}
 
+	public ConsoleWindowPosition? GetPosition()
+	{
+		if (!OperatingSystem.IsWindows())
+			return null;
+
+		try
+		{
+			IntPtr window = GetTerminalWindow();
+			if (window == IntPtr.Zero || !GetWindowRect(window, out NativeRect rect))
+				return null;
+
+			return new ConsoleWindowPosition(rect.Left, rect.Top);
+		}
+		catch (Exception exception)
+		{
+			Log.Debug(exception, "Не удалось прочитать положение терминального окна");
+			return null;
+		}
+	}
+
+	public bool TrySetPosition(ConsoleWindowPosition position)
+	{
+		if (!OperatingSystem.IsWindows())
+			return false;
+
+		try
+		{
+			IntPtr window = GetTerminalWindow();
+			if (window == IntPtr.Zero)
+				return false;
+
+			// Сохранённый монитор мог исчезнуть: не ставим окно в пустоту.
+			if (MonitorFromPoint(new NativePoint { X = position.X, Y = position.Y }, MonitorDefaultToNull) == IntPtr.Zero)
+				return false;
+
+			return SetWindowPos(window, IntPtr.Zero, position.X, position.Y, 0, 0,
+				SwpNoSize | SwpNoZOrder | SwpNoActivate);
+		}
+		catch (Exception exception)
+		{
+			Log.Debug(exception, "Не удалось восстановить положение терминального окна {X},{Y}", position.X, position.Y);
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// В conhost это само окно консоли, в Windows Terminal — его верхнеуровневое окно
+	/// (окно псевдоконсоли является дочерним/owned-окном WT).
+	/// </summary>
+	[SupportedOSPlatform("windows")]
+	private static IntPtr GetTerminalWindow()
+	{
+		IntPtr console = GetConsoleWindow();
+		if (console == IntPtr.Zero)
+			return IntPtr.Zero;
+
+		IntPtr root = GetAncestor(console, GaRootOwner);
+		return root != IntPtr.Zero ? root : console;
+	}
+
 	[DllImport("kernel32.dll", SetLastError = true)]
 	private static extern IntPtr GetStdHandle(int nStdHandle);
 
@@ -113,4 +180,35 @@ public sealed class ConsoleWindow : IConsoleWindow
 
 	[DllImport("kernel32.dll", SetLastError = true)]
 	private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+	[DllImport("kernel32.dll")]
+	private static extern IntPtr GetConsoleWindow();
+
+	[DllImport("user32.dll")]
+	private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+	[DllImport("user32.dll", SetLastError = true)]
+	private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
+
+	[DllImport("user32.dll", SetLastError = true)]
+	private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+	[DllImport("user32.dll")]
+	private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
+
+	[StructLayout(LayoutKind.Sequential)]
+	private struct NativeRect
+	{
+		public int Left;
+		public int Top;
+		public int Right;
+		public int Bottom;
+	}
+
+	[StructLayout(LayoutKind.Sequential)]
+	private struct NativePoint
+	{
+		public int X;
+		public int Y;
+	}
 }

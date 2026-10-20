@@ -295,6 +295,32 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>Сохранённое положение терминального окна. <c>null</c> — ещё не сохранялось.</summary>
+	public static ConsoleWindowPosition? GetWindowPosition()
+	{
+		try
+		{
+			var window = LoadJsonNode()["Window"];
+			int? x = window?["Left"]?.GetValue<int>();
+			int? y = window?["Top"]?.GetValue<int>();
+			if (x is null || y is null)
+				return null;
+
+			return new ConsoleWindowPosition(x.Value, y.Value);
+		}
+		catch { return null; }
+	}
+
+	public static void SaveWindowPosition(int x, int y)
+	{
+		var root = LoadJsonNode();
+		var section = root["Window"]?.AsObject() ?? new JsonObject();
+		section["Left"] = x;
+		section["Top"] = y;
+		root["Window"] = section;
+		SaveJsonNode(root);
+	}
+
 	private static JsonObject LoadJsonNode()
 	{
 		if (_cachedRoot != null)
