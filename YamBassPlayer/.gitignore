@@ -5,10 +5,8 @@
 *.sln.docstates
 
 # Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
+# ВНИМАНИЕ: не игнорировать каталоги [Dd]ebug/ и [Rr]elease/ — в них лежат исходники
+# (например YamBassPlayer.Api/Common/Debug). Артефакты сборки отсекаются через bin/ и obj/.
 x64/
 x86/
 [Aa][Rr][Mm]/
