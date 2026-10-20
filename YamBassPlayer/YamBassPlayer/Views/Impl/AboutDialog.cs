@@ -1,6 +1,6 @@
-using System.Reflection;
 using System.Runtime.InteropServices;
 using Terminal.Gui;
+using YamBassPlayer.Constants;
 
 namespace YamBassPlayer.Views.Impl;
 
@@ -11,8 +11,6 @@ namespace YamBassPlayer.Views.Impl;
 /// </summary>
 public sealed class AboutDialog : Dialog
 {
-	private const string RepositoryUrl = "https://github.com/Blesya/YaBassPlayer";
-
 	public AboutDialog() : base("О программе", 80, 24)
 	{
 		var titleLabel = new Label
@@ -63,11 +61,9 @@ public sealed class AboutDialog : Dialog
 
 	private static string BuildText()
 	{
-		string version = GetVersion();
-
 		return string.Join("\n", new[]
 		{
-			$"Версия:               {version}",
+			$"Версия:               {AppInfo.Version}",
 			$"Среда выполнения:     {RuntimeInformation.FrameworkDescription}",
 			$"Операционная система: {RuntimeInformation.OSDescription}",
 			"",
@@ -101,26 +97,9 @@ public sealed class AboutDialog : Dialog
 			" Microsoft.ML 5.0.0 — рекомендации треков",
 			" Autofac 8.1.1 — внедрение зависимостей",
 			"",
-			$"Исходный код: {RepositoryUrl}",
+			$"Исходный код: {AppInfo.RepositoryUrl}",
 			"",
 			"© 2025 Blesya. Лицензия MIT."
 		});
-	}
-
-	private static string GetVersion()
-	{
-		var assembly = typeof(AboutDialog).Assembly;
-
-		string? informational = assembly
-			.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-			.InformationalVersion;
-
-		string version = informational
-			?? assembly.GetName().Version?.ToString()
-			?? "1.0.0";
-
-		// Отбрасываем суффикс сборки вида «1.0.0+<commit>», если он есть.
-		int plusIndex = version.IndexOf('+');
-		return plusIndex >= 0 ? version[..plusIndex] : version;
 	}
 }

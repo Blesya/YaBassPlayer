@@ -18,4 +18,6 @@ public sealed class AppConfigurationProvider : IAppConfiguration
     public void SaveRefreshToken(string refreshToken) => AppConfiguration.SaveRefreshToken(refreshToken);
 
     public string GetOrCreateDeviceId() => AppConfiguration.GetOrCreateDeviceId();
+
+    public bool GetUpdatesEnabled() => AppConfiguration.GetUpdatesEnabled();
 }

@@ -246,6 +246,7 @@ public sealed class MainWindow : Window
 		{
 			new MenuBarItem("Файл", new[]
 			{
+				new MenuItem("Проверка обновлений…", "[Проверить наличие новой версии]", _coordinator.ShowUpdateDialog),
 				new MenuItem("О программе", "[Сведения о программе]", _coordinator.ShowAbout),
 				null,
 				new MenuItem("Выход", "[Выход из программы]", _coordinator.StopApplication)

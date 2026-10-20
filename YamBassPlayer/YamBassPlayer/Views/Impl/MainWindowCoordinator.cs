@@ -39,6 +39,8 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly INowPlayingPresenter _nowPlayingPresenter;
 	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
 	private readonly ICommandInputView _commandInputView;
+	private readonly IUpdatePresenter _updatePresenter;
+	private readonly IUpdateScheduler _updateScheduler;
 	private readonly SearchAndLoadPlaylistUseCase _searchAndLoadPlaylistUseCase;
 	private readonly ToggleFavoriteUseCase _toggleFavoriteUseCase;
 	private readonly ScanLibraryUseCase _scanLibraryUseCase;
@@ -69,6 +71,8 @@ public sealed class MainWindowCoordinator : IDisposable
 		IListenTimer listenTimer,
 		IAudioPlayer audioPlayer,
 		IEventBus eventBus,
+		IUpdatePresenter updatePresenter,
+		IUpdateScheduler updateScheduler,
 		SearchAndLoadPlaylistUseCase searchAndLoadPlaylistUseCase,
 		ToggleFavoriteUseCase toggleFavoriteUseCase,
 		ScanLibraryUseCase scanLibraryUseCase,
@@ -92,6 +96,8 @@ public sealed class MainWindowCoordinator : IDisposable
 		_listenTimer = listenTimer;
 		_audioPlayer = audioPlayer;
 		_eventBus = eventBus;
+		_updatePresenter = updatePresenter;
+		_updateScheduler = updateScheduler;
 		_searchAndLoadPlaylistUseCase = searchAndLoadPlaylistUseCase;
 		_toggleFavoriteUseCase = toggleFavoriteUseCase;
 		_scanLibraryUseCase = scanLibraryUseCase;
@@ -114,6 +120,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	public void WireEvents(Window splashScreen)
 	{
 		_startupCts = new CancellationTokenSource();
+		_updateScheduler.Start();
 		_onTrackChangedHandler = e => OnTrackForPlaySelected(e.TrackId);
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
@@ -546,6 +553,12 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		Logging.LogUserAction("о программе");
 		AboutDialog.Show();
+	}
+
+	public void ShowUpdateDialog()
+	{
+		Logging.LogUserAction("проверка обновлений");
+		_updatePresenter.CheckForUpdates(manual: true);
 	}
 
 	private void SetWindowTitle(string title)

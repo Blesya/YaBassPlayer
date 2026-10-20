@@ -26,4 +26,7 @@ public interface IAppConfiguration
     /// и дальше переиспользуется, чтобы Яндекс не копил токены под разными device_id.
     /// </summary>
     string GetOrCreateDeviceId();
+
+    /// <summary>Включена ли автоматическая проверка обновлений (при старте и раз в час).</summary>
+    bool GetUpdatesEnabled();
 }

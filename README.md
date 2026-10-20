@@ -176,6 +176,17 @@ dotnet test   # 562 NUnit-теста (команды, модели, сервис
 
 Чтобы выпустить новую версию: поднять `<Version>` в `Directory.Build.props`, закоммитить и запушить в `master`.
 
+### Автообновление
+
+Приложение само проверяет новые релизы: при старте, раз в час и по пункту меню «Файл → Проверка обновлений…» (или команде `update`). В окне «Найдена новая версия» кнопка «Загрузить» скачивает архив, после чего превращается в «Установить» — приложение закрывается и перезапускается уже новой версией.
+
+- версия сравнивается с `AssemblyInformationalVersion` (источник — `Directory.Build.props`);
+- архив и файл `*.sha256` берутся из GitHub Releases, контрольная сумма проверяется после загрузки;
+- `YamBassPlayer.Updater.exe` ждёт выхода приложения и заменяет только файлы дистрибутива: `YamBassPlayer.exe`, `YamBassPlayer.Updater.exe`, `*.dll`, `appsettings.example.json`;
+- `appsettings.json`, `tracks_cache.db`, `playlist_state.json`, `tracks/`, `covers/`, `logs/` не трогаются никогда;
+- бэкап заменённых файлов — `%TEMP%\YamBassPlayer\backup-*`, лог обновления — `%TEMP%\YamBassPlayer\update-*\updater.log`;
+- автопроверки отключаются флагом `Updates:Enabled` в `appsettings.json`; пункт меню и команда работают всегда.
+
 ---
 
 Если вам понравился проект, поставьте звезду на GitHub!

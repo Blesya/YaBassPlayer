@@ -27,6 +27,10 @@
         <ProjectReference Include="..\YamBassPlayer.Api\YamBassPlayer.Api.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <InternalsVisibleTo Include="YamBassPlayer.Tests" />
+    </ItemGroup>
+
     <!-- Целевая платформа для нативных BASS-библиотек: RID важнее ОС сборочной машины,
          иначе кросс-публикация (win-x64 с Linux-раннера) положит в пакет чужие .so/.dylib. -->
     <PropertyGroup>

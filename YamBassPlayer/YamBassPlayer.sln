@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Api", "YamBas
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Api.Client", "YamBassPlayer.Api.Client\YamBassPlayer.Api.Client.csproj", "{A8081705-2641-4220-9455-0705FE64D532}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Updater", "YamBassPlayer.Updater\YamBassPlayer.Updater.csproj", "{5E517CF2-F562-4A09-BBFD-193FBCCE377B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{A8081705-2641-4220-9455-0705FE64D532}.Release|x64.Build.0 = Release|Any CPU
 		{A8081705-2641-4220-9455-0705FE64D532}.Release|x86.ActiveCfg = Release|Any CPU
 		{A8081705-2641-4220-9455-0705FE64D532}.Release|x86.Build.0 = Release|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|x64.Build.0 = Debug|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|x86.Build.0 = Debug|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x64.ActiveCfg = Release|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x64.Build.0 = Release|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x86.ActiveCfg = Release|Any CPU
+		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

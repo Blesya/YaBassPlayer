@@ -31,6 +31,12 @@ public static class ServicesProvider
 
 		// Регистрация сервисов
 		builder.RegisterType<AudioPlayerService>().As<IAudioPlayer>().SingleInstance();
+		builder.RegisterType<GitHubReleaseFeed>().As<IReleaseFeed>().SingleInstance();
+		builder.RegisterType<UpdateService>().As<IUpdateService>().SingleInstance();
+		builder.RegisterType<UpdateInstaller>().As<IUpdateInstaller>().SingleInstance();
+		builder.RegisterType<UpdateDialogView>().As<IUpdateDialogView>().SingleInstance();
+		builder.RegisterType<UpdatePresenter>().As<IUpdatePresenter>().SingleInstance();
+		builder.RegisterType<UpdateScheduler>().As<IUpdateScheduler>().SingleInstance();
 		builder.RegisterType<BassEqualizer>().As<IBassEqualizer>().SingleInstance();
 		builder.RegisterType<CoverArtService>().As<ICoverArtService>().SingleInstance();
 		builder.RegisterType<SqliteConnectionFactory>().As<IDbConnectionFactory>().SingleInstance();
@@ -229,6 +235,7 @@ public static class ServicesProvider
 		builder.RegisterType<LikeYandexCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<LikeLocalCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<ClearCommand>().As<ICommand>().SingleInstance();
+		builder.RegisterType<UpdateCommand>().As<ICommand>().SingleInstance();
 
 		// Регистрация прикладных сценариев (use case)
 		builder.RegisterType<SearchAndLoadPlaylistUseCase>().AsSelf().SingleInstance();

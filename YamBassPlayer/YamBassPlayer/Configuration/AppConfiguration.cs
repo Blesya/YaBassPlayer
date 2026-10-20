@@ -252,6 +252,22 @@ public class AppConfiguration
 		return [];
 	}
 
+	/// <summary>Включена ли автоматическая проверка обновлений. true — не сохранялась (по умолчанию).</summary>
+	public static bool GetUpdatesEnabled()
+	{
+		try { return LoadJsonNode()["Updates"]?["Enabled"]?.GetValue<bool>() ?? true; }
+		catch { return true; }
+	}
+
+	public static void SaveUpdatesEnabled(bool enabled)
+	{
+		var root = LoadJsonNode();
+		var section = root["Updates"]?.AsObject() ?? new JsonObject();
+		section["Enabled"] = enabled;
+		root["Updates"] = section;
+		SaveJsonNode(root);
+	}
+
 	private static JsonObject LoadJsonNode()
 	{
 		if (_cachedRoot != null)

@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\YamBassPlayer\YamBassPlayer.csproj" />
+    <ProjectReference Include="..\YamBassPlayer.Updater\YamBassPlayer.Updater.csproj" />
   </ItemGroup>
 
 </Project>

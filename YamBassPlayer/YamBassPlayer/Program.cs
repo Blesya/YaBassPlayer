@@ -55,6 +55,10 @@ internal class Program
 
 			Log.Information("Запуск пользовательского интерфейса");
 			Application.Run();
+
+			// Если пользователь согласился на обновление, апдейтер стартует уже после закрытия UI:
+			// подменять работающий exe и загруженные нативные DLL нельзя.
+			ServicesProvider.Ioc.Resolve<IUpdateInstaller>().LaunchPending();
 		}
 		catch (Exception exception)
 		{

@@ -7,7 +7,7 @@
     <Company>Blesya</Company>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(MSBuildProjectName)' != 'YamBassPlayer.Api' and '$(MSBuildProjectName)' != 'YamBassPlayer.Api.Client'">
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'YamBassPlayer.Api' and '$(MSBuildProjectName)' != 'YamBassPlayer.Api.Client' and '$(MSBuildProjectName)' != 'YamBassPlayer.Updater'">
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 </Project>
