@@ -1,8 +1,13 @@
+using System.Globalization;
+
 namespace YamBassPlayer.Extensions;
 
 public static class FileSizeExtensions
 {
 	private static readonly string[] Units = ["Б", "КБ", "МБ", "ГБ"];
+
+	// Интерфейс русский: разделитель дробной части — всегда запятая, независимо от локали машины.
+	private static readonly CultureInfo Culture = CultureInfo.GetCultureInfo("ru-RU");
 
 	public static string ToHumanReadableSize(this long bytes)
 	{
@@ -19,7 +24,7 @@ public static class FileSizeExtensions
 		}
 
 		return size % 1 == 0
-			? $"{size:F0} {Units[unitIndex]}"
-			: $"{size:F1} {Units[unitIndex]}";
+			? $"{size.ToString("F0", Culture)} {Units[unitIndex]}"
+			: $"{size.ToString("F1", Culture)} {Units[unitIndex]}";
 	}
 }

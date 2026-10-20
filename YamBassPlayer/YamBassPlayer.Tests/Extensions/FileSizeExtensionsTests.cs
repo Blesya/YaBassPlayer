@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using YamBassPlayer.Extensions;
 
 namespace YamBassPlayer.Tests.Extensions;
@@ -30,5 +32,22 @@ public sealed class FileSizeExtensionsTests
     public void ToHumanReadableSize_LongMaxValue_DoesNotThrow()
     {
         Assert.DoesNotThrow(() => long.MaxValue.ToHumanReadableSize());
+    }
+
+    [Test]
+    public void ToHumanReadableSize_IgnoresCurrentCulture()
+    {
+        var original = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+
+            Assert.That(1536L.ToHumanReadableSize(), Is.EqualTo("1,5 КБ"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 }
