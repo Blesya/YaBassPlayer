@@ -44,6 +44,18 @@ namespace YamBassPlayer.Api.API
         }
 
         /// <summary>
+        /// Получение текста «Об исполнителе».
+        /// </summary>
+        /// <param name="storage">Хранилище</param>
+        /// <param name="artistId">Идентификатор исполнителя</param>
+        public Task<YArtistAbout> GetAboutAsync(AuthStorage storage, string artistId)
+        {
+            return new YGetArtistAboutBuilder(api, storage)
+                .Build(artistId)
+                .GetResponseAsync();
+        }
+
+        /// <summary>
         /// Получение треков исполнителя с пагинацией
         /// <remarks>
         /// Треки поставляются по <paramref name="pageSize"/> штук на страницу,

@@ -96,6 +96,7 @@ public static class ServicesProvider
 			
 		builder.RegisterType<TrackInfoProvider>().As<ITrackInfoProvider>().SingleInstance();
 		builder.RegisterType<TrackCatalog>().As<ITrackCatalog>().SingleInstance();
+		builder.RegisterType<TrackAboutService>().As<ITrackAboutService>().SingleInstance();
 		builder.RegisterType<SourceSearchService>().As<ISourceSearchService>().SingleInstance();
 		builder.Register(c => new LyricsService(
 			c.Resolve<YandexMusicApi>(),
@@ -196,6 +197,7 @@ public static class ServicesProvider
 		builder.RegisterType<LocalSearchView>().As<ILocalSearchView>();
 		builder.RegisterType<YandexSearchView>().As<IYandexSearchView>();
 		builder.RegisterType<LargeTrackInfoView>().As<ILargeTrackInfoView>();
+		builder.RegisterType<TrackAboutView>().As<ITrackAboutView>();
 		builder.RegisterType<LocalFolderManagerView>().As<ILocalFolderManagerView>().SingleInstance();
 		builder.RegisterType<NowPlayingView>().As<INowPlayingView>();
 		builder.RegisterType<MyWaveView>().As<IMyWaveView>();
@@ -212,6 +214,7 @@ public static class ServicesProvider
 		builder.RegisterType<DatabaseStatisticsPresenter>().As<IDatabaseStatisticsPresenter>().SingleInstance();
 		builder.RegisterType<NowPlayingPresenter>().As<INowPlayingPresenter>().SingleInstance();
 		builder.RegisterType<LargeTrackInfoPresenter>().As<ILargeTrackInfoPresenter>().SingleInstance();
+		builder.RegisterType<TrackAboutPresenter>().As<ITrackAboutPresenter>().SingleInstance();
 		builder.RegisterType<MyWavePresenter>().As<IMyWavePresenter>().SingleInstance();
 		builder.RegisterType<MyWaveWindowPresenter>().As<IMyWaveWindowPresenter>().SingleInstance();
 		builder.RegisterType<LocalFolderManagerPresenter>().As<ILocalFolderManagerPresenter>().SingleInstance();
@@ -236,6 +239,7 @@ public static class ServicesProvider
 		builder.RegisterType<LikeLocalCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<ClearCommand>().As<ICommand>().SingleInstance();
 		builder.RegisterType<UpdateCommand>().As<ICommand>().SingleInstance();
+		builder.RegisterType<AboutCommand>().As<ICommand>().SingleInstance();
 
 		// Регистрация прикладных сценариев (use case)
 		builder.RegisterType<SearchAndLoadPlaylistUseCase>().AsSelf().SingleInstance();

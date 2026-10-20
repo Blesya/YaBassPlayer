@@ -283,6 +283,7 @@ public sealed class MainWindow : Window
 			new MenuBarItem("Вид", new[]
 			{
 				new MenuItem("Визуализация [F5]", "", _coordinator.ShowNowPlaying),
+				new MenuItem("О треке [F7]", "", _coordinator.ShowTrackAbout),
 				new MenuItem("Крупное инфо [F8]", "", _coordinator.ShowLargeTrackInfo),
 				new MenuItem("Скрыть/показать панель «Инфо»", "", ToggleInfoPanel),
 				null,

@@ -14,8 +14,11 @@ public class PlaybackQueue : IPlaybackQueue
 	private readonly Random _random = new();
 	private readonly Stack<int> _shuffleHistory = new();
 	private int? _nextShuffleIndex = null;
+	private bool _lastChangeWasAutomatic;
 
 	public event Action<string>? OnTrackChanged;
+
+	public bool LastChangeWasAutomatic => _lastChangeWasAutomatic;
 
 	public PlaybackQueue(IAudioPlayer audioPlayer, IEventBus? eventBus = null)
 	{
@@ -94,6 +97,7 @@ public class PlaybackQueue : IPlaybackQueue
 
 			if (_currentIndex >= 0 && _currentIndex < _trackIds.Count)
 			{
+				_lastChangeWasAutomatic = false;
 				RaiseTrackChanged(_trackIds[_currentIndex]);
 			}
 		}
@@ -107,7 +111,11 @@ public class PlaybackQueue : IPlaybackQueue
 			_trackIds.AddRange(trackIds);
 	}
 
-	public void Next()
+	public void Next() => Advance(automatic: false);
+
+	public void NextAutomatic() => Advance(automatic: true);
+
+	private void Advance(bool automatic)
 	{
 		Logging.LogBeforeCall();
 
@@ -134,6 +142,7 @@ public class PlaybackQueue : IPlaybackQueue
 				}
 			}
 
+			_lastChangeWasAutomatic = automatic;
 			RaiseTrackChanged(_trackIds[_currentIndex]);
 		}
 
@@ -166,6 +175,7 @@ public class PlaybackQueue : IPlaybackQueue
 				}
 			}
 
+			_lastChangeWasAutomatic = false;
 			RaiseTrackChanged(_trackIds[_currentIndex]);
 		}
 
@@ -223,12 +233,15 @@ public class PlaybackQueue : IPlaybackQueue
 			lock (_syncLock)
 			{
 				if (_currentIndex >= 0 && _currentIndex < _trackIds.Count)
+				{
+					_lastChangeWasAutomatic = true;
 					RaiseTrackChanged(_trackIds[_currentIndex]);
+				}
 			}
 
 			return;
 		}
 
-		Next();
+		NextAutomatic();
 	}
 }

@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using YamBassPlayer.Services.Impl.Migrations;
 
 namespace YamBassPlayer.Services.Impl;
 
@@ -12,6 +13,7 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 	private const int CurrentSchemaVersion = 5;
 
 	private readonly IDbConnectionFactory _connectionFactory;
+	private readonly DatabaseMigrationRunner _migrationRunner = new(DatabaseMigrationRegistry.All);
 
 	public DatabaseInitializer(IDbConnectionFactory connectionFactory)
 	{
@@ -22,6 +24,8 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 	{
 		using var connection = _connectionFactory.Create();
 
+		// Baseline текущей схемы. Все операции идемпотентны: для уже существующей
+		// БД они ничего не меняют, для пустой/старой — создают недостающее.
 		CreateTracksTable(connection);
 		EnsureTrackColumns(connection);
 		CreateHistoryTables(connection);
@@ -32,7 +36,15 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 		BackfillLocalSourceType(connection);
 		SqliteSchemaHelper.BackfillTrackCoverMetadataColumns(connection);
 
-		SetSchemaVersion(connection, CurrentSchemaVersion);
+		int version = DatabaseMigrationRunner.GetUserVersion(connection);
+		if (version == 0)
+		{
+			// Чистая БД или БД, созданная до появления версионирования.
+			version = CurrentSchemaVersion;
+			DatabaseMigrationRunner.SetUserVersion(connection, null, version);
+		}
+
+		_migrationRunner.Migrate(connection, version, CurrentSchemaVersion);
 	}
 
 	private static void CreateTracksTable(SqliteConnection connection)
@@ -158,13 +170,6 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 			WHERE (SourceType IS NULL OR SourceType = 'yandex')
 			  AND (TrackId LIKE '_:\%' OR TrackId LIKE '/%')
 			""";
-		cmd.ExecuteNonQuery();
-	}
-
-	private static void SetSchemaVersion(SqliteConnection connection, int version)
-	{
-		using var cmd = connection.CreateCommand();
-		cmd.CommandText = $"PRAGMA user_version = {version};";
 		cmd.ExecuteNonQuery();
 	}
 }

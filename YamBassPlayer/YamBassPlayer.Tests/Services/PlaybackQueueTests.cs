@@ -30,6 +30,53 @@ public sealed class PlaybackQueueTests
         Assert.That(_queue.CurrentTrackId, Is.Not.EqualTo(before));
     }
 
+    // ──────────────── LastChangeWasAutomatic ────────────────
+
+    [Test]
+    public void LastChangeWasAutomatic_FalseAfterSetQueueAndManualNext()
+    {
+        _queue.SetQueue(new[] { "a", "b", "c" });
+        Assert.That(_queue.LastChangeWasAutomatic, Is.False);
+
+        _queue.Next();
+        Assert.That(_queue.LastChangeWasAutomatic, Is.False);
+    }
+
+    [Test]
+    public void LastChangeWasAutomatic_TrueAfterExplicitAutomaticAdvance()
+    {
+        _queue.SetQueue(new[] { "a", "b", "c" });
+
+        _queue.NextAutomatic();
+
+        Assert.That(_queue.LastChangeWasAutomatic, Is.True);
+    }
+
+    [Test]
+    public void LastChangeWasAutomatic_TrueAfterTrackEnded()
+    {
+        _queue.SetQueue(new[] { "a", "b", "c" });
+
+        _mockAudioPlayer.Raise(m => m.OnTrackEnded += null, EventArgs.Empty);
+
+        Assert.That(_queue.LastChangeWasAutomatic, Is.True);
+    }
+
+    [Test]
+    public void LastChangeWasAutomatic_TrueAfterRepeatRestart()
+    {
+        _queue.SetQueue(new[] { "a", "b", "c" });
+        _queue.Mode = PlaybackMode.Repeat;
+
+        _mockAudioPlayer.Raise(m => m.OnTrackEnded += null, EventArgs.Empty);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_queue.CurrentTrackId, Is.EqualTo("a"));
+            Assert.That(_queue.LastChangeWasAutomatic, Is.True);
+        });
+    }
+
     // ──────────────── CurrentTrackId ────────────────
 
     [Test]

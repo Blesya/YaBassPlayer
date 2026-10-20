@@ -130,6 +130,9 @@ public class TrackFileProvider : ITrackFileProvider
 				throw new Exception("Не удалось получить информацию о треке");
 			}
 
+			if (!track.Available && track.Substituted is null)
+				throw new TrackUnavailableException(trackId);
+
 			Log.Information("Скачивание трека {TrackId}", trackId);
 
 			// У недоступного в регионе трека Яндекс может прислать замену — официальные
@@ -150,6 +153,13 @@ public class TrackFileProvider : ITrackFileProvider
 			_downloadTracker.MarkCached(trackId);
 
 			return filePath;
+		}
+		catch (TrackUnavailableException)
+		{
+			// Причину покажет окно «О треке»; общий диалог ошибки здесь лишний.
+			Log.Information("Трек {TrackId} недоступен и не имеет замены", trackId);
+			_downloadTracker.MarkFailed(trackId);
+			throw;
 		}
 		catch (Exception e)
 		{

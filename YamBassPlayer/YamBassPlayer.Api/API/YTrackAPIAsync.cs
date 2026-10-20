@@ -10,6 +10,7 @@ using System.Net.Http;
 using YamBassPlayer.Api.Common;
 using YamBassPlayer.Api.Models.Common;
 using YamBassPlayer.Api.Models.Track;
+using YamBassPlayer.Api.Requests.Common;
 using YamBassPlayer.Api.Requests.Track;
 
 namespace YamBassPlayer.Api.API
@@ -189,6 +190,37 @@ namespace YamBassPlayer.Api.API
         }
 
         #endregion GetSupplement
+
+        #region GetCredits
+
+        /// <summary>
+        /// Получение участников создания трека.
+        /// </summary>
+        /// <param name="storage">Хранилище</param>
+        /// <param name="trackId">Идентификатор трека</param>
+        public Task<YResponse<YTrackCredits>> GetCreditsAsync(AuthStorage storage, string trackId)
+        {
+            return new YGetTrackCreditsBuilder(api, storage)
+                .Build(trackId)
+                .GetResponseAsync();
+        }
+
+        #endregion GetCredits
+
+        #region GetDisclaimers
+
+        /// <summary>
+        /// Получение глобального словаря дисклеймеров.
+        /// </summary>
+        /// <param name="storage">Хранилище</param>
+        public Task<List<YDisclaimer>> GetDisclaimersAsync(AuthStorage storage)
+        {
+            return new YGetDisclaimersBuilder(api, storage)
+                .Build(new object())
+                .GetResponseAsync();
+        }
+
+        #endregion GetDisclaimers
 
         #region GetSimilar
 

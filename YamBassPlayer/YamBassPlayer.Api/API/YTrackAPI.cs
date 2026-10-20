@@ -141,6 +141,33 @@ namespace YamBassPlayer.Api.API
 
         #endregion GetSupplement
 
+        #region GetCredits
+
+        /// <summary>
+        /// Получение участников создания трека.
+        /// </summary>
+        /// <param name="storage">Хранилище</param>
+        /// <param name="trackId">Идентификатор трека</param>
+        public YResponse<YTrackCredits> GetCredits(AuthStorage storage, string trackId)
+        {
+            return GetCreditsAsync(storage, trackId).GetAwaiter().GetResult();
+        }
+
+        #endregion GetCredits
+
+        #region GetDisclaimers
+
+        /// <summary>
+        /// Получение глобального словаря дисклеймеров.
+        /// </summary>
+        /// <param name="storage">Хранилище</param>
+        public List<YDisclaimer> GetDisclaimers(AuthStorage storage)
+        {
+            return GetDisclaimersAsync(storage).GetAwaiter().GetResult();
+        }
+
+        #endregion GetDisclaimers
+
         #region GetSimilar
 
         /// <summary>

@@ -16,7 +16,8 @@ public sealed class PlaybackPresenter(
 	IListenTimer listenTimer,
 	IAudioPlayer audioPlayer,
 	IPlayStatusPresenter playStatusPresenter,
-	IMyWavePresenter myWavePresenter)
+	IMyWavePresenter myWavePresenter,
+	ITrackAboutPresenter trackAboutPresenter)
 	: IPlaybackPresenter
 {
 	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
@@ -36,6 +37,12 @@ public sealed class PlaybackPresenter(
 	/// </summary>
 	private readonly object _playLock = new();
 
+	/// <summary>
+	/// Сколько недоступных треков подряд пропущено при автопереходе. Сбрасывается,
+	/// когда удаётся запустить трек; защищает от бесконечного цикла, если недоступна вся очередь.
+	/// </summary>
+	private int _consecutiveUnavailable;
+
 	public void SetPlaylistType(PlaylistType playlistType)
 	{
 		_currentPlaylistType = playlistType;
@@ -52,7 +59,7 @@ public sealed class PlaybackPresenter(
 			_myWaveSkipPending = true;
 	}
 
-	public async Task PlaySelectedTrackAsync(string trackId)
+	public async Task PlaySelectedTrackAsync(string trackId, bool isAutomatic = false)
 	{
 		Logging.LogBeforeCall();
 
@@ -76,7 +83,18 @@ public sealed class PlaybackPresenter(
 				playStatusPresenter.SetPlayStatus($"Загрузка: {formatted}");
 			});
 
-			string filePath = await trackFileProvider.DownloadTrackAsync(trackId, downloadProgress);
+			string filePath;
+			try
+			{
+				filePath = await trackFileProvider.DownloadTrackAsync(trackId, downloadProgress);
+			}
+			catch (TrackUnavailableException)
+			{
+				if (IsCurrentRequest(requestVersion))
+					await HandleUnavailableTrackAsync(track, isAutomatic);
+
+				return;
+			}
 
 			if (string.IsNullOrWhiteSpace(filePath))
 				return;
@@ -95,6 +113,7 @@ public sealed class PlaybackPresenter(
 				playStatusPresenter.SetPlayStatus($"Сейчас играет: {track.Artist} - {track.Title}");
 				Console.Title = $"{track.Artist} - {track.Title}";
 				audioPlayer.Play(filePath);
+				_consecutiveUnavailable = 0;
 
 				var source = _currentPlaylistType switch
 				{
@@ -148,7 +167,15 @@ public sealed class PlaybackPresenter(
 
 				playStatusPresenter.SetTitle($"{preloadTitle} ({FormatDownloadProgress(progress)})");
 			});
-			await trackFileProvider.DownloadTrackAsync(nextTrackId, downloadProgress);
+			try
+			{
+				await trackFileProvider.DownloadTrackAsync(nextTrackId, downloadProgress);
+			}
+			catch (TrackUnavailableException)
+			{
+				// При явном выборе трека окно «О треке» откроет основной путь;
+				// предзагрузка просто не мешает играть текущий трек.
+			}
 		}
 		finally
 		{
@@ -156,6 +183,28 @@ public sealed class PlaybackPresenter(
 				playStatusPresenter.SetTitle("Управление воспроизведением");
 			Logging.LogAfterCall();
 		}
+	}
+
+	private async Task HandleUnavailableTrackAsync(Track track, bool isAutomatic)
+	{
+		if (!isAutomatic)
+		{
+			playStatusPresenter.SetPlayStatus("Трек недоступен");
+			await trackAboutPresenter.ShowTrackAboutAsync(track.Id, forceRefresh: true);
+			return;
+		}
+
+		// Автопереход: окно не открываем, просто пробуем следующий трек.
+		int queueSize = Math.Max(1, playbackQueue.TrackIds.Count);
+		if (++_consecutiveUnavailable < queueSize)
+		{
+			playStatusPresenter.SetPlayStatus($"Пропуск недоступного трека: {track.Artist} - {track.Title}");
+			playbackQueue.NextAutomatic();
+			return;
+		}
+
+		_consecutiveUnavailable = 0;
+		playStatusPresenter.SetPlayStatus("Нет доступных треков");
 	}
 
 	private bool IsCurrentRequest(int version) => version == Volatile.Read(ref _playRequestVersion);

@@ -11,6 +11,6 @@ public interface IPlaybackPresenter
 {
 	void SetPlaylistType(PlaylistType playlistType);
 	void MarkMyWaveSkipPending();
-	Task PlaySelectedTrackAsync(string trackId);
+	Task PlaySelectedTrackAsync(string trackId, bool isAutomatic = false);
 	Task PreloadNextTrackAsync();
 }

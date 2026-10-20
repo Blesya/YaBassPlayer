@@ -17,6 +17,7 @@ public sealed class PlaybackPresenterTests
     private Mock<IAudioPlayer> _audioPlayer = null!;
     private Mock<IPlayStatusPresenter> _playStatusPresenter = null!;
     private Mock<IMyWavePresenter> _myWavePresenter = null!;
+    private Mock<ITrackAboutPresenter> _trackAboutPresenter = null!;
     private PlaybackPresenter _presenter = null!;
 
     [SetUp]
@@ -29,6 +30,7 @@ public sealed class PlaybackPresenterTests
         _audioPlayer = new Mock<IAudioPlayer>();
         _playStatusPresenter = new Mock<IPlayStatusPresenter>();
         _myWavePresenter = new Mock<IMyWavePresenter>();
+        _trackAboutPresenter = new Mock<ITrackAboutPresenter>();
 
         _presenter = new PlaybackPresenter(
             _trackFileProvider.Object,
@@ -37,7 +39,8 @@ public sealed class PlaybackPresenterTests
             _listenTimer.Object,
             _audioPlayer.Object,
             _playStatusPresenter.Object,
-            _myWavePresenter.Object);
+            _myWavePresenter.Object,
+            _trackAboutPresenter.Object);
     }
 
     private void SetupTrack(string id)
@@ -74,6 +77,45 @@ public sealed class PlaybackPresenterTests
         {
             _audioPlayer.Verify(a => a.Play(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _listenTimer.Verify(l => l.OnTrackStart(It.IsAny<string>(), It.IsAny<ListenSource>()), Times.Never);
+        });
+    }
+
+    [Test]
+    public async Task PlaySelectedTrackAsync_WhenTrackUnavailable_OpensTrackAbout()
+    {
+        SetupTrack("t1");
+        _trackFileProvider
+            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
+            .ThrowsAsync(new TrackUnavailableException("t1"));
+
+        await _presenter.PlaySelectedTrackAsync("t1");
+
+        Assert.Multiple(() =>
+        {
+            _audioPlayer.Verify(a => a.Play(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _trackAboutPresenter.Verify(
+                p => p.ShowTrackAboutAsync("t1", true),
+                Times.Once);
+        });
+    }
+
+    [Test]
+    public async Task PlaySelectedTrackAsync_AutomaticUnavailable_SkipsWithoutWindow()
+    {
+        SetupTrack("t1");
+        _trackFileProvider
+            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
+            .ThrowsAsync(new TrackUnavailableException("t1"));
+        _playbackQueue.SetupGet(q => q.TrackIds).Returns(new[] { "t1", "t2" });
+
+        await _presenter.PlaySelectedTrackAsync("t1", isAutomatic: true);
+
+        Assert.Multiple(() =>
+        {
+            _trackAboutPresenter.Verify(
+                p => p.ShowTrackAboutAsync(It.IsAny<string>(), It.IsAny<bool>()),
+                Times.Never);
+            _playbackQueue.Verify(q => q.NextAutomatic(), Times.Once);
         });
     }
 

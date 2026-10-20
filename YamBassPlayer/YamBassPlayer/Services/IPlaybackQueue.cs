@@ -5,6 +5,7 @@ namespace YamBassPlayer.Services;
 public interface IPlaybackQueue
 {
 	event Action<string>? OnTrackChanged;
+	bool LastChangeWasAutomatic { get; }
 	string? CurrentTrackId { get; }
 	bool HasNext { get; }
 	bool HasPrevious { get; }
@@ -14,6 +15,7 @@ public interface IPlaybackQueue
 	void SetQueue(IEnumerable<string> trackIds, int startIndex = 0);
 	void AddToQueue(IEnumerable<string> trackIds);
 	void Next();
+	void NextAutomatic();
 	void Previous();
 	void Clear();
 }

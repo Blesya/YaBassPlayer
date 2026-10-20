@@ -38,6 +38,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
 	private readonly INowPlayingPresenter _nowPlayingPresenter;
 	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
+	private readonly ITrackAboutPresenter _trackAboutPresenter;
 	private readonly ICommandInputView _commandInputView;
 	private readonly IUpdatePresenter _updatePresenter;
 	private readonly IUpdateScheduler _updateScheduler;
@@ -61,6 +62,7 @@ public sealed class MainWindowCoordinator : IDisposable
 		IDatabaseStatisticsPresenter dbStatsPresenter,
 		INowPlayingPresenter nowPlayingPresenter,
 		ILargeTrackInfoPresenter largeTrackInfoPresenter,
+		ITrackAboutPresenter trackAboutPresenter,
 		ITrackInfoPanelPresenter trackInfoPanelPresenter,
 		ICommandInputView commandInputView,
 		IPlaybackPresenter playbackPresenter,
@@ -87,6 +89,7 @@ public sealed class MainWindowCoordinator : IDisposable
 		_dbStatsPresenter = dbStatsPresenter;
 		_nowPlayingPresenter = nowPlayingPresenter;
 		_largeTrackInfoPresenter = largeTrackInfoPresenter;
+		_trackAboutPresenter = trackAboutPresenter;
 		_commandInputView = commandInputView;
 		_playbackPresenter = playbackPresenter;
 		_playbackQueue = playbackQueue;
@@ -121,7 +124,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		_startupCts = new CancellationTokenSource();
 		_updateScheduler.Start();
-		_onTrackChangedHandler = e => OnTrackForPlaySelected(e.TrackId);
+		_onTrackChangedHandler = e => OnTrackForPlaySelected(e.TrackId, _playbackQueue.LastChangeWasAutomatic);
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		_playStatusPresenter.OnStopClicked += StopPlayback;
@@ -178,6 +181,12 @@ public sealed class MainWindowCoordinator : IDisposable
 				_nowPlayingPresenter.ShowNowPlaying();
 				e.Handled = true;
 			}
+			if (e.KeyEvent.Key == Key.F7)
+			{
+				Logging.LogUserAction("горячая клавиша F7 — «О треке»");
+				_trackAboutPresenter.ShowCurrentTrackAbout();
+				e.Handled = true;
+			}
 			if (e.KeyEvent.Key == Key.F8)
 			{
 				Logging.LogUserAction("горячая клавиша F8 — крупное инфо");
@@ -201,12 +210,12 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	// ── Playback ──────────────────────────────────────────────────────────
 
-	private void OnTrackForPlaySelected(string trackId)
-		=> PlaySelectedTrackAsync(trackId).Forget();
+	private void OnTrackForPlaySelected(string trackId, bool isAutomatic)
+		=> PlaySelectedTrackAsync(trackId, isAutomatic).Forget();
 
-	private async Task PlaySelectedTrackAsync(string trackId)
+	private async Task PlaySelectedTrackAsync(string trackId, bool isAutomatic)
 	{
-		try { await _playbackPresenter.PlaySelectedTrackAsync(trackId); }
+		try { await _playbackPresenter.PlaySelectedTrackAsync(trackId, isAutomatic); }
 		catch (Exception ex) { ex.Handle(); }
 	}
 
@@ -547,6 +556,12 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		Logging.LogUserAction("крупное инфо о треке");
 		_largeTrackInfoPresenter.ShowLargeTrackInfo();
+	}
+
+	public void ShowTrackAbout()
+	{
+		Logging.LogUserAction("«О треке»");
+		_trackAboutPresenter.ShowCurrentTrackAbout();
 	}
 
 	public void ShowAbout()
