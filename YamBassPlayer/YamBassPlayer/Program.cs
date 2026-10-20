@@ -3,6 +3,7 @@ using Serilog;
 using Terminal.Gui;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Extensions;
+using YamBassPlayer.Models;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
@@ -17,8 +18,12 @@ internal class Program
 		Logging.Initialize();
 		Log.Information("Запуск YamBassPlayer. Каталог: {BaseDirectory}", AppDomain.CurrentDomain.BaseDirectory);
 
+		var consoleWindow = new ConsoleWindow();
+
 		try
 		{
+			RestoreWindowSize(consoleWindow);
+
 			var configuration = new AppConfigurationProvider();
 			var authService = new AuthService(
 				new DeviceAuthorizationService(configuration),
@@ -50,6 +55,7 @@ internal class Program
 
 			View mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
 			Application.Top.Add(mainWindow);
+			TrackWindowSizeChanges(consoleWindow);
 
 			Themes.ApplySavedTheme();
 
@@ -67,9 +73,57 @@ internal class Program
 		}
 		finally
 		{
+			SaveWindowSize(consoleWindow);
 			Log.Information("Завершение работы YamBassPlayer");
 			Logging.Close();
 		}
+	}
+
+	private static readonly TimeSpan WindowSizeSaveInterval = TimeSpan.FromSeconds(1);
+
+	/// <summary>
+	/// Восстанавливает сохранённый размер терминального окна. Терминал может
+	/// не поддержать изменение размера — тогда просто продолжаем с текущим.
+	/// </summary>
+	private static void RestoreWindowSize(IConsoleWindow consoleWindow)
+	{
+		if (AppConfiguration.GetWindowSize() is not { } saved)
+			return;
+
+		if (consoleWindow.TrySetSize(saved))
+			Log.Information("Размер окна восстановлен: {Width}x{Height}", saved.Width, saved.Height);
+		else
+			Log.Information("Терминал не позволил восстановить размер окна {Width}x{Height}", saved.Width, saved.Height);
+	}
+
+	/// <summary>
+	/// Сохраняет размер окна при перетаскивании: событие приходит десятки раз,
+	/// поэтому конфиг пишется не чаще раза в секунду. Итоговый размер пишется при выходе.
+	/// </summary>
+	private static void TrackWindowSizeChanges(IConsoleWindow consoleWindow)
+	{
+		DateTime lastSave = DateTime.MinValue;
+
+		Application.Top.Resized += size =>
+		{
+			DateTime now = DateTime.UtcNow;
+			if (now - lastSave < WindowSizeSaveInterval)
+				return;
+
+			lastSave = now;
+			SaveWindowSize(consoleWindow, new ConsoleWindowSize(size.Width, size.Height));
+		};
+	}
+
+	/// <summary>Сохраняет размер окна в конфиг, если он отличается от сохранённого.</summary>
+	private static void SaveWindowSize(IConsoleWindow consoleWindow, ConsoleWindowSize? size = null)
+	{
+		ConsoleWindowSize? current = size ?? consoleWindow.GetSize();
+		if (current is null || current == AppConfiguration.GetWindowSize())
+			return;
+
+		AppConfiguration.SaveWindowSize(current.Value.Width, current.Value.Height);
+		Log.Information("Размер окна сохранён: {Width}x{Height}", current.Value.Width, current.Value.Height);
 	}
 
 	/// <summary>

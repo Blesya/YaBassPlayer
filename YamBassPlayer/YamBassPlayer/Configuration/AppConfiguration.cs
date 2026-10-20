@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
+using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Configuration;
 
@@ -265,6 +266,32 @@ public class AppConfiguration
 		var section = root["Updates"]?.AsObject() ?? new JsonObject();
 		section["Enabled"] = enabled;
 		root["Updates"] = section;
+		SaveJsonNode(root);
+	}
+
+	/// <summary>Сохранённый размер терминального окна. <c>null</c> — ещё не сохранялся.</summary>
+	public static ConsoleWindowSize? GetWindowSize()
+	{
+		try
+		{
+			var window = LoadJsonNode()["Window"];
+			int? width = window?["Width"]?.GetValue<int>();
+			int? height = window?["Height"]?.GetValue<int>();
+			if (width is null || height is null)
+				return null;
+
+			return new ConsoleWindowSize(width.Value, height.Value);
+		}
+		catch { return null; }
+	}
+
+	public static void SaveWindowSize(int width, int height)
+	{
+		var root = LoadJsonNode();
+		var section = root["Window"]?.AsObject() ?? new JsonObject();
+		section["Width"] = width;
+		section["Height"] = height;
+		root["Window"] = section;
 		SaveJsonNode(root);
 	}
 
