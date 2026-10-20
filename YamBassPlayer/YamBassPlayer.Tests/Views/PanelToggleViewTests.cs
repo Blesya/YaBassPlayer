@@ -1,18 +1,19 @@
 using Terminal.Gui;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
 
 [TestFixture]
 [NonParallelizable]
-public sealed class InfoPanelToggleViewTests : ViewTestBase
+public sealed class PanelToggleViewTests : ViewTestBase
 {
-    private const int Width = InfoPanelToggleView.ToggleWidth;
+    private const int Width = PanelToggleView.ToggleWidth;
 
-    private InfoPanelToggleView CreateView(bool expanded = true)
-        => AddToTop(new InfoPanelToggleView { X = 0, Y = 0, Expanded = expanded });
+    private PanelToggleView CreateView(bool expanded = true, PanelSide side = PanelSide.Right)
+        => AddToTop(new PanelToggleView { X = 0, Y = 0, Expanded = expanded, Side = side });
 
-    private string Render(InfoPanelToggleView view)
+    private string Render(PanelToggleView view)
     {
         view.Redraw(new Rect(0, 0, Width, 1));
         return RenderText(1, Width);
@@ -34,19 +35,36 @@ public sealed class InfoPanelToggleViewTests : ViewTestBase
     }
 
     [Test]
-    public void Redraw_Expanded_LooksLikeButtonWithCollapseArrows()
+    public void Redraw_RightPanelExpanded_LooksLikeButtonWithRightArrows()
     {
-        var view = CreateView(expanded: true);
+        var view = CreateView(expanded: true, side: PanelSide.Right);
 
         Assert.That(Render(view), Is.EqualTo("[»»]" + Environment.NewLine));
     }
 
     [Test]
-    public void Redraw_Collapsed_LooksLikeButtonWithExpandArrows()
+    public void Redraw_RightPanelCollapsed_LooksLikeButtonWithLeftArrows()
     {
-        var view = CreateView(expanded: false);
+        var view = CreateView(expanded: false, side: PanelSide.Right);
 
         Assert.That(Render(view), Is.EqualTo("[««]" + Environment.NewLine));
+    }
+
+    [Test]
+    public void Redraw_LeftPanelExpanded_LooksLikeButtonWithLeftArrows()
+    {
+        // Дерево плейлистов слева: сворачиваясь, панель уезжает влево.
+        var view = CreateView(expanded: true, side: PanelSide.Left);
+
+        Assert.That(Render(view), Is.EqualTo("[««]" + Environment.NewLine));
+    }
+
+    [Test]
+    public void Redraw_LeftPanelCollapsed_LooksLikeButtonWithRightArrows()
+    {
+        var view = CreateView(expanded: false, side: PanelSide.Left);
+
+        Assert.That(Render(view), Is.EqualTo("[»»]" + Environment.NewLine));
     }
 
     [Test]

@@ -171,6 +171,22 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>Свёрнуто ли дерево плейлистов. false — не сохранялось (по умолчанию развёрнуто).</summary>
+	public static bool GetPlaylistsCollapsed()
+	{
+		try { return LoadJsonNode()["View"]?["PlaylistsCollapsed"]?.GetValue<bool>() ?? false; }
+		catch { return false; }
+	}
+
+	public static void SavePlaylistsCollapsed(bool collapsed)
+	{
+		var root = LoadJsonNode();
+		var section = root["View"]?.AsObject() ?? new JsonObject();
+		section["PlaylistsCollapsed"] = collapsed;
+		root["View"] = section;
+		SaveJsonNode(root);
+	}
+
 	/// <summary>Возвращает сохранённый индекс визуализации (режима спектра). -1 — не сохранялся (по умолчанию).</summary>
 	public static int GetSpectrumMode()
 	{

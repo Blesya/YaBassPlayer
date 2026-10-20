@@ -21,6 +21,23 @@ public sealed class MainWindow : Window
 	/// <summary>Ширина панели «Инфо» справа от списка треков.</summary>
 	private const int InfoPanelWidth = 38;
 
+	/// <summary>Ширина развёрнутого дерева плейлистов.</summary>
+	private const int PlaylistsWidth = 30;
+
+	/// <summary>Высота панели «Управление воспроизведением».</summary>
+	private const int PlayStatusHeight = 6;
+
+	/// <summary>Высота командной строки внизу окна.</summary>
+	private const int CommandInputHeight = 2;
+
+	/// <summary>
+	/// Сколько строк занимает низ окна: панель управления и командная строка.
+	/// От этой величины отсчитывается и верх панели, и низ дерева плейлистов —
+	/// иначе рамки двух вьюх попадают на одну строку и нижняя рамка дерева
+	/// прячется под панелью.
+	/// </summary>
+	private const int ControlPanelFromBottom = PlayStatusHeight + CommandInputHeight;
+
 	private readonly MainWindowCoordinator _coordinator;
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlaybackQueue _playbackQueue;
@@ -28,16 +45,19 @@ public sealed class MainWindow : Window
 	private readonly IPlaylistsPresenter _playlistsPresenter;
 	private readonly TracksViewHost _tracksView;
 	private readonly TrackInfoPanelView _trackInfoPanel;
+	private readonly PlaylistsView _playlistsView;
 	private SplashScreenView? _splashScreen;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
 	private Button _spectrumFreqButton = null!;
 	private Button _spectrumToggleButton = null!;
 	private TextField _filterField = null!;
-	private InfoPanelToggleView _infoPanelToggle = null!;
+	private PanelToggleView _infoPanelToggle = null!;
+	private PanelToggleView _playlistsToggle = null!;
 	private MenuItem _tracksViewMenuItem = null!;
 	private bool _spectrumEnabled = true;
 	private bool _infoPanelVisible = true;
+	private bool _playlistsCollapsed;
 	private int _freqPresetIndex = 4;
 	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
@@ -65,6 +85,7 @@ public sealed class MainWindow : Window
 		_playlistsPresenter = playlistsPresenter;
 		_tracksView = tracksView;
 		_trackInfoPanel = trackInfoPanelView;
+		_playlistsView = playlistsView;
 
 		// ── Menu bar (pure UI composition) ─────────────────────────────
 		MenuBar menuBar = CreateMenuBar();
@@ -75,29 +96,43 @@ public sealed class MainWindow : Window
 		// ряд кнопок спектра 1 и сам спектр 10 — итого 19 строк.
 		const int bottomHeight = BottomHeightWithSpectrum;
 		const int spectrumHeight = 10;
-		const int playlistsWidth = 30;
 
 		playStatusView.X = 0;
-		playStatusView.Y = Pos.AnchorEnd(8);
+		playStatusView.Y = Pos.AnchorEnd(ControlPanelFromBottom);
 		playStatusView.Width = Dim.Fill();
-		playStatusView.Height = 6;
+		playStatusView.Height = PlayStatusHeight;
 
 		commandInputView.X = 0;
-		commandInputView.Y = Pos.AnchorEnd(2);
+		commandInputView.Y = Pos.AnchorEnd(CommandInputHeight);
 		commandInputView.Width = Dim.Fill();
-		commandInputView.Height = 2;
+		commandInputView.Height = CommandInputHeight;
 
 		// Дерево плейлистов идёт до самой панели управления: спектр больше не
 		// отрезает у него нижнюю часть, потому что начинается правее дерева.
+		// Высота считается от того же смещения, что и верх панели управления,
+		// поэтому нижняя рамка дерева ложится строкой выше и не перекрывается.
+		// Свёрнутая панель уезжает влево целиком: ширину ей выставляет
+		// ApplyPlaylistsCollapsed, а соседи отсчитываются от её правого края.
 		playlistsView.X = 0;
-		playlistsView.Width = playlistsWidth;
-		playlistsView.Height = Dim.Fill(7);
+		playlistsView.Width = PlaylistsWidth;
+		playlistsView.Height = Dim.Fill(ControlPanelFromBottom);
 
-		_filterField = new TextField("")
+		// Кнопка сворачивания дерева — справа от панели, на строке фильтра:
+		// так же, как кнопка панели «Инфо» стоит слева от своей панели.
+		// В свёрнутом виде она прижимается к левому краю окна и остаётся на виду.
+		_playlistsToggle = new PanelToggleView
 		{
 			X = Pos.Right(playlistsView),
 			Y = 0,
-			Width = Dim.Fill(InfoPanelWidth + InfoPanelToggleView.ToggleWidth),
+			Side = PanelSide.Left
+		};
+		_playlistsToggle.Toggled += TogglePlaylists;
+
+		_filterField = new TextField("")
+		{
+			X = Pos.Right(playlistsView) + PanelToggleView.ToggleWidth,
+			Y = 0,
+			Width = Dim.Fill(InfoPanelWidth + PanelToggleView.ToggleWidth),
 			Height = 1
 		};
 		_filterField.TextChanged += _ =>
@@ -111,27 +146,32 @@ public sealed class MainWindow : Window
 		tracksView.Width = Dim.Fill(InfoPanelWidth);
 		tracksView.Height = Dim.Fill(bottomHeight + 1);
 
+		// Панель «Инфо» тянется вниз до панели управления, как и дерево плейлистов:
+		// внизу у неё текст песни, и каждая отданная строка — видимая строчка.
 		trackInfoPanelView.X = Pos.Right(tracksView);
 		trackInfoPanelView.Y = 0;
 		trackInfoPanelView.Width = InfoPanelWidth;
-		trackInfoPanelView.Height = Dim.Fill(bottomHeight);
+		trackInfoPanelView.Height = Dim.Fill(ControlPanelFromBottom);
 
 		// Кнопка сворачивания панели «Инфо» — над списком треков, вплотную к панели.
 		// Она всегда на виду: в свёрнутом виде прижата к правому краю окна.
-		_infoPanelToggle = new InfoPanelToggleView
+		_infoPanelToggle = new PanelToggleView
 		{
-			X = Pos.AnchorEnd(InfoPanelWidth + InfoPanelToggleView.ToggleWidth),
-			Y = 0
+			X = Pos.AnchorEnd(InfoPanelWidth + PanelToggleView.ToggleWidth),
+			Y = 0,
+			Side = PanelSide.Right
 		};
 		_infoPanelToggle.Toggled += ToggleInfoPanel;
 
-		// Спектр — широкая полоса под списком треков и панелью инфо: полосам FFT
-		// нужна ширина, а узкий угол внизу слева её не давал.
+		// Спектр — полоса под списком треков и ровно его ширины: полосам FFT
+		// нужно место, но правый столбец занят панелью «Инфо», и заходить
+		// под неё спектр не должен. Левый край идёт за деревом плейлистов:
+		// у свёрнутой панели он сдвигается вместе с ним.
 		_spectrum = new SpectrumView
 		{
-			X = playlistsWidth,
+			X = Pos.Right(playlistsView),
 			Y = Pos.Top(playStatusView) - (spectrumHeight + 1),
-			Width = Dim.Fill(playlistsWidth),
+			Width = Dim.Fill(InfoPanelWidth),
 			Height = spectrumHeight
 		};
 		_spectrum.AddRenderer(new BarsRenderer());
@@ -145,7 +185,7 @@ public sealed class MainWindow : Window
 
 		_spectrumModeButton = new Button
 		{
-			X = playlistsWidth,
+			X = Pos.Right(playlistsView),
 			Y = Pos.Top(playStatusView) - 1,
 			Width = 14,
 			Text = _spectrum.ModeDisplayName
@@ -172,9 +212,11 @@ public sealed class MainWindow : Window
 
 		RestoreSpectrumSettings();
 		ApplyInfoPanelVisible(AppConfiguration.GetInfoPanelVisible());
+		ApplyPlaylistsCollapsed(AppConfiguration.GetPlaylistsCollapsed());
 
-		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, _spectrumToggleButton,
-			_filterField, _infoPanelToggle, tracksView, trackInfoPanelView, playStatusView, commandInputView);
+		Add(playlistsView, _playlistsToggle, _spectrum, _spectrumModeButton, _spectrumFreqButton,
+			_spectrumToggleButton, _filterField, _infoPanelToggle, tracksView, trackInfoPanelView,
+			playStatusView, commandInputView);
 
 		// ── Wire presenter events via coordinator ──────────────────────
 		_splashScreen = new SplashScreenView();
@@ -286,6 +328,7 @@ public sealed class MainWindow : Window
 				new MenuItem("О треке [F7]", "", _coordinator.ShowTrackAbout),
 				new MenuItem("Крупное инфо [F8]", "", _coordinator.ShowLargeTrackInfo),
 				new MenuItem("Скрыть/показать панель «Инфо»", "", ToggleInfoPanel),
+				new MenuItem("Свернуть/развернуть панель «Плейлисты»", "", TogglePlaylists),
 				null,
 				new MenuItem("≋ Переключить режим спектра", "", ToggleSpectrumMode),
 				null,
@@ -336,12 +379,13 @@ public sealed class MainWindow : Window
 		_infoPanelToggle.Expanded = visible;
 
 		int reserved = visible
-			? InfoPanelWidth + InfoPanelToggleView.ToggleWidth
-			: InfoPanelToggleView.ToggleWidth;
+			? InfoPanelWidth + PanelToggleView.ToggleWidth
+			: PanelToggleView.ToggleWidth;
 
 		_infoPanelToggle.X = Pos.AnchorEnd(reserved);
 		_filterField.Width = Dim.Fill(reserved);
 		_tracksView.Width = visible ? Dim.Fill(InfoPanelWidth) : Dim.Fill();
+		_spectrum.Width = visible ? Dim.Fill(InfoPanelWidth) : Dim.Fill();
 
 		SetNeedsDisplay();
 	}
@@ -354,8 +398,39 @@ public sealed class MainWindow : Window
 	}
 
 	/// <summary>
+	/// Сворачивает или разворачивает дерево плейлистов. Свёрнутая панель уезжает
+	/// влево целиком, а освободившиеся колонки забирают список треков, поле фильтра,
+	/// спектр и его кнопки: все они отсчитываются от правого края панели, поэтому
+	/// достаточно обнулить её ширину. Кнопка при этом прижимается к левому краю окна
+	/// и остаётся на виду — как у панели «Инфо» в свёрнутом виде.
+	/// </summary>
+	private void ApplyPlaylistsCollapsed(bool collapsed)
+	{
+		_playlistsCollapsed = collapsed;
+		_playlistsView.Visible = !collapsed;
+		_playlistsView.Width = collapsed ? 0 : PlaylistsWidth;
+		_playlistsToggle.Expanded = !collapsed;
+
+		SetNeedsDisplay();
+	}
+
+	private void TogglePlaylists()
+	{
+		ApplyPlaylistsCollapsed(!_playlistsCollapsed);
+
+		// Фокус не должен остаться на скрытом дереве: иначе клавиши «перестают
+		// работать». Возвращаем его туда, где пользователь и ждёт, — в список треков.
+		if (_playlistsCollapsed)
+			_tracksView.FocusActive();
+
+		AppConfiguration.SavePlaylistsCollapsed(_playlistsCollapsed);
+		Logging.LogUserAction(_playlistsCollapsed ? "панель «Плейлисты» свёрнута" : "панель «Плейлисты» развёрнута");
+	}
+
+	/// <summary>
 	/// Включает/выключает визуализацию: скрывает сам спектр и его кнопки режима/частоты,
-	/// а освободившиеся строки отдаёт списку треков и панели информации.
+	/// а освободившиеся строки отдаёт списку треков. Панель «Инфо» тянется до панели
+	/// управления независимо от спектра, поэтому её высота здесь не меняется.
 	/// </summary>
 	private void ApplySpectrumEnabled(bool enabled)
 	{
@@ -367,7 +442,7 @@ public sealed class MainWindow : Window
 
 		int bottomHeight = enabled ? BottomHeightWithSpectrum : BottomHeightWithoutSpectrum;
 		_tracksView.Height = Dim.Fill(bottomHeight + 1);
-		_trackInfoPanel.Height = Dim.Fill(bottomHeight);
+		_trackInfoPanel.Height = Dim.Fill(ControlPanelFromBottom);
 		SetNeedsDisplay();
 	}
 
