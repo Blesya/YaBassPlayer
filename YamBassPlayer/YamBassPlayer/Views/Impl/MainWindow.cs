@@ -19,6 +19,9 @@ public sealed class MainWindow : Window
 	/// <summary>Без спектра остаются командная строка 2, панель 6 и ряд кнопок 1.</summary>
 	private const int BottomHeightWithoutSpectrum = 9;
 
+	/// <summary>Ширина панели «Инфо» справа от списка треков.</summary>
+	private const int InfoPanelWidth = 38;
+
 	private readonly MainWindowCoordinator _coordinator;
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlaybackQueue _playbackQueue;
@@ -32,8 +35,10 @@ public sealed class MainWindow : Window
 	private Button _spectrumFreqButton = null!;
 	private Button _spectrumToggleButton = null!;
 	private TextField _filterField = null!;
+	private InfoPanelToggleView _infoPanelToggle = null!;
 	private MenuItem _tracksViewMenuItem = null!;
 	private bool _spectrumEnabled = true;
+	private bool _infoPanelVisible = true;
 	private int _freqPresetIndex = 4;
 	private static readonly int[] FreqPresets = [4000, 8000, 12000, 16000, 22050];
 
@@ -72,7 +77,6 @@ public sealed class MainWindow : Window
 		const int bottomHeight = BottomHeightWithSpectrum;
 		const int spectrumHeight = 10;
 		const int playlistsWidth = 30;
-		const int panelWidth = 38;
 
 		playStatusView.X = 0;
 		playStatusView.Y = Pos.AnchorEnd(8);
@@ -94,7 +98,7 @@ public sealed class MainWindow : Window
 		{
 			X = Pos.Right(playlistsView),
 			Y = 0,
-			Width = Dim.Fill(panelWidth),
+			Width = Dim.Fill(InfoPanelWidth + InfoPanelToggleView.ToggleWidth),
 			Height = 1
 		};
 		_filterField.TextChanged += _ =>
@@ -105,13 +109,22 @@ public sealed class MainWindow : Window
 
 		tracksView.X = Pos.Right(playlistsView);
 		tracksView.Y = 1;
-		tracksView.Width = Dim.Fill(panelWidth);
+		tracksView.Width = Dim.Fill(InfoPanelWidth);
 		tracksView.Height = Dim.Fill(bottomHeight + 1);
 
 		trackInfoPanelView.X = Pos.Right(tracksView);
 		trackInfoPanelView.Y = 0;
-		trackInfoPanelView.Width = panelWidth;
+		trackInfoPanelView.Width = InfoPanelWidth;
 		trackInfoPanelView.Height = Dim.Fill(bottomHeight);
+
+		// Кнопка сворачивания панели «Инфо» — над списком треков, вплотную к панели.
+		// Она всегда на виду: в свёрнутом виде прижата к правому краю окна.
+		_infoPanelToggle = new InfoPanelToggleView
+		{
+			X = Pos.AnchorEnd(InfoPanelWidth + InfoPanelToggleView.ToggleWidth),
+			Y = 0
+		};
+		_infoPanelToggle.Toggled += ToggleInfoPanel;
 
 		// Спектр — широкая полоса под списком треков и панелью инфо: полосам FFT
 		// нужна ширина, а узкий угол внизу слева её не давал.
@@ -159,9 +172,10 @@ public sealed class MainWindow : Window
 		_spectrumToggleButton.Clicked += ToggleSpectrumEnabled;
 
 		RestoreSpectrumSettings();
+		ApplyInfoPanelVisible(AppConfiguration.GetInfoPanelVisible());
 
 		Add(playlistsView, _spectrum, _spectrumModeButton, _spectrumFreqButton, _spectrumToggleButton,
-			_filterField, tracksView, trackInfoPanelView, playStatusView, commandInputView);
+			_filterField, _infoPanelToggle, tracksView, trackInfoPanelView, playStatusView, commandInputView);
 
 		// ── Wire presenter events via coordinator ──────────────────────
 		_splashScreen = new SplashScreenView();
@@ -270,6 +284,8 @@ public sealed class MainWindow : Window
 			{
 				new MenuItem("Визуализация [F5]", "", _coordinator.ShowNowPlaying),
 				new MenuItem("Крупное инфо [F8]", "", _coordinator.ShowLargeTrackInfo),
+				new MenuItem("Скрыть/показать панель «Инфо»", "", ToggleInfoPanel),
+				null,
 				new MenuItem("≋ Переключить режим спектра", "", ToggleSpectrumMode),
 				null,
 				_tracksViewMenuItem
@@ -305,6 +321,35 @@ public sealed class MainWindow : Window
 			: $"▲ {_spectrum.MaxFrequencyHz / 1000}k";
 
 		ApplySpectrumEnabled(AppConfiguration.GetSpectrumEnabled());
+	}
+
+	/// <summary>
+	/// Показывает или скрывает панель «Инфо». Скрытая панель отдаёт свои колонки
+	/// списку треков и полю фильтра, а кнопка-стрелка остаётся на виду — вплотную
+	/// к панели или у правого края окна, — чтобы панель можно было вернуть.
+	/// </summary>
+	private void ApplyInfoPanelVisible(bool visible)
+	{
+		_infoPanelVisible = visible;
+		_trackInfoPanel.Visible = visible;
+		_infoPanelToggle.Expanded = visible;
+
+		int reserved = visible
+			? InfoPanelWidth + InfoPanelToggleView.ToggleWidth
+			: InfoPanelToggleView.ToggleWidth;
+
+		_infoPanelToggle.X = Pos.AnchorEnd(reserved);
+		_filterField.Width = Dim.Fill(reserved);
+		_tracksView.Width = visible ? Dim.Fill(InfoPanelWidth) : Dim.Fill();
+
+		SetNeedsDisplay();
+	}
+
+	private void ToggleInfoPanel()
+	{
+		ApplyInfoPanelVisible(!_infoPanelVisible);
+		AppConfiguration.SaveInfoPanelVisible(_infoPanelVisible);
+		Logging.LogUserAction(_infoPanelVisible ? "панель «Инфо» показана" : "панель «Инфо» скрыта");
 	}
 
 	/// <summary>

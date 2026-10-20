@@ -144,6 +144,22 @@ public class AppConfiguration
 		SaveJsonNode(root);
 	}
 
+	/// <summary>Видна ли панель «Инфо» справа от списка треков. true — не сохранялась (по умолчанию).</summary>
+	public static bool GetInfoPanelVisible()
+	{
+		try { return LoadJsonNode()["View"]?["InfoPanelVisible"]?.GetValue<bool>() ?? true; }
+		catch { return true; }
+	}
+
+	public static void SaveInfoPanelVisible(bool visible)
+	{
+		var root = LoadJsonNode();
+		var section = root["View"]?.AsObject() ?? new JsonObject();
+		section["InfoPanelVisible"] = visible;
+		root["View"] = section;
+		SaveJsonNode(root);
+	}
+
 	/// <summary>Возвращает сохранённый индекс визуализации (режима спектра). -1 — не сохранялся (по умолчанию).</summary>
 	public static int GetSpectrumMode()
 	{
