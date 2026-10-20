@@ -1,6 +1,6 @@
 using YamBassPlayer.Models;
-using Yandex.Music.Api.Models.Search.Album;
-using Yandex.Music.Api.Models.Search.Artist;
+using YamBassPlayer.Api.Models.Search.Album;
+using YamBassPlayer.Api.Models.Search.Artist;
 
 namespace YamBassPlayer.Extensions;
 

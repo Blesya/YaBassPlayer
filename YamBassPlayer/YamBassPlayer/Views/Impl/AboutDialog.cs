@@ -95,7 +95,7 @@ public sealed class AboutDialog : Dialog
 			"Технологии:",
 			" Terminal.Gui 1.19.0 — терминальный интерфейс",
 			" ManagedBass 4.0.2 — воспроизведение, эквалайзер, FFT",
-			" KM.Yandex.Music.Api 2.0.6 — интеграция с Яндекс.Музыкой",
+			" YamBassPlayer.Api (KM.Yandex.Music.Api) — интеграция с Яндекс.Музыкой",
 			" Microsoft.Data.Sqlite — локальное хранилище",
 			" TagLibSharp 2.3.0 — метаданные аудиофайлов",
 			" Microsoft.ML 5.0.0 — рекомендации треков",

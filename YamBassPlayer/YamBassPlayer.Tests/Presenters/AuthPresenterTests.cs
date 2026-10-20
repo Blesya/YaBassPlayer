@@ -5,7 +5,7 @@ using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Views;
-using Yandex.Music.Api.Common;
+using YamBassPlayer.Api.Common;
 
 namespace YamBassPlayer.Tests.Presenters;
 

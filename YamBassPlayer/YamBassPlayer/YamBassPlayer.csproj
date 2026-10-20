@@ -7,7 +7,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="KM.Yandex.Music.Api" Version="2.0.6" />
         <PackageReference Include="ManagedBass" Version="4.0.2" />
         <PackageReference Include="ManagedBass.Fx" Version="4.0.2" />
         <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.0" />
@@ -22,6 +21,10 @@
         <PackageReference Include="Terminal.Gui" Version="1.19.0" />
         <PackageReference Include="Autofac" Version="8.1.1" />
         <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\YamBassPlayer.Api\YamBassPlayer.Api.csproj" />
     </ItemGroup>
 
     <ItemGroup>

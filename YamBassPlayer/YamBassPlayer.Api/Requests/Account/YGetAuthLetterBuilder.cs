@@ -1,0 +1,33 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Net.Http;
+
+using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Requests.Common;
+using YamBassPlayer.Api.Requests.Common.Attributes;
+
+namespace YamBassPlayer.Api.Requests.Account
+{
+    [YPassportRequest(WebRequestMethods.Http.Post, "registration-validations/auth/send_magic_letter")]
+    internal class YGetAuthLetterBuilder : YRequestBuilder<Models.Account.YAuthLetter, string>
+    {
+        public YGetAuthLetterBuilder(YandexMusicApi yandex, AuthStorage auth) : base(yandex, auth)
+        {
+        }
+
+        protected override HttpContent GetContent(string tuple)
+        {
+            if (storage.AuthToken == null)
+            {
+                throw new Exception("Не найдена сессия входа.");
+            }
+
+            return new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "csrf_token", storage.AuthToken.CsfrToken },
+                { "track_id", storage.AuthToken.TrackId },
+            });
+        }
+    }
+}

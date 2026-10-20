@@ -2,9 +2,9 @@ using Serilog;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
-using Yandex.Music.Api.Models.Account;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Account;
 
 namespace YamBassPlayer.Services.Impl;
 

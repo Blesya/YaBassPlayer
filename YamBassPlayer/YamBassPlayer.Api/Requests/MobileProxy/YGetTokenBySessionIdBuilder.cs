@@ -1,0 +1,40 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+
+using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Account;
+using YamBassPlayer.Api.Requests.Common;
+using YamBassPlayer.Api.Requests.Common.Attributes;
+
+namespace YamBassPlayer.Api.Requests.MobileProxy
+{
+    [YMobileProxyRequest(WebRequestMethods.Http.Post, "1/bundle/oauth/token_by_sessionid")]
+    internal class YGetTokenBySessionIdBuilder : YRequestBuilder<YAccessToken, string>
+    {
+        public YGetTokenBySessionIdBuilder(YandexMusicApi yandex, AuthStorage auth) : base(yandex, auth)
+        {
+        }
+
+        protected override void SetCustomHeaders(HttpRequestHeaders headers)
+        {
+            IEnumerable<string> cookies = storage.Context.Cookies.GetAllCookies()
+                .Where(x => x.Domain.EndsWith("yandex.ru"))
+                .Select(x => $"{x.Name}={x.Value}");
+            
+            headers.Add("Ya-Client-Cookie", string.Join(";", cookies));
+            headers.Add("Ya-Client-Host", "passport.yandex.ru");
+        }
+
+        protected override HttpContent GetContent(string tuple)
+        {
+            return new FormUrlEncodedContent(new Dictionary<string, string> {
+                { "client_id", YConstants.XClientId },
+                { "client_secret", YConstants.XClientSecret },
+                { "track_id", storage.AuthToken.TrackId }
+            });
+        }
+    }
+}

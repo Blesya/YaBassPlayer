@@ -4,10 +4,10 @@ using Serilog;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
-using Yandex.Music.Api.Models.Common;
-using Yandex.Music.Api.Models.Playlist;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Common;
+using YamBassPlayer.Api.Models.Playlist;
 
 namespace YamBassPlayer.Services.Impl;
 
@@ -19,7 +19,7 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
     private readonly string _coversFolder;
     private List<Playlist>? _playlistsCache;
     private List<string>? _likedTrackIdsCache;
-    private List<Yandex.Music.Api.Models.Common.YResponse<Yandex.Music.Api.Models.Playlist.YPlaylist>>? _personalPlaylistsCache;
+    private List<YamBassPlayer.Api.Models.Common.YResponse<YamBassPlayer.Api.Models.Playlist.YPlaylist>>? _personalPlaylistsCache;
 
     public string SourceId => SourceIds.Yandex;
     public string DisplayName => "Яндекс.Музыка";
@@ -108,7 +108,7 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource
 
 	/// <summary>
 	/// Собственные плейлисты пользователя (<c>/users/{uid}/playlists/list</c>).
-	/// В KM.Yandex.Music.Api метода нет, поэтому идём через её же провайдер запросов,
+	/// В YamBassPlayer.Api метода нет, поэтому идём через её же провайдер запросов,
 	/// чтобы сохранить авторизацию, прокси и десериализацию моделей.
 	/// </summary>
 	private async Task<IEnumerable<Playlist>> GetOwnPlaylistsAsync()

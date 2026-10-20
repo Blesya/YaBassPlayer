@@ -1,0 +1,110 @@
+using System;
+using System.Reflection;
+
+using YamBassPlayer.Api.API;
+
+namespace YamBassPlayer.Api
+{
+    /// <summary>
+    /// Yandex Music API
+    /// </summary>
+    public class YandexMusicApi
+    {
+        #region Ветки API
+
+        /// <summary>
+        /// API альбомов
+        /// </summary>
+        public YAlbumAPI Album { get; internal set; }
+
+        /// <summary>
+        /// API исполнителей
+        /// </summary>
+        public YArtistAPI Artist { get; internal set; }
+
+        /// <summary>
+        /// API лейблов
+        /// </summary>
+        public YLabelAPI Label { get; internal set; }
+
+        /// <summary>
+        /// API главной страницы
+        /// </summary>
+        public YLandingAPI Landing { get; internal set; }
+
+        /// <summary>
+        /// API библиотеки
+        /// </summary>
+        public YLibraryAPI Library { get; internal set; }
+
+        /// <summary>
+        /// API плейлистов
+        /// </summary>
+        public YPlaylistAPI Playlist { get; internal set; }
+
+        /// <summary>
+        /// API прикреплённых объектов
+        /// </summary>
+        public YPinsAPI Pins { get; internal set; }
+
+        /// <summary>
+        /// API радио
+        /// </summary>
+        public YRadioAPI Radio { get; internal set; }
+
+        /// <summary>
+        /// API поиска
+        /// </summary>
+        public YSearchAPI Search { get; internal set; }
+
+        /// <summary>
+        /// API треков
+        /// </summary>
+        public YTrackAPI Track { get; internal set; }
+        
+        /// <summary>
+        /// API очередей
+        /// </summary>
+        public YQueueAPI Queue { get; internal set; }
+
+        /// <summary>
+        /// API пользователя
+        /// </summary>
+        public YUserAPI User { get; internal set; }
+
+        /// <summary>
+        /// API user generated контента
+        /// </summary>
+        public YUgcAPI UserGeneratedContent { get; internal set; }
+
+        /// <summary>
+        /// API Ynison
+        /// </summary>
+        public YYnisonAPI Ynison { get; internal set; }
+        
+        /// <summary>
+        /// API Passport 
+        /// </summary>
+        public YPassportAPI Passport { get; internal set; }
+
+        /// <summary>
+        /// API Mobile Proxy
+        /// </summary>
+        public YMobileProxyAPI MobileProxy { get; internal set; }
+        
+        #endregion Ветки API
+
+        #region Основные функции
+
+        /// <summary>
+        /// Конструктор по умолчанию
+        /// </summary>
+        public YandexMusicApi()
+        {
+            foreach (PropertyInfo property in GetType().GetProperties())
+                property.SetValue(this, Activator.CreateInstance(property.PropertyType, this));
+        }
+
+        #endregion Основные функции
+    }
+}

@@ -1,5 +1,5 @@
 ﻿using YamBassPlayer.Models;
-using Yandex.Music.Api.Models.Track;
+using YamBassPlayer.Api.Models.Track;
 
 namespace YamBassPlayer.Extensions;
 

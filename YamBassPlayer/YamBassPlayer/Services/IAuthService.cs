@@ -1,7 +1,7 @@
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
 
 namespace YamBassPlayer.Services;
 

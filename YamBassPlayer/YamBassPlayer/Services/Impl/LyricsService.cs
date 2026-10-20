@@ -1,6 +1,6 @@
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
-using Yandex.Music.Api.Models.Track;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Track;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 

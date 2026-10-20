@@ -1,0 +1,20 @@
+using System.Runtime.Serialization;
+
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+
+namespace YamBassPlayer.Api.Models.Common.Cover
+{
+    [JsonConverter(typeof(StringEnumConverter))]
+    public enum YCoverType
+    {
+        Color,
+        Error,
+        [EnumMember(Value = "from-artist-photos")]
+        FromArtistPhotos,
+        [EnumMember(Value = "from-album-cover")]
+        FromAlbumCover,
+        Mosaic,
+        Pic
+    }
+}

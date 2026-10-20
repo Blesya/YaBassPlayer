@@ -1,5 +1,5 @@
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Services.Impl;

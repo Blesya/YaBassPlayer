@@ -37,7 +37,7 @@ YamBassPlayer — кроссплатформенный музыкальный п
 - [.NET 8.0](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [Terminal.Gui](https://github.com/gui-cs/Terminal.Gui) 1.19.0 — TUI
 - [ManagedBass](https://github.com/ManagedBass/ManagedBass) 4.0.2 + ManagedBass.Fx — воспроизведение, эквалайзер, FFT
-- [KM.Yandex.Music.Api](https://github.com/K1llMan/Yandex.Music.Api) 2.0.6 — API Яндекс.Музыки
+- [Yandex.Music.Api](https://github.com/K1llMan/Yandex.Music.Api) — API Яндекс.Музыки (исходники входят в репозиторий, проект `YamBassPlayer.Api`)
 - [SQLite](https://www.sqlite.org/) (Microsoft.Data.Sqlite 10.0.0) — локальное хранилище
 - [Autofac](https://autofac.org/) 8.1.1 — DI-контейнер
 - [TagLibSharp](https://github.com/mono/taglib-sharp) 2.3.0 — метаданные аудиофайлов

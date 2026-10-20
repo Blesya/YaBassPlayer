@@ -2,10 +2,10 @@ using System.Collections.Concurrent;
 using Serilog;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
-using Yandex.Music.Api.Models.Common;
-using Yandex.Music.Api.Models.Track;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Common;
+using YamBassPlayer.Api.Models.Track;
 
 namespace YamBassPlayer.Services.Impl;
 

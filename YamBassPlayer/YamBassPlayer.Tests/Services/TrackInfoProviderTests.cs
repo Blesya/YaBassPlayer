@@ -3,8 +3,8 @@ using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 using YamBassPlayer.Tests.Data;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
 
 namespace YamBassPlayer.Tests.Services;
 

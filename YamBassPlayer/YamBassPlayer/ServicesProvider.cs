@@ -8,8 +8,8 @@ using YamBassPlayer.Services.Impl;
 using YamBassPlayer.UseCases;
 using YamBassPlayer.Views;
 using YamBassPlayer.Views.Impl;
-using Yandex.Music.Api;
-using Yandex.Music.Api.Common;
+using YamBassPlayer.Api;
+using YamBassPlayer.Api.Common;
 
 namespace YamBassPlayer;
 
