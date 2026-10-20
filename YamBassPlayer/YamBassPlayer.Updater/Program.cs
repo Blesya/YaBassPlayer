@@ -57,6 +57,9 @@ internal static class Program
 			UpdateApplyResult applied = UpdateApplier.Apply(payload, arguments.TargetDirectory, backupDirectory);
 
 			log.Write($"Обновление применено: заменено {applied.Replaced}, добавлено {applied.Added}. Бэкап: {backupDirectory}");
+
+			// Архив больше не нужен: апдейтер работает из temp, а не из него.
+			TryDeleteFile(arguments.ZipPath);
 			return ExitSuccess;
 		}
 		catch (InvalidDataException exception)
@@ -120,6 +123,17 @@ internal static class Program
 		{
 			if (Directory.Exists(path))
 				Directory.Delete(path, recursive: true);
+		}
+		catch (IOException) { }
+		catch (UnauthorizedAccessException) { }
+	}
+
+	private static void TryDeleteFile(string path)
+	{
+		try
+		{
+			if (File.Exists(path))
+				File.Delete(path);
 		}
 		catch (IOException) { }
 		catch (UnauthorizedAccessException) { }

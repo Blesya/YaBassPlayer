@@ -67,6 +67,25 @@ public sealed class UpdateServiceTests
         Assert.That(reported.Values[^1], Is.EqualTo(100), $"получено: {string.Join(", ", reported.Values)}");
     }
 
+    [Test]
+    public async Task DownloadAsync_RemovesPreviousUpdateDirectories()
+    {
+        string oldDirectory = Path.Combine(_tempRoot, "update-0.0.1");
+        string olderDirectory = Path.Combine(_tempRoot, "update-0.0.0");
+        Directory.CreateDirectory(oldDirectory);
+        Directory.CreateDirectory(olderDirectory);
+        await File.WriteAllTextAsync(Path.Combine(oldDirectory, "old.zip"), "old");
+
+        byte[] payload = Encoding.UTF8.GetBytes("distributive");
+        string checksum = Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
+
+        string path = await CreateService(payload, checksum).DownloadAsync(CreateInfo(), progress: null, CancellationToken.None);
+
+        Assert.That(Directory.Exists(oldDirectory), Is.False);
+        Assert.That(Directory.Exists(olderDirectory), Is.False);
+        Assert.That(File.Exists(path), Is.True);
+    }
+
     private UpdateService CreateService(byte[] payload, string checksum)
         => new(new StubFeed(), new HttpClient(new StubHandler(payload, checksum)), _tempRoot);
 

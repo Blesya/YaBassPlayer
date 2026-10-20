@@ -33,6 +33,7 @@ public sealed class UpdateService : IUpdateService
 	public async Task<string> DownloadAsync(UpdateInfo info, IProgress<int>? progress, CancellationToken cancellationToken)
 	{
 		string directory = Path.Combine(_tempRoot, $"update-{info.Version}");
+		CleanupOldUpdates(directory);
 		Directory.CreateDirectory(directory);
 		string path = Path.Combine(directory, info.AssetName);
 
@@ -70,6 +71,29 @@ public sealed class UpdateService : IUpdateService
 
 		await VerifyChecksumAsync(path, info.ChecksumUrl, cancellationToken);
 		return path;
+	}
+
+	/// <summary>
+	/// Убирает каталоги прошлых обновлений, чтобы temp не рос на 6 МБ с каждой версии.
+	/// Ошибки чистки не фатальны: места на диске может не хватить, прав нет и т.п.
+	/// </summary>
+	private void CleanupOldUpdates(string currentDirectory)
+	{
+		if (!Directory.Exists(_tempRoot))
+			return;
+
+		foreach (string directory in Directory.GetDirectories(_tempRoot, "update-*"))
+		{
+			if (string.Equals(directory, currentDirectory, StringComparison.OrdinalIgnoreCase))
+				continue;
+
+			try
+			{
+				Directory.Delete(directory, recursive: true);
+			}
+			catch (IOException) { }
+			catch (UnauthorizedAccessException) { }
+		}
 	}
 
 	private async Task VerifyChecksumAsync(string filePath, string? checksumUrl, CancellationToken cancellationToken)
