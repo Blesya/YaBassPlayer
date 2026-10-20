@@ -91,18 +91,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Continue'
+          $exists = $false
+
           if ("${{ inputs.force }}" -eq "true") {
             Write-Host "force=true: релиз будет пересобран и перезалит."
-            "exists=false" >> $env:GITHUB_OUTPUT
-            exit 0
-          }
-          gh release view "v${{ steps.version.outputs.version }}" --json tagName *> $null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Релиз v${{ steps.version.outputs.version }} уже опубликован, пропускаем."
-            "exists=true" >> $env:GITHUB_OUTPUT
           } else {
-            "exists=false" >> $env:GITHUB_OUTPUT
+            # Отсутствующий релиз для gh — это exit code 1. GitHub-обёртка pwsh в конце шага
+            # делает exit $LASTEXITCODE, поэтому код возврата обнуляем вручную.
+            gh release view "v${{ steps.version.outputs.version }}" --json tagName *> $null
+            $exists = ($LASTEXITCODE -eq 0)
+            if ($exists) {
+              Write-Host "Релиз v${{ steps.version.outputs.version }} уже опубликован, пропускаем."
+            }
           }
+
+          "exists=$($exists.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          exit 0
 
       - name: Prepare appsettings.json
         if: steps.exists.outputs.exists == 'false'
