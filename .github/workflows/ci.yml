@@ -159,6 +159,26 @@ jobs:
           "checksum=$checksum" >> $env:GITHUB_OUTPUT
           Write-Host ("Размер архива: {0:N1} MB" -f ((Get-Item $asset).Length / 1MB))
 
+      - name: Release notes from CHANGELOG.md
+        id: notes
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          # Описание релиза — раздел выпускаемой версии из CHANGELOG.md, как есть.
+          # Нет раздела — нет релиза: пустое описание хуже, чем красная сборка.
+          $version = "${{ steps.version.outputs.version }}"
+          $pattern = "(?ms)^##\s*\[?v?$([regex]::Escape($version))\]?[^\r\n]*\r?\n(.*?)(?=^##\s|\z)"
+          $match = [regex]::Match((Get-Content CHANGELOG.md -Raw), $pattern)
+          $body = if ($match.Success) { $match.Groups[1].Value.Trim() } else { '' }
+
+          if ([string]::IsNullOrWhiteSpace($body)) {
+            throw "В CHANGELOG.md нет раздела '## [$version]' — описание релиза обязательно."
+          }
+
+          $path = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -Path $path -Value $body -Encoding utf8 -NoNewline
+          "path=$path" >> $env:GITHUB_OUTPUT
+
       - name: Create GitHub Release
         if: steps.exists.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
@@ -166,23 +186,8 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           target_commitish: ${{ github.sha }}
           name: v${{ steps.version.outputs.version }}
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             ${{ steps.dist.outputs.asset }}
             ${{ steps.dist.outputs.checksum }}
           fail_on_unmatched_files: true
-          body: |
-            ## YamBassPlayer ${{ steps.version.outputs.version }} (Windows x64)
-
-            Портативная сборка: распаковать архив и запустить `YamBassPlayer.exe`.
-            Требуется установленный [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
-            (сборка single-file, framework-dependent).
-
-            При первом запуске нужен аккаунт Яндекс.Музыки: приложение покажет код
-            для `https://ya.ru/device` (или QR-код). Токен сохраняется в
-            `appsettings.json` рядом с exe. `appsettings.example.json` — образец конфига.
-
-            Обновления: «Файл → Проверка обновлений…» или команда `update`. Приложение
-            само проверяет новые релизы при старте и раз в час, скачивает архив и
-            перезапускается через `YamBassPlayer.Updater.exe`.
-
-            В архиве только Windows-библиотеки BASS (`bass.dll`, `bass_fx.dll`).

@@ -168,7 +168,7 @@ dotnet test   # 562 NUnit-теста (команды, модели, сервис
 
 ## Релизы и CI/CD
 
-Версия релиза задаётся в одном месте — `YamBassPlayer/Directory.Build.props` (`<Version>0.0.1</Version>`). Оттуда её берут сборка, окно «О программе» и GitHub Release.
+Версия релиза задаётся в одном месте — `YamBassPlayer/Directory.Build.props` (`<Version>1.1.0</Version>`). Оттуда её берут сборка, окно «О программе» и GitHub Release.
 
 - `.github/workflows/ci.yml` — единственный workflow, две джобы:
   - `build` — сборка и тесты на `windows-latest` для пуша в `master` и pull request;
@@ -178,7 +178,7 @@ dotnet test   # 562 NUnit-теста (команды, модели, сервис
 
 В архив попадают только Windows-библиотеки BASS (`bass.dll`, `bass_fx.dll`); `.so`/`.dylib` в релизную сборку не копируются, а workflow падает, если они там окажутся. `appsettings.json` в архив не кладётся (там токен), вместо него — `appsettings.example.json`.
 
-Чтобы выпустить новую версию: поднять `<Version>` в `Directory.Build.props`, закоммитить и запушить в `master`.
+Чтобы выпустить новую версию: поднять `<Version>` в `Directory.Build.props` и добавить в `CHANGELOG.md` раздел `## [<версия>] — ГГГГ-ММ-ДД` с коротким описанием изменений, закоммитить и запушить в `master`. Раздел версии целиком становится описанием GitHub-релиза (и его же показывает окно «Найдена новая версия»); если раздела нет, джоба `release` падает, не публикуя релиз с пустым описанием.
 
 ### Автообновление
 
