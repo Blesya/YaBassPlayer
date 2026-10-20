@@ -162,6 +162,19 @@ https://github.com/MarshalX/yandex-music-api/discussions/513
 dotnet test   # 562 NUnit-теста (команды, модели, сервисы, презентеры, представления, SQLite)
 ```
 
+## Релизы и CI/CD
+
+Версия релиза задаётся в одном месте — `YamBassPlayer/Directory.Build.props` (`<Version>0.0.1</Version>`). Оттуда её берут сборка, окно «О программе» и GitHub Release.
+
+- `.github/workflows/build.yml` — CI: сборка и тесты на Ubuntu, Windows и macOS для пуша в `master` и pull request.
+- `.github/workflows/release.yml` — CD: на пуш в `master` читает версию из проекта и, если релиза `v<версия>` ещё нет, прогоняет тесты, публикует дистрибутив по профилю `FolderProfile.pubxml` (win-x64, single-file, framework-dependent), пакует `YamBassPlayer-<версия>-win-x64.zip` и публикует его в GitHub Releases. Версию не меняли — релиз не создаётся.
+
+Ручной запуск: Actions → Release → Run workflow (галочка `force` пересобирает уже существующий релиз).
+
+В архив попадают только Windows-библиотеки BASS (`bass.dll`, `bass_fx.dll`); `.so`/`.dylib` в релизную сборку не копируются, а workflow падает, если они там окажутся. `appsettings.json` в архив не кладётся (там токен), вместо него — `appsettings.example.json`.
+
+Чтобы выпустить новую версию: поднять `<Version>` в `Directory.Build.props`, закоммитить и запушить в `master`.
+
 ---
 
 Если вам понравился проект, поставьте звезду на GitHub!

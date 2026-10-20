@@ -27,25 +27,26 @@
         <ProjectReference Include="..\YamBassPlayer.Api\YamBassPlayer.Api.csproj" />
     </ItemGroup>
 
+    <!-- Целевая платформа для нативных BASS-библиотек: RID важнее ОС сборочной машины,
+         иначе кросс-публикация (win-x64 с Linux-раннера) положит в пакет чужие .so/.dylib. -->
+    <PropertyGroup>
+        <BassTargetIsWindows Condition="'$(RuntimeIdentifier)' != ''">$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))</BassTargetIsWindows>
+        <BassTargetIsWindows Condition="'$(RuntimeIdentifier)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</BassTargetIsWindows>
+    </PropertyGroup>
+
     <ItemGroup>
-        <None Include="libs\bass.dll">
-            <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-        </None>
         <None Include="appsettings.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </None>
     </ItemGroup>
 
+    <ItemGroup>
+        <BassNative Include="libs\bass.dll;libs\bass_fx.dll" Condition="'$(BassTargetIsWindows)' == 'true'" />
+        <BassNative Include="libs\libbass.so;libs\libbass.dylib;libs\libbass_fx.dylib" Condition="'$(BassTargetIsWindows)' != 'true'" />
+    </ItemGroup>
+
     <Target Name="CopyBass" AfterTargets="Build;Publish">
-        <Copy SourceFiles="libs\bass.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-        <Copy SourceFiles="libs\bass_fx.dll" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-        <Copy SourceFiles="libs\libbass.dylib" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />        
-        <Copy SourceFiles="libs\libbass_fx.dylib" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />        
-        <Copy SourceFiles="libs\libbass.so" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-        <Copy SourceFiles="libs\bass.dll" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
-        <Copy SourceFiles="libs\bass_fx.dll" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
-        <Copy SourceFiles="libs\libbass.dylib" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />        
-        <Copy SourceFiles="libs\libbass_fx.dylib" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />        
-        <Copy SourceFiles="libs\libbass.so" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(BassNative)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(BassNative)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
     </Target>
 </Project>

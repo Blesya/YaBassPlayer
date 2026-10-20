@@ -1,40 +1,45 @@
-name: Build
+name: CI
 
 on:
   push:
-	branches: [ "master" ]
+    branches: [ "master" ]
   pull_request:
-	branches: [ "master" ]
+    branches: [ "master" ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
 
 jobs:
   build:
-	runs-on: ${{ matrix.os }}
-	strategy:
-	  matrix:
-		os: [ubuntu-latest, windows-latest, macos-latest]
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
 
-	steps:
-	  - name: Checkout
-		uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-	  - name: Setup .NET
-		uses: actions/setup-dotnet@v4
-		with:
-		  dotnet-version: "8.0.x"
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-	  - name: Build
-		working-directory: ./YamBassPlayer
-		run: dotnet build --configuration Release
+      # appsettings.json в репозитории нет (секреты), но csproj копирует его в output —
+      # без файла сборка падает с MSB3030.
+      - name: Prepare appsettings.json
+        shell: bash
+        run: cp YamBassPlayer/YamBassPlayer/appsettings.example.json YamBassPlayer/YamBassPlayer/appsettings.json
 
-	  - name: Create ZIP artifact
-		shell: bash
-		run: |
-		  mkdir output
-		  cp -r src/bin/Release/* output/
-		  zip -r build-${{ matrix.os }}.zip output
+      - name: Build
+        working-directory: ./YamBassPlayer
+        run: dotnet build --configuration Release
 
-	  - name: Upload artifact
-		uses: actions/upload-artifact@v4
-		with:
-		  name: build-${{ matrix.os }}
-		  path: build-${{ matrix.os }}.zip
+      - name: Test
+        working-directory: ./YamBassPlayer
+        run: dotnet test --configuration Release --no-build

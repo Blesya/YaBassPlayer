@@ -1,0 +1,140 @@
+name: Release
+
+# CD: версия живёт в YamBassPlayer/Directory.Build.props. Пуш в master, у которого
+# версия ещё не опубликована, собирает Windows-дистрибутив и создаёт GitHub Release
+# v<Version> с zip-архивом. Версия не менялась — релиз не создаётся.
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Пересобрать и перезалить уже существующий релиз"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+# Два пуша подряд не должны гоняться за один и тот же релиз.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  PROJECT: YamBassPlayer/YamBassPlayer/YamBassPlayer.csproj
+  RID: win-x64
+
+jobs:
+  release:
+    name: release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (dotnet msbuild $env:PROJECT -nologo -getProperty:Version).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+') {
+            throw "Некорректная версия в YamBassPlayer/Directory.Build.props: '$version'"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Версия из проекта: $version"
+
+      - name: Check if release already exists
+        id: exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          if ("${{ inputs.force }}" -eq "true") {
+            Write-Host "force=true: релиз будет пересобран и перезалит."
+            "exists=false" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          gh release view "v${{ steps.version.outputs.version }}" --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Релиз v${{ steps.version.outputs.version }} уже опубликован, пропускаем."
+            "exists=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      # appsettings.json в репозитории нет (секреты), но csproj копирует его в output —
+      # без файла сборка падает с MSB3030.
+      - name: Prepare appsettings.json
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: Copy-Item YamBassPlayer/YamBassPlayer/appsettings.example.json YamBassPlayer/YamBassPlayer/appsettings.json
+
+      - name: Test
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: dotnet test YamBassPlayer/YamBassPlayer.Tests/YamBassPlayer.Tests.csproj --configuration Release
+
+      - name: Publish
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          # Настройки берём из профиля проекта (Properties/PublishProfiles/FolderProfile.pubxml):
+          # win-x64, SelfContained=false, PublishSingleFile=true. Переопределяем только каталог,
+          # потому что в профиле прописан локальный абсолютный путь.
+          dotnet publish $env:PROJECT -p:PublishProfile=FolderProfile -p:PublishDir="$PWD/dist/"
+
+      - name: Pack distribution
+        id: dist
+        if: steps.exists.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          # Токен/локальный конфиг в дистрибутив не едет, вместо него — пример.
+          Remove-Item dist/appsettings.json -Force -ErrorAction SilentlyContinue
+          Remove-Item dist/*.pdb -Force -ErrorAction SilentlyContinue
+          Copy-Item YamBassPlayer/YamBassPlayer/appsettings.example.json dist/appsettings.example.json
+
+          # В релизе только Windows: чужие нативные библиотеки не должны попасть в архив.
+          $foreign = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -in '.so', '.dylib' })
+          if ($foreign.Count -gt 0) {
+            throw "В дистрибутив попали .so/.dylib: $($foreign.FullName -join ', ')"
+          }
+
+          $asset = "YamBassPlayer-${{ steps.version.outputs.version }}-$env:RID.zip"
+          Compress-Archive -Path dist/* -DestinationPath $asset -CompressionLevel Optimal
+          "asset=$asset" >> $env:GITHUB_OUTPUT
+          Write-Host ("Размер архива: {0:N1} MB" -f ((Get-Item $asset).Length / 1MB))
+
+      - name: Create GitHub Release
+        if: steps.exists.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ steps.version.outputs.version }}
+          files: ${{ steps.dist.outputs.asset }}
+          fail_on_unmatched_files: true
+          body: |
+            ## YamBassPlayer ${{ steps.version.outputs.version }} (Windows x64)
+
+            Портативная сборка: распаковать архив и запустить `YamBassPlayer.exe`.
+            Требуется установленный [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)
+            (сборка single-file, framework-dependent).
+
+            При первом запуске нужен аккаунт Яндекс.Музыки: приложение покажет код
+            для `https://ya.ru/device` (или QR-код). Токен сохраняется в
+            `appsettings.json` рядом с exe. `appsettings.example.json` — образец конфига.
+
+            В архиве только Windows-библиотеки BASS (`bass.dll`, `bass_fx.dll`).
