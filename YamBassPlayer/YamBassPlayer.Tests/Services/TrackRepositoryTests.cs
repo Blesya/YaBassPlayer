@@ -57,16 +57,19 @@ public sealed class TrackRepositoryTests
         _top10Strategy.Setup(s => s.LoadTrackIdsAsync(It.IsAny<Playlist>()))
             .ReturnsAsync([K("1"), K("2")]);
 
-        _repository = new TrackRepository(
+        _repository = CreateRepository(_cache.Object);
+    }
+
+    private TrackRepository CreateRepository(ITrackRepositoryCache cache)
+        => new(
             _registry.Object,
             new Mock<ITrackInfoProvider>().Object,
             new Mock<IHistoryService>().Object,
-            _cache.Object,
+            cache,
             new Mock<ILocalLibraryService>().Object,
             new PlaylistLoadStrategyResolver([_top10Strategy.Object]),
             _appPlaylists.Object,
             _stateStore.Object);
-    }
 
     [Test]
     public async Task GetPlaylists_PreservesSnapshotForNotReadySource()
@@ -165,6 +168,69 @@ public sealed class TrackRepositoryTests
         await _repository.SetPlaylist(playlist);
 
         Assert.That(_repository.GetAllTrackIds(), Is.EqualTo(new[] { K("s1") }));
+    }
+
+    // ── SetPlaylist: состав плейлиста кешируется на время запуска ──────────
+
+    private static Playlist DataPlaylist()
+        => new("own", "Мой микс")
+        {
+            SourceId = YandexMusicSourceId.Value,
+            Category = PlaylistCategory.Data,
+            Payload = new Dictionary<string, string> { ["owner"] = "42", ["kind"] = "7" }
+        };
+
+    [Test]
+    public async Task SetPlaylist_SamePlaylistTwice_AsksSourceOnce()
+    {
+        TrackRepository repository = CreateRepository(new TrackRepositoryCache());
+        Playlist playlist = DataPlaylist();
+        _yandexSource.Setup(s => s.GetPlaylistTrackIdsAsync(playlist, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(["10", "20"]);
+
+        await repository.SetPlaylist(playlist);
+        await repository.SetPlaylist(playlist);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(repository.GetAllTrackIds(), Is.EqualTo(new[] { K("10"), K("20") }));
+            _yandexSource.Verify(
+                s => s.GetPlaylistTrackIdsAsync(playlist, It.IsAny<CancellationToken>()),
+                Times.Once);
+        });
+    }
+
+    [Test]
+    public async Task SetPlaylist_EmptySourceAnswer_IsNotCached()
+    {
+        TrackRepository repository = CreateRepository(new TrackRepositoryCache());
+        Playlist playlist = DataPlaylist();
+        _yandexSource.Setup(s => s.GetPlaylistTrackIdsAsync(playlist, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<string>());
+
+        await repository.SetPlaylist(playlist);
+        await repository.SetPlaylist(playlist);
+
+        _yandexSource.Verify(
+            s => s.GetPlaylistTrackIdsAsync(playlist, It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+    }
+
+    [Test]
+    public async Task GetPlaylists_ClearsCompositionCache()
+    {
+        TrackRepository repository = CreateRepository(new TrackRepositoryCache());
+        Playlist playlist = DataPlaylist();
+        _yandexSource.Setup(s => s.GetPlaylistTrackIdsAsync(playlist, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(["10"]);
+
+        await repository.SetPlaylist(playlist);
+        await repository.GetPlaylists();
+        await repository.SetPlaylist(playlist);
+
+        _yandexSource.Verify(
+            s => s.GetPlaylistTrackIdsAsync(playlist, It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
     }
 
     // ── GetPlaylists: что попадает в дерево и в снимок ─────────────────────

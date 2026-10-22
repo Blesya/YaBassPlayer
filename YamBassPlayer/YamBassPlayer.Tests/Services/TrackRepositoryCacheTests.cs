@@ -68,6 +68,79 @@ public sealed class TrackRepositoryCacheTests
         });
     }
 
+    // ──────────────── Playlist composition cache ────────────────
+
+    [Test]
+    public void TryGetPlaylistTrackIds_ReturnsFalse_Initially()
+    {
+        var cache = new TrackRepositoryCache();
+
+        var found = cache.TryGetPlaylistTrackIds("42:7", out var keys);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(found, Is.False);
+            Assert.That(keys, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void SetPlaylistTrackIds_KeepsPlaylistsIndependent()
+    {
+        var cache = new TrackRepositoryCache();
+
+        cache.SetPlaylistTrackIds("42:7", new[] { K("1"), K("2") });
+        cache.SetPlaylistTrackIds("42:8", new[] { K("3") });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.TryGetPlaylistTrackIds("42:7", out var own), Is.True);
+            Assert.That(own, Is.EqualTo(new[] { K("1"), K("2") }));
+            Assert.That(cache.TryGetPlaylistTrackIds("42:8", out var liked), Is.True);
+            Assert.That(liked, Is.EqualTo(new[] { K("3") }));
+        });
+    }
+
+    [Test]
+    public void SetPlaylistTrackIds_ReplacesContentOfSameKey()
+    {
+        var cache = new TrackRepositoryCache();
+        cache.SetPlaylistTrackIds("42:7", new[] { K("1"), K("2") });
+
+        cache.SetPlaylistTrackIds("42:7", new[] { K("3") });
+
+        Assert.That(cache.TryGetPlaylistTrackIds("42:7", out var keys), Is.True);
+        Assert.That(keys, Is.EqualTo(new[] { K("3") }));
+    }
+
+    [Test]
+    public void TryGetPlaylistTrackIds_ReturnsSnapshot()
+    {
+        var cache = new TrackRepositoryCache();
+        cache.SetPlaylistTrackIds("42:7", new[] { K("1") });
+
+        cache.TryGetPlaylistTrackIds("42:7", out var keys);
+        cache.SetPlaylistTrackIds("42:7", new[] { K("2") });
+
+        Assert.That(keys, Is.EqualTo(new[] { K("1") }));
+    }
+
+    [Test]
+    public void ClearPlaylistTrackIds_DropsEveryPlaylist()
+    {
+        var cache = new TrackRepositoryCache();
+        cache.SetPlaylistTrackIds("42:7", new[] { K("1") });
+        cache.SetPlaylistTrackIds("42:8", new[] { K("2") });
+
+        cache.ClearPlaylistTrackIds();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.TryGetPlaylistTrackIds("42:7", out _), Is.False);
+            Assert.That(cache.TryGetPlaylistTrackIds("42:8", out _), Is.False);
+        });
+    }
+
     // ──────────────── ReplaceQueueTrackIds ────────────────
 
     [Test]

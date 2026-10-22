@@ -5,6 +5,8 @@ namespace YamBassPlayer.Services.Impl;
 public sealed class TrackRepositoryCache : ITrackRepositoryCache
 {
 	private readonly Dictionary<SourceId, List<TrackKey>> _searchTrackKeys = new();
+	private readonly Dictionary<string, List<TrackKey>> _playlistTrackKeys = new(StringComparer.Ordinal);
+	private readonly object _playlistLock = new();
 	private readonly List<TrackKey> _queueTrackKeys = [];
 	private readonly List<Track> _myWaveTracks = [];
 
@@ -33,6 +35,48 @@ public sealed class TrackRepositoryCache : ITrackRepositoryCache
 
 		keys.Clear();
 		keys.AddRange(tracks.Select(t => t.Key));
+	}
+
+	/// <summary>
+	/// Отдаёт копию: список могли пересобрать в другом потоке, пока вызывающая сторона
+	/// его перечисляет (пользователь листает дерево, а фоновое обновление пишет состав).
+	/// </summary>
+	public bool TryGetPlaylistTrackIds(string cacheKey, out IReadOnlyList<TrackKey> trackKeys)
+	{
+		lock (_playlistLock)
+		{
+			if (_playlistTrackKeys.TryGetValue(cacheKey, out List<TrackKey>? keys))
+			{
+				trackKeys = keys.ToList();
+				return true;
+			}
+		}
+
+		trackKeys = [];
+		return false;
+	}
+
+	public void SetPlaylistTrackIds(string cacheKey, IEnumerable<TrackKey> trackKeys)
+	{
+		lock (_playlistLock)
+		{
+			if (!_playlistTrackKeys.TryGetValue(cacheKey, out List<TrackKey>? keys))
+			{
+				keys = [];
+				_playlistTrackKeys[cacheKey] = keys;
+			}
+
+			keys.Clear();
+			keys.AddRange(trackKeys);
+		}
+	}
+
+	public void ClearPlaylistTrackIds()
+	{
+		lock (_playlistLock)
+		{
+			_playlistTrackKeys.Clear();
+		}
 	}
 
 	public void ReplaceQueueTrackIds(IEnumerable<TrackKey> trackKeys)

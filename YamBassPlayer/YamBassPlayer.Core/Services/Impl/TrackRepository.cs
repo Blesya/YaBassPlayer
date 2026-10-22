@@ -64,6 +64,10 @@ public class TrackRepository : ITrackRepository
 		ct.ThrowIfCancellationRequested();
 		try
 		{
+			// Дерево обновляется, когда данные в источниках могли измениться (F5, вход,
+			// лайк, сканирование библиотеки), — состав плейлистов перечитываем заново.
+			_cache.ClearPlaylistTrackIds();
+
 			var playlists = new List<Playlist>();
 			foreach (IMusicSource source in _musicSourceRegistry.Sources)
 			{
@@ -220,9 +224,22 @@ public class TrackRepository : ITrackRepository
 				: [];
 		}
 
+		// Состав обычного плейлиста источника спрашиваем у источника один раз за запуск:
+		// повторный выбор того же плейлиста в дереве берёт его из кеша. Сбрасывается в
+		// GetPlaylists — при обновлении дерева, когда данные в источнике могли измениться.
+		if (_cache.TryGetPlaylistTrackIds(playlist.CacheKey, out IReadOnlyList<TrackKey> cachedKeys))
+			return cachedKeys.ToList();
+
 		IMusicSource source = _musicSourceRegistry.GetRequired(playlist.SourceId.Value);
 		IReadOnlyList<string> ids = await source.GetPlaylistTrackIdsAsync(playlist);
-		return ids.Select(id => new TrackKey(playlist.SourceId.Value, id)).ToList();
+		List<TrackKey> trackKeys = ids.Select(id => new TrackKey(playlist.SourceId.Value, id)).ToList();
+
+		// Пустой ответ не кешируем: источник мог не ответить из-за ошибки (она уже
+		// залогирована), и плейлист иначе остался бы пустым до обновления дерева.
+		if (trackKeys.Count > 0)
+			_cache.SetPlaylistTrackIds(playlist.CacheKey, trackKeys);
+
+		return trackKeys;
 	}
 
 	public async Task<IEnumerable<Track>> GetNextTracks(int tracksPerBatch, CancellationToken ct = default)
