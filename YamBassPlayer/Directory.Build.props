@@ -2,7 +2,7 @@
   <!-- Единственный источник версии релиза: её читают сборка, окно «О программе» и GitHub Release.
        Меняем здесь, коммитим в master — CD сам соберёт и опубликует v<Version>. -->
   <PropertyGroup>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <Product>YamBassPlayer</Product>
     <Company>Blesya</Company>
   </PropertyGroup>

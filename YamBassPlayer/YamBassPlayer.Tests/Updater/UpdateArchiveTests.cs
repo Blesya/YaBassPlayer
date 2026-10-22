@@ -81,6 +81,37 @@ public sealed class UpdateArchiveTests
         Assert.DoesNotThrow(() => UpdateArchive.Validate(zip));
     }
 
+    [Test]
+    public void Validate_AppResourceDirectory_Passes()
+    {
+        string zip = CreateZip(
+            "YamBassPlayer.exe",
+            "fr-FR/Terminal.Gui.resources.dll",
+            "ja-JP/Terminal.Gui.resources.dll");
+
+        Assert.DoesNotThrow(() => UpdateArchive.Validate(zip));
+    }
+
+    [Test]
+    public void Validate_AppResourceWithForeignFile_Throws()
+    {
+        string zip = CreateZip("YamBassPlayer.exe", "fr-FR/evil.exe");
+
+        Assert.Throws<InvalidDataException>(() => UpdateArchive.Validate(zip));
+    }
+
+    [TestCase("fr-FR/Terminal.Gui.resources.dll", true)]
+    [TestCase("ja-JP/Terminal.Gui.resources.dll", true)]
+    [TestCase("zh-Hans/Terminal.Gui.resources.dll", true)]
+    [TestCase("fr-FR/evil.exe", false)]
+    [TestCase("fr-FR/nested/Terminal.Gui.resources.dll", false)]
+    [TestCase("plugins/yandex-music/plugin.dll", false)]
+    [TestCase("bass.dll", false)]
+    public void IsAppResourcePath_ChecksLayout(string path, bool expected)
+    {
+        Assert.That(UpdateArchive.IsAppResourcePath(path), Is.EqualTo(expected));
+    }
+
     [TestCase("plugins/yandex-music/plugin.dll", true)]
     [TestCase("plugins/local/", false)]
     [TestCase("plugins/plugin.dll", false)]
