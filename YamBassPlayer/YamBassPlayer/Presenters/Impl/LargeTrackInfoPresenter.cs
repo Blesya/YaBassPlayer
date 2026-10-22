@@ -42,35 +42,35 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 
 		LoadPlaylistAsync(view).Forget();
 
-		string? currentTrackId = _playbackQueue.CurrentTrackId;
-		if (currentTrackId != null)
+		TrackKey? currentTrack = _playbackQueue.CurrentTrack;
+		if (currentTrack is not null)
 		{
-			view.SetCurrentTrackId(currentTrackId);
-			LoadTrackInfo(view, currentTrackId).Forget();
+			view.SetCurrentTrack(currentTrack.Value);
+			LoadTrackInfo(view, currentTrack.Value).Forget();
 		}
 
 		_onTrackChangedHandler = e =>
 			Application.MainLoop.Invoke(() =>
 			{
-				view.SetCurrentTrackId(e.TrackId);
-				LoadTrackInfo(view, e.TrackId).Forget();
+				view.SetCurrentTrack(e.Key);
+				LoadTrackInfo(view, e.Key).Forget();
 			});
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
-		view.OnTrackActivated = trackId =>
+		view.OnTrackActivated = key =>
 		{
-			var trackIds = _playbackQueue.TrackIds;
+			var trackKeys = _playbackQueue.TrackKeys;
 			int idx = -1;
-			for (int i = 0; i < trackIds.Count; i++)
+			for (int i = 0; i < trackKeys.Count; i++)
 			{
-				if (trackIds[i] == trackId)
+				if (trackKeys[i] == key)
 				{
 					idx = i;
 					break;
 				}
 			}
 			if (idx >= 0)
-				_playbackQueue.SetQueue(trackIds.ToList(), idx);
+				_playbackQueue.SetQueue(trackKeys.ToList(), idx);
 		};
 
 		view.OnClose = () =>
@@ -89,11 +89,11 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 	{
 		try
 		{
-			var trackIds = _playbackQueue.TrackIds;
-			if (trackIds.Count == 0)
+			var trackKeys = _playbackQueue.TrackKeys;
+			if (trackKeys.Count == 0)
 				return;
 
-			IReadOnlyList<Track> tracks = await _trackCatalog.GetManyAsync(trackIds);
+			IReadOnlyList<Track> tracks = await _trackCatalog.GetManyAsync(trackKeys);
 			view.SetPlaylist(tracks);
 		}
 		catch (Exception ex)
@@ -102,14 +102,14 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 		}
 	}
 
-	private async Task LoadTrackInfo(ILargeTrackInfoView view, string trackId)
+	private async Task LoadTrackInfo(ILargeTrackInfoView view, TrackKey key)
 	{
 		try
 		{
-			Track track = await _trackCatalog.GetAsync(trackId);
+			Track track = await _trackCatalog.GetAsync(key);
 			view.SetTrack(track);
 
-			string coverPath = await _coverProvider.DownloadCoverAsync(trackId);
+			string coverPath = await _coverProvider.DownloadCoverAsync(track);
 			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, view.CoverSize.Width, view.CoverSize.Height);
 			view.SetCover(coverArt);
 		}

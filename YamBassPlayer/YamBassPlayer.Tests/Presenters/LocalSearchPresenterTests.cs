@@ -24,7 +24,7 @@ public sealed class LocalSearchPresenterTests
         _presenter = new LocalSearchPresenter(_trackInfoProvider.Object, _viewFactory.Object);
     }
 
-    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id);
+    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     private void SetupSearch(params Track[] results)
         => _trackInfoProvider.Setup(p => p.SearchTracks(It.IsAny<string>(), 50)).ReturnsAsync(results);

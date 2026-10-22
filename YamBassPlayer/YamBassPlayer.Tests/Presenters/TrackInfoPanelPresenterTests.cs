@@ -11,6 +11,8 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class TrackInfoPanelPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private Mock<ITrackInfoPanelView> _view = null!;
     private Mock<ICoverProvider> _coverProvider = null!;
     private Mock<ICoverArtService> _coverArtService = null!;
@@ -47,9 +49,9 @@ public sealed class TrackInfoPanelPresenterTests
 
     private Track SetupTrack(string id)
     {
-        var track = new Track($"Title-{id}", $"Artist-{id}", "Album", id);
-        _trackCatalog.Setup(p => p.GetAsync(id)).ReturnsAsync(track);
-        _coverProvider.Setup(p => p.DownloadCoverAsync(id)).ReturnsAsync($"/covers/{id}.png");
+        var track = new Track($"Title-{id}", $"Artist-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
+        _trackCatalog.Setup(p => p.GetAsync(K(id))).ReturnsAsync(track);
+        _coverProvider.Setup(p => p.DownloadCoverAsync(It.Is<Track>(t => t.Id == id))).ReturnsAsync($"/covers/{id}.png");
         _lyricsService.Setup(s => s.GetLyricsAsync(track)).ReturnsAsync($"lyrics-{id}");
         return track;
     }
@@ -60,7 +62,7 @@ public sealed class TrackInfoPanelPresenterTests
     public void Constructor_WhenQueueHasCurrentTrack_LoadsTrackCoverAndLyrics()
     {
         var track = SetupTrack("t1");
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
         _coverArtService
             .Setup(s => s.RenderAsync("/covers/t1.png", 34, 17, It.IsAny<CancellationToken>()))
             .ReturnsAsync((CoverArt?)null);
@@ -79,7 +81,7 @@ public sealed class TrackInfoPanelPresenterTests
     [Test]
     public void Constructor_WhenQueueIsEmpty_LoadsNothing()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         _ = CreatePresenter();
 
@@ -91,14 +93,14 @@ public sealed class TrackInfoPanelPresenterTests
     [Test]
     public void TrackChangedEvent_LoadsNewTrack()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         var track = SetupTrack("t2");
         _coverArtService
             .Setup(s => s.RenderAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CoverArt?)null);
         _ = CreatePresenter();
 
-        _eventBus.Publish(new TrackChangedEvent("t2"));
+        _eventBus.Publish(new TrackChangedEvent(K("t2")));
 
         Assert.Multiple(() =>
         {
@@ -110,28 +112,28 @@ public sealed class TrackInfoPanelPresenterTests
     [Test]
     public void TrackChangedEvent_WithSameTrackTwice_LoadsOnlyOnce()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         SetupTrack("t3");
         _coverArtService
             .Setup(s => s.RenderAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CoverArt?)null);
         _ = CreatePresenter();
 
-        _eventBus.Publish(new TrackChangedEvent("t3"));
-        _eventBus.Publish(new TrackChangedEvent("t3"));
+        _eventBus.Publish(new TrackChangedEvent(K("t3")));
+        _eventBus.Publish(new TrackChangedEvent(K("t3")));
 
-        _trackCatalog.Verify(p => p.GetAsync("t3"), Times.Once);
+        _trackCatalog.Verify(p => p.GetAsync(K("t3")), Times.Once);
     }
 
     [Test]
     public void TrackChangedEvent_WhenProviderThrows_HandlesErrorAndClearsLyrics()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         var ex = new InvalidOperationException("boom");
-        _trackCatalog.Setup(p => p.GetAsync("t4")).ThrowsAsync(ex);
+        _trackCatalog.Setup(p => p.GetAsync(K("t4"))).ThrowsAsync(ex);
         _ = CreatePresenter();
 
-        _eventBus.Publish(new TrackChangedEvent("t4"));
+        _eventBus.Publish(new TrackChangedEvent(K("t4")));
 
         Assert.Multiple(() =>
         {

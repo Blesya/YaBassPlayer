@@ -1,4 +1,3 @@
-using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services.Impl;
 
@@ -7,76 +6,76 @@ namespace YamBassPlayer.Tests.Services;
 [TestFixture]
 public sealed class PlaylistDeduplicatorTests
 {
-    private static Playlist Yandex(
-        string name,
-        PlaylistType type,
-        string ownerUid,
-        string kind)
-        => new(name, type)
+    private static Playlist Yandex(string kind, string title, string ownerUid, string remoteKind)
+        => new(kind, title)
         {
-            SourceId = SourceIds.Yandex,
-            Payload = new PlaylistPayload { YandexOwnerUid = ownerUid, YandexKind = kind }
+            SourceId = new SourceId("yandex"),
+            Payload = new Dictionary<string, string>
+            {
+                ["owner"] = ownerUid,
+                ["kind"] = remoteKind
+            }
         };
 
     [Test]
-    public void ByYandexIdentity_RemovesSamePlaylistFromDifferentEndpoints()
+    public void ByCacheKey_RemovesSamePlaylistFromDifferentEndpoints()
     {
         // «Плейлист дня» приходит и с лендинга, и в списке собственных плейлистов.
         var playlists = new List<Playlist>
         {
-            Yandex("Плейлист дня", PlaylistType.Custom, "42", "daily"),
-            Yandex("Плейлист дня", PlaylistType.YandexOwnPlaylist, "42", "daily")
+            Yandex("personal", "Плейлист дня", "42", "daily"),
+            Yandex("own", "Плейлист дня", "42", "daily")
         };
 
-        var result = PlaylistDeduplicator.ByYandexIdentity(playlists);
+        var result = PlaylistDeduplicator.ByCacheKey(playlists);
 
         Assert.That(result, Has.Count.EqualTo(1));
-        Assert.That(result[0].Type, Is.EqualTo(PlaylistType.Custom));
+        Assert.That(result[0].Kind, Is.EqualTo("personal"));
     }
 
     [Test]
-    public void ByYandexIdentity_KeepsDifferentPlaylistsWithSameTitle()
+    public void ByCacheKey_KeepsDifferentPlaylistsWithSameTitle()
     {
         var playlists = new List<Playlist>
         {
-            Yandex("Микс", PlaylistType.YandexOwnPlaylist, "42", "1"),
-            Yandex("Микс", PlaylistType.YandexLikedPlaylist, "77", "2")
+            Yandex("own", "Микс", "42", "1"),
+            Yandex("liked", "Микс", "77", "2")
         };
 
-        var result = PlaylistDeduplicator.ByYandexIdentity(playlists);
+        var result = PlaylistDeduplicator.ByCacheKey(playlists);
 
         Assert.That(result, Has.Count.EqualTo(2));
     }
 
     [Test]
-    public void ByYandexIdentity_DoesNotTouchPlaylistsWithoutYandexIds()
+    public void ByCacheKey_DeduplicatesPlaylistsWithoutOwnerByCacheKey()
     {
         var playlists = new List<Playlist>
         {
-            new("Мои треки", PlaylistType.Favorite) { SourceId = SourceIds.Yandex },
-            new("Мои треки", PlaylistType.Favorite) { SourceId = SourceIds.Yandex }
+            new("favorite", "Мои треки") { SourceId = new SourceId("yandex") },
+            new("favorite", "Мои треки") { SourceId = new SourceId("yandex") }
         };
 
-        var result = PlaylistDeduplicator.ByYandexIdentity(playlists);
+        var result = PlaylistDeduplicator.ByCacheKey(playlists);
 
-        Assert.That(result, Has.Count.EqualTo(2));
+        Assert.That(result, Has.Count.EqualTo(1));
     }
 
     [Test]
-    public void ByYandexIdentity_PreservesOrder()
+    public void ByCacheKey_PreservesOrder()
     {
         var playlists = new List<Playlist>
         {
-            new("Мои треки", PlaylistType.Favorite),
-            Yandex("Плейлист дня", PlaylistType.Custom, "42", "daily"),
-            Yandex("Мой микс", PlaylistType.YandexOwnPlaylist, "42", "7"),
-            Yandex("Плейлист дня", PlaylistType.YandexOwnPlaylist, "42", "daily")
+            new("favorite", "Мои треки") { SourceId = new SourceId("yandex") },
+            Yandex("personal", "Плейлист дня", "42", "daily"),
+            Yandex("own", "Мой микс", "42", "7"),
+            Yandex("own", "Плейлист дня", "42", "daily")
         };
 
-        var result = PlaylistDeduplicator.ByYandexIdentity(playlists);
+        var result = PlaylistDeduplicator.ByCacheKey(playlists);
 
         Assert.That(
-            result.Select(p => p.PlaylistName),
+            result.Select(p => p.Title),
             Is.EqualTo(new[] { "Мои треки", "Плейлист дня", "Мой микс" }));
     }
 }

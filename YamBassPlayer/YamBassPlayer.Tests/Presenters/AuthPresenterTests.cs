@@ -1,4 +1,5 @@
 using Moq;
+using YamBassPlayer.Plugins;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Presenters.Impl;
@@ -19,7 +20,7 @@ public sealed class AuthPresenterTests
     private Mock<IQrCodeRenderer> _qrRenderer = null!;
     private Mock<IAuthView> _view = null!;
     private Mock<IErrorHandler> _errorHandler = null!;
-    private Mock<IAppConfiguration> _configuration = null!;
+    private Mock<IPluginSettings> _configuration = null!;
     private FakeUiDispatcher _ui = null!;
     private TaskCompletionSource<string> _pendingQrLink = null!;
     private TaskCompletionSource<DeviceCodeChallenge?> _pendingDeviceCode = null!;
@@ -32,7 +33,7 @@ public sealed class AuthPresenterTests
         _qrRenderer = new Mock<IQrCodeRenderer>();
         _view = new Mock<IAuthView>();
         _errorHandler = new Mock<IErrorHandler>();
-        _configuration = new Mock<IAppConfiguration>();
+        _configuration = new Mock<IPluginSettings>();
         _ui = new FakeUiDispatcher();
 
         _authService.SetupGet(s => s.Storage).Returns(new AuthStorage());
@@ -65,7 +66,7 @@ public sealed class AuthPresenterTests
         await _presenter.SubmitTokenAsync("good");
 
         Assert.That(_presenter.Authorized, Is.True);
-        _configuration.Verify(c => c.SaveToken("good"), Times.Once);
+        _configuration.Verify(c => c.Set("token", "good"), Times.Once);
         _view.Verify(v => v.Close(), Times.Once);
     }
 
@@ -77,7 +78,7 @@ public sealed class AuthPresenterTests
         await _presenter.SubmitTokenAsync("bad");
 
         Assert.That(_presenter.Authorized, Is.False);
-        _configuration.Verify(c => c.SaveToken(It.IsAny<string>()), Times.Never);
+        _configuration.Verify(c => c.Set("token", It.IsAny<string>()), Times.Never);
         _view.Verify(v => v.Close(), Times.Never);
         _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("не подошёл")), true), Times.Once);
     }
@@ -111,8 +112,8 @@ public sealed class AuthPresenterTests
         Assert.That(_presenter.Authorized, Is.True);
         _view.Verify(v => v.ShowDeviceCode("bc7zfzxu", "https://ya.ru/device"), Times.Once);
         _view.Verify(v => v.SetStatus(It.Is<string>(s => s.Contains("скопирован")), false), Times.Once);
-        _configuration.Verify(c => c.SaveToken("access"), Times.Once);
-        _configuration.Verify(c => c.SaveRefreshToken("refresh"), Times.Once);
+        _configuration.Verify(c => c.Set("token", "access"), Times.Once);
+        _configuration.Verify(c => c.Set("refreshToken", "refresh"), Times.Once);
         _view.Verify(v => v.Close(), Times.Once);
     }
 

@@ -1,8 +1,10 @@
 using Moq;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
+using YamBassPlayer.Plugins;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Impl;
 using YamBassPlayer.Views;
 
 namespace YamBassPlayer.Tests.Presenters;
@@ -10,20 +12,25 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class PlayStatusPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private Mock<IPlayStatusView> _view = null!;
     private Mock<IAudioPlayer> _audioPlayer = null!;
-    private Mock<ITrackFavoriteService> _favorites = null!;
+    private TrackActionRegistry _actions = null!;
+    private Mock<ITrackCatalog> _catalog = null!;
+    private static readonly TrackKey LocalKey = new(LocalMusicSource.Id, "/music/a.mp3");
 
     [SetUp]
     public void SetUp()
     {
         _view = new Mock<IPlayStatusView>();
         _audioPlayer = new Mock<IAudioPlayer>();
-        _favorites = new Mock<ITrackFavoriteService>();
+        _actions = new TrackActionRegistry();
+        _catalog = new Mock<ITrackCatalog>();
     }
 
     private PlayStatusPresenter CreatePresenter()
-        => new(_view.Object, _audioPlayer.Object, _favorites.Object);
+        => new(_view.Object, _audioPlayer.Object, _actions, _catalog.Object);
 
     // ── Проброс событий вью → презентер ───────────────────────────────────
 
@@ -95,100 +102,100 @@ public sealed class PlayStatusPresenterTests
         });
     }
 
-    // ── Избранное: видимость/доступность ──────────────────────────────────
+    // ── Действия плагинов над текущим треком ──────────────────────────────
 
     [Test]
-    public void Constructor_SetsFavoriteVisibilityFromSupportedSources()
+    public void SetCurrentTrack_ShowsAvailableAction()
     {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Local)).Returns(true);
+        _actions.Add(new FakeTrackAction("local-like", LocalMusicSource.Id));
+        var presenter = CreatePresenter();
 
+        presenter.SetCurrentTrack(LocalKey);
+
+        _view.Verify(v => v.SetTrackActions(It.Is<IReadOnlyList<TrackActionButton>>(buttons =>
+            buttons.Count == 1 && buttons[0].Id == "local-like" && buttons[0].Title == "В избранное")), Times.Once);
+    }
+
+    [Test]
+    public void SetCurrentTrack_ForeignSource_HidesAction()
+    {
+        _actions.Add(new FakeTrackAction("local-like", LocalMusicSource.Id));
+        var presenter = CreatePresenter();
+
+        presenter.SetCurrentTrack(K("12345"));
+
+        _view.Verify(v => v.SetTrackActions(It.Is<IReadOnlyList<TrackActionButton>>(buttons => buttons.Count == 0)), Times.AtLeastOnce);
+    }
+
+    [Test]
+    public void TrackActionClicked_ExecutesActionAndRefreshesButtons()
+    {
+        var action = new FakeTrackAction("local-like", LocalMusicSource.Id);
+        _actions.Add(action);
+        var presenter = CreatePresenter();
+        presenter.SetCurrentTrack(LocalKey);
+
+        _view.Raise(v => v.OnTrackActionClicked += null, "local-like");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(action.Executions, Is.EqualTo(1));
+            _view.Verify(v => v.SetTrackActions(It.Is<IReadOnlyList<TrackActionButton>>(buttons =>
+                buttons.Count == 1 && buttons[0].Title == "Из избранного")), Times.AtLeastOnce);
+        });
+    }
+
+    [Test]
+    public void TrackActionClicked_WithNoCurrentTrack_DoesNothing()
+    {
+        var action = new FakeTrackAction("local-like", LocalMusicSource.Id);
+        _actions.Add(action);
         _ = CreatePresenter();
 
-        Assert.Multiple(() =>
+        _view.Raise(v => v.OnTrackActionClicked += null, "local-like");
+
+        Assert.That(action.Executions, Is.Zero);
+    }
+
+    [Test]
+    public void SetCurrentTrack_LoadsFullTrackForActions()
+    {
+        var action = new FakeTrackAction("local-like", LocalMusicSource.Id);
+        _actions.Add(action);
+        _catalog.Setup(c => c.GetAsync(LocalKey))
+            .ReturnsAsync(new Track("Название", "Исполнитель", "Альбом", "/music/a.mp3")
+            {
+                SourceId = LocalMusicSource.Id
+            });
+        var presenter = CreatePresenter();
+
+        presenter.SetCurrentTrack(LocalKey);
+
+        Assert.That(action.LastTrack?.Title, Is.EqualTo("Название"));
+    }
+
+    private sealed class FakeTrackAction(string id, SourceId source) : ITrackAction
+    {
+        public string Id => id;
+        public int Executions { get; private set; }
+        public bool IsFavorite { get; private set; }
+        public Track? LastTrack { get; private set; }
+        public event Action? Changed;
+        public bool IsAvailable(Track track)
         {
-            _view.Verify(v => v.SetLocalFavoriteVisibility(true), Times.AtLeastOnce);
-            _view.Verify(v => v.SetLocalFavoriteEnabled(false), Times.AtLeastOnce); // нет текущего трека
-        });
-    }
+            LastTrack = track;
+            return track.SourceId == source;
+        }
 
-    [Test]
-    public void SetCurrentTrack_LocalTrack_EnablesLocalFavorite()
-    {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Local)).Returns(true);
-        var presenter = CreatePresenter();
+        public string GetTitle(Track track) => IsFavorite ? "Из избранного" : "В избранное";
 
-        presenter.SetCurrentTrack("/music/a.mp3", SourceIds.Local);
-
-        Assert.Multiple(() =>
+        public Task ExecuteAsync(Track track)
         {
-            _view.Verify(v => v.SetLocalFavoriteVisibility(true), Times.AtLeastOnce);
-            _view.Verify(v => v.SetLocalFavoriteEnabled(true), Times.AtLeastOnce);
-        });
-    }
-
-    [Test]
-    public void SetCurrentTrack_YandexTrack_EnablesYandexFavorite()
-    {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Yandex)).Returns(true);
-        var presenter = CreatePresenter();
-
-        presenter.SetCurrentTrack("12345", SourceIds.Yandex);
-
-        Assert.Multiple(() =>
-        {
-            _view.Verify(v => v.SetYandexFavoriteVisibility(true), Times.AtLeastOnce);
-            _view.Verify(v => v.SetYandexFavoriteEnabled(true), Times.AtLeastOnce);
-        });
-    }
-
-    [Test]
-    public void SetCurrentTrack_YandexTrack_DoesNotEnableLocalFavorite()
-    {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Local)).Returns(true);
-        var presenter = CreatePresenter();
-
-        presenter.SetCurrentTrack("12345", SourceIds.Yandex);
-
-        _view.Verify(v => v.SetLocalFavoriteEnabled(false), Times.AtLeastOnce);
-    }
-
-    // ── Переключение избранного ───────────────────────────────────────────
-
-    [Test]
-    public void ToggleLocalFavorite_WhenNotFavorite_AddsToFavorites()
-    {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Local)).Returns(true);
-        _favorites.Setup(f => f.IsTrackFavorite(SourceIds.Local, "/music/a.mp3")).Returns(false);
-        var presenter = CreatePresenter();
-        presenter.SetCurrentTrack("/music/a.mp3", SourceIds.Local);
-
-        _view.Raise(v => v.OnLocalFavoriteToggleClicked += null);
-
-        _favorites.Verify(f => f.AddToFavorites(SourceIds.Local, "/music/a.mp3"), Times.Once);
-    }
-
-    [Test]
-    public void ToggleLocalFavorite_WhenFavorite_RemovesFromFavorites()
-    {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Local)).Returns(true);
-        _favorites.Setup(f => f.IsTrackFavorite(SourceIds.Local, "/music/a.mp3")).Returns(true);
-        var presenter = CreatePresenter();
-        presenter.SetCurrentTrack("/music/a.mp3", SourceIds.Local);
-
-        _view.Raise(v => v.OnLocalFavoriteToggleClicked += null);
-
-        _favorites.Verify(f => f.RemoveFromFavorites(SourceIds.Local, "/music/a.mp3"), Times.Once);
-    }
-
-    [Test]
-    public void ToggleFavorite_WithNoCurrentTrack_DoesNothing()
-    {
-        _favorites.Setup(f => f.SupportsSource(SourceIds.Local)).Returns(true);
-        _ = CreatePresenter();
-
-        _view.Raise(v => v.OnLocalFavoriteToggleClicked += null);
-
-        _favorites.Verify(f => f.AddToFavorites(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            Executions++;
+            IsFavorite = !IsFavorite;
+            Changed?.Invoke();
+            return Task.CompletedTask;
+        }
     }
 
     // ── Прочие делегирования ──────────────────────────────────────────────

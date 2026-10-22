@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Terminal.Gui;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
@@ -88,30 +88,30 @@ public sealed class TracksView : View, ITracksView
 		SetNeedsDisplay();
 	}
 
-	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 		=> Application.MainLoop.Invoke(() => _model.SetTracks(tracks, isCached));
 
-	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 		=> Application.MainLoop.Invoke(() => _model.AddTracks(tracks, isCached));
 
 	public void ClearTracks()
 		=> Application.MainLoop.Invoke(_model.Clear);
 
-	public void SetPlayingTrackId(string? trackId)
-		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
+	public void SetPlayingTrack(TrackKey? key)
+		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrack(key));
 
-	public void SelectTrack(string trackId)
+	public void SelectTrack(TrackKey key)
 		=> Application.MainLoop.Invoke(() =>
 		{
-			if (_model.SelectByTrackId(trackId))
+			if (_model.SelectByTrack(key))
 				_model.EnsureSelectedVisible(VisibleRows);
 		});
 
 	public void SetFilter(string? filter)
 		=> _model.SetFilter(filter);
 
-	public void SetDownloadState(string trackId, TrackDownloadState state)
-		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
+	public void SetDownloadState(TrackKey key, TrackDownloadState state)
+		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(key, state));
 
 	// ── Раскладка колонок ─────────────────────────────────────────────────
 
@@ -227,7 +227,7 @@ public sealed class TracksView : View, ITracksView
 	private void DrawRow(int y, int index, TrackListItem item, RowColumns c)
 	{
 		bool isSelected = index == _model.SelectedIndex;
-		bool isPlaying = item.Track.Id == _model.PlayingTrackId;
+		bool isPlaying = item.Track.Key == _model.PlayingTrack;
 		bool focused = isSelected && HasFocus;
 
 		string marker = isPlaying ? PlayingMarker : new string(' ', MarkerWidth);
@@ -331,7 +331,7 @@ public sealed class TracksView : View, ITracksView
 
 	private void DrawEmptyState(Rect bounds)
 	{
-		const string message = "Список пуст";
+		const string message = "Выберите плейлист";
 		Driver.SetAttribute(Themes.DimFor(ColorScheme));
 		Move(Math.Max(0, (bounds.Width - message.Length) / 2), Math.Max(0, bounds.Height / 2));
 		Driver.AddStr(message);

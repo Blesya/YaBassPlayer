@@ -46,12 +46,12 @@ public class NowPlayingPresenter : INowPlayingPresenter
 	{
 		var view = _viewFactory.Create<INowPlayingView>();
 
-		string? currentTrackId = _playbackQueue.CurrentTrackId;
-		if (currentTrackId != null)
-			LoadTrackInfo(view, currentTrackId).Forget();
+		TrackKey? currentTrack = _playbackQueue.CurrentTrack;
+		if (currentTrack is not null)
+			LoadTrackInfo(view, currentTrack.Value).Forget();
 
 		_onTrackChangedHandler = e =>
-			_uiDispatcher.Invoke(() => LoadTrackInfo(view, e.TrackId).Forget());
+			_uiDispatcher.Invoke(() => LoadTrackInfo(view, e.Key).Forget());
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		bool alive = true;
@@ -87,11 +87,11 @@ public class NowPlayingPresenter : INowPlayingPresenter
 		}
 	}
 
-	private async Task LoadTrackInfo(INowPlayingView view, string trackId)
+	private async Task LoadTrackInfo(INowPlayingView view, TrackKey key)
 	{
 		try
 		{
-			Track track = await _trackCatalog.GetAsync(trackId);
+			Track track = await _trackCatalog.GetAsync(key);
 			view.SetTrack(track);
 		}
 		catch (Exception ex)

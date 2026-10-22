@@ -10,7 +10,11 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class MyWavePresenterTests
 {
-    private Mock<IYandexRadioService> _radio = null!;
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
+    private Mock<IMusicSource> _source = null!;
+    private Mock<IRadioSource> _radio = null!;
+    private Mock<IMusicSourceRegistry> _registry = null!;
     private Mock<ITrackInfoProvider> _trackInfoProvider = null!;
     private Mock<ITrackRepositoryCache> _cache = null!;
     private Mock<ITracksPresenter> _tracksPresenter = null!;
@@ -22,7 +26,13 @@ public sealed class MyWavePresenterTests
     [SetUp]
     public void SetUp()
     {
-        _radio = new Mock<IYandexRadioService>();
+        _source = new Mock<IMusicSource>();
+        _radio = _source.As<IRadioSource>();
+        _source.Setup(s => s.Id).Returns(YandexMusicSourceId.Value);
+        _registry = new Mock<IMusicSourceRegistry>();
+        _registry.Setup(r => r.Get(YandexMusicSourceId.Value)).Returns(_source.Object);
+        _registry.Setup(r => r.Sources).Returns(new[] { _source.Object });
+
         _trackInfoProvider = new Mock<ITrackInfoProvider>();
         _cache = new Mock<ITrackRepositoryCache>();
         _tracksPresenter = new Mock<ITracksPresenter>();
@@ -33,17 +43,16 @@ public sealed class MyWavePresenterTests
         _tracksPresenter.Setup(t => t.LoadTracksFor(It.IsAny<Playlist>())).Returns(Task.CompletedTask);
 
         _presenter = new MyWavePresenter(
-            _radio.Object, _trackInfoProvider.Object, _cache.Object,
+            _registry.Object, _trackInfoProvider.Object, _cache.Object,
             _tracksPresenter.Object, _queue.Object, _playStatus.Object, _errorHandler.Object);
     }
 
-    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id);
+    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     private void SetupBatch(params string[] ids)
     {
-        IReadOnlyList<string> trackIds = ids;
-        IReadOnlyList<Track> tracks = ids.Select(Track).ToList();
-        _radio.Setup(r => r.FetchNextBatchAsync()).ReturnsAsync((trackIds, tracks));
+        var batch = new RadioBatch(ids.Select(K).ToList(), ids.Select(Track).ToList());
+        _radio.Setup(r => r.FetchNextBatchAsync(It.IsAny<CancellationToken>())).ReturnsAsync(batch);
     }
 
     // ── Запуск волны ──────────────────────────────────────────────────────
@@ -51,7 +60,7 @@ public sealed class MyWavePresenterTests
     [Test]
     public async Task StartMyWaveAsync_WhenStationFails_ReturnsNullAndReports()
     {
-        _radio.Setup(r => r.StartMyWaveAsync()).ReturnsAsync(false);
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         var result = await _presenter.StartMyWaveAsync();
 
@@ -65,7 +74,7 @@ public sealed class MyWavePresenterTests
     [Test]
     public async Task StartMyWaveAsync_WhenBatchEmpty_ReturnsNullAndReports()
     {
-        _radio.Setup(r => r.StartMyWaveAsync()).ReturnsAsync(true);
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         SetupBatch();
 
         var result = await _presenter.StartMyWaveAsync();
@@ -80,7 +89,7 @@ public sealed class MyWavePresenterTests
     [Test]
     public async Task StartMyWaveAsync_HappyPath_SavesReplacesCacheLoadsAndStartsQueue()
     {
-        _radio.Setup(r => r.StartMyWaveAsync()).ReturnsAsync(true);
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         SetupBatch("a", "b");
 
         var result = await _presenter.StartMyWaveAsync();
@@ -91,23 +100,29 @@ public sealed class MyWavePresenterTests
             _trackInfoProvider.Verify(p => p.SaveAsync(It.IsAny<Track>()), Times.Exactly(2));
             _cache.Verify(c => c.ReplaceMyWaveTracks(It.IsAny<IEnumerable<Track>>()), Times.Once);
             _tracksPresenter.Verify(t => t.LoadTracksFor(result!), Times.Once);
-            _queue.Verify(q => q.SetQueue(It.Is<IEnumerable<string>>(x => x.SequenceEqual(new[] { "a", "b" })), 0), Times.Once);
+            _queue.Verify(q => q.SetQueue(It.Is<IEnumerable<TrackKey>>(x => x.SequenceEqual(new[] { K("a"), K("b") })), 0), Times.Once);
         });
-        Assert.That(result!.Type, Is.EqualTo(PlaylistType.MyWave));
+        Assert.That(result!.Kind, Is.EqualTo("my-wave"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Category, Is.EqualTo(PlaylistCategory.Transient));
+            Assert.That(result.Context, Is.EqualTo(PlaylistContext.Radio));
+            Assert.That(result.SourceId, Is.EqualTo(YandexMusicSourceId.Value));
+        });
     }
 
     [Test]
     public async Task StartMyWaveFromTrackAsync_UsesTrackWaveAndSeedDescription()
     {
-        _trackInfoProvider.Setup(p => p.GetTrackInfoById("seed")).ReturnsAsync(Track("seed"));
-        _radio.Setup(r => r.StartTrackWaveAsync("seed")).ReturnsAsync(true);
+        _trackInfoProvider.Setup(p => p.GetTrackInfoById(K("seed"))).ReturnsAsync(Track("seed"));
+        _radio.Setup(r => r.StartTrackRadioAsync(K("seed"), It.IsAny<CancellationToken>())).ReturnsAsync(true);
         SetupBatch("x");
 
-        var result = await _presenter.StartMyWaveFromTrackAsync("seed");
+        var result = await _presenter.StartMyWaveFromTrackAsync(K("seed"));
 
         Assert.Multiple(() =>
         {
-            _radio.Verify(r => r.StartTrackWaveAsync("seed"), Times.Once);
+            _radio.Verify(r => r.StartTrackRadioAsync(K("seed"), It.IsAny<CancellationToken>()), Times.Once);
             Assert.That(result, Is.Not.Null);
             Assert.That(result!.Description, Does.Contain("A-seed"));
         });
@@ -118,22 +133,28 @@ public sealed class MyWavePresenterTests
     [Test]
     public async Task FetchMoreTracksAsync_AppendsToCacheAndQueue()
     {
-        SetupBatch("c", "d");
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        SetupBatch("a");
+        await _presenter.StartMyWaveAsync();
 
+        SetupBatch("c", "d");
         await _presenter.FetchMoreTracksAsync();
 
         Assert.Multiple(() =>
         {
             _cache.Verify(c => c.AppendMyWaveTracks(It.IsAny<IEnumerable<Track>>()), Times.Once);
-            _queue.Verify(q => q.AddToQueue(It.Is<IEnumerable<string>>(x => x.SequenceEqual(new[] { "c", "d" }))), Times.Once);
+            _queue.Verify(q => q.AddToQueue(It.Is<IEnumerable<TrackKey>>(x => x.SequenceEqual(new[] { K("c"), K("d") }))), Times.Once);
         });
     }
 
     [Test]
     public async Task FetchMoreTracksAsync_WhenBatchEmpty_DoesNothing()
     {
-        SetupBatch();
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        SetupBatch("a");
+        await _presenter.StartMyWaveAsync();
 
+        SetupBatch();
         await _presenter.FetchMoreTracksAsync();
 
         _cache.Verify(c => c.AppendMyWaveTracks(It.IsAny<IEnumerable<Track>>()), Times.Never);
@@ -145,7 +166,7 @@ public sealed class MyWavePresenterTests
     public async Task StartMyWaveAsync_WhenRadioThrows_HandlesErrorAndReturnsNull()
     {
         var ex = new InvalidOperationException("boom");
-        _radio.Setup(r => r.StartMyWaveAsync()).ThrowsAsync(ex);
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ThrowsAsync(ex);
 
         var result = await _presenter.StartMyWaveAsync();
 
@@ -160,8 +181,11 @@ public sealed class MyWavePresenterTests
     public async Task FetchMoreTracksAsync_WhenRadioThrows_HandlesError()
     {
         var ex = new InvalidOperationException("boom");
-        _radio.Setup(r => r.FetchNextBatchAsync()).ThrowsAsync(ex);
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        SetupBatch("a");
+        await _presenter.StartMyWaveAsync();
 
+        _radio.Setup(r => r.FetchNextBatchAsync(It.IsAny<CancellationToken>())).ThrowsAsync(ex);
         await _presenter.FetchMoreTracksAsync();
 
         _errorHandler.Verify(e => e.Handle(ex), Times.Once);
@@ -170,23 +194,31 @@ public sealed class MyWavePresenterTests
     // ── Уведомления радио ─────────────────────────────────────────────────
 
     [Test]
-    public async Task NotifyTrackStarted_DelegatesToRadioService()
+    public async Task NotifyTrackStarted_DelegatesToRadioSource()
     {
-        await _presenter.NotifyTrackStartedAsync("t1");
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        SetupBatch("a");
+        await _presenter.StartMyWaveAsync();
 
-        _radio.Verify(r => r.SendTrackStartedAsync("t1"), Times.Once);
+        await _presenter.NotifyTrackStartedAsync(K("t1"));
+
+        _radio.Verify(r => r.SendTrackStartedAsync(K("t1"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Test]
-    public async Task NotifyTrackFinishedAndSkipped_DelegateToRadioService()
+    public async Task NotifyTrackFinishedAndSkipped_DelegateToRadioSource()
     {
-        await _presenter.NotifyTrackFinishedAsync("t1", 12.5);
-        await _presenter.NotifyTrackSkippedAsync("t2", 3);
+        _radio.Setup(r => r.StartPersonalRadioAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        SetupBatch("a");
+        await _presenter.StartMyWaveAsync();
+
+        await _presenter.NotifyTrackFinishedAsync(K("t1"), 12.5);
+        await _presenter.NotifyTrackSkippedAsync(K("t2"), 3);
 
         Assert.Multiple(() =>
         {
-            _radio.Verify(r => r.SendTrackFinishedAsync("t1", 12.5), Times.Once);
-            _radio.Verify(r => r.SendTrackSkippedAsync("t2", 3), Times.Once);
+            _radio.Verify(r => r.SendTrackFinishedAsync(K("t1"), 12.5, It.IsAny<CancellationToken>()), Times.Once);
+            _radio.Verify(r => r.SendTrackSkippedAsync(K("t2"), 3, It.IsAny<CancellationToken>()), Times.Once);
         });
     }
 }

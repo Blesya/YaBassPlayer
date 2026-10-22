@@ -11,20 +11,15 @@ public interface IPlayStatusView
 	event Action<int>? OnSeekRequested;
 	event Action<int>? OnVolumeChangeRequested;
 	void SetVolume(int percent);
-	event Action? OnLocalFavoriteToggleClicked;
 	void SetPlayStatus(string status);
 	void SetProgress(int percent);
 	/// <summary>Состояние воспроизведения: кнопка показывает «▶» или «⏸».</summary>
 	void SetPlaying(bool isPlaying);
 	void SetTime(TimeSpan current, TimeSpan duration);
 	void SetTitle(string title);
-	void SetLocalFavoriteState(bool isFavorite);
-	void SetLocalFavoriteVisibility(bool isVisible);
-	void SetLocalFavoriteEnabled(bool isEnabled);
-	event Action? OnYandexFavoriteToggleClicked;
-	void SetYandexFavoriteState(bool isFavorite);
-	void SetYandexFavoriteVisibility(bool isVisible);
-	void SetYandexFavoriteEnabled(bool isEnabled);
+	/// <summary>Кнопки действий, объявленные плагинами для текущего трека.</summary>
+	void SetTrackActions(IReadOnlyList<TrackActionButton> actions);
+	event Action<string>? OnTrackActionClicked;
 	event Action? OnQueueClicked;
 	event Action? OnPlaybackModeToggled;
 	event Action? OnRestartClicked;

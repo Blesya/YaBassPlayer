@@ -16,7 +16,7 @@ env:
   DOTNET_VERSION: "8.0.x"
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
-  PROJECT: YamBassPlayer/YamBassPlayer/YamBassPlayer.csproj
+  PROJECT: YamBassPlayer/YamBassPlayer/YamBassPlayer.App.csproj
   RID: win-x64
 
 jobs:
@@ -117,14 +117,19 @@ jobs:
         shell: pwsh
         run: |
           # Настройки берём из профиля проекта (Properties/PublishProfiles/FolderProfile.pubxml):
-          # win-x64, SelfContained=false, PublishSingleFile=true. Переопределяем только каталог,
-          # потому что в профиле прописан локальный абсолютный путь.
+          # win-x64, SelfContained=false, без single-file — рядом с exe лежат dll и плагины.
+          # Переопределяем только каталог, потому что в профиле прописан локальный путь.
           dotnet publish $env:PROJECT -p:PublishProfile=FolderProfile -p:PublishDir="$PWD/dist/"
+
+          # Плагин Яндекса публикуется отдельно: приложение грузит его из plugins/.
+          dotnet publish YamBassPlayer/plugins/YamBassPlayer.Plugins.YandexMusic/YamBassPlayer.Plugins.YandexMusic.csproj `
+            --configuration Release --runtime $env:RID --self-contained false `
+            -p:PublishSingleFile=false --output dist/plugins/yandex-music
 
           # Апдейтер лежит рядом с приложением: он подменяет файлы после выхода из UI.
           dotnet publish YamBassPlayer/YamBassPlayer.Updater/YamBassPlayer.Updater.csproj `
             --configuration Release --runtime $env:RID --self-contained false `
-            -p:PublishSingleFile=true --output dist
+            --output dist
 
       - name: Pack distribution
         id: dist

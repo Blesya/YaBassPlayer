@@ -9,6 +9,8 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class TrackAboutPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
 	private Mock<ITrackAboutService> _trackAboutService = null!;
 	private Mock<IViewFactory> _viewFactory = null!;
 	private Mock<ITrackAboutView> _view = null!;
@@ -44,13 +46,13 @@ public sealed class TrackAboutPresenterTests
 			Title = "Song",
 			Artist = "Artist",
 		};
-		_trackAboutService.Setup(service => service.GetAsync("t1", false)).ReturnsAsync(info);
+		_trackAboutService.Setup(service => service.GetAsync(K("t1"), false)).ReturnsAsync(info);
 
-		await _presenter.ShowTrackAboutAsync("t1");
+		await _presenter.ShowTrackAboutAsync(K("t1"));
 
 		Assert.Multiple(() =>
 		{
-			_trackAboutService.Verify(service => service.GetAsync("t1", false), Times.Once);
+			_trackAboutService.Verify(service => service.GetAsync(K("t1"), false), Times.Once);
 			_view.Verify(view => view.SetInfo(info), Times.Once);
 			_view.Verify(view => view.Show(), Times.Once);
 		});
@@ -59,11 +61,11 @@ public sealed class TrackAboutPresenterTests
 	[Test]
 	public void ShowCurrentTrackAbout_WithoutCurrentTrack_DoesNothing()
 	{
-		_playbackQueue.SetupGet(queue => queue.CurrentTrackId).Returns((string?)null);
+		_playbackQueue.SetupGet(queue => queue.CurrentTrack).Returns((TrackKey?)null);
 
 		_presenter.ShowCurrentTrackAbout();
 
-		_trackAboutService.Verify(service => service.GetAsync(It.IsAny<string>(), It.IsAny<bool>()), Times.Never);
+		_trackAboutService.Verify(service => service.GetAsync(It.IsAny<TrackKey>(), It.IsAny<bool>()), Times.Never);
 	}
 
 	[Test]
@@ -71,10 +73,10 @@ public sealed class TrackAboutPresenterTests
 	{
 		var error = new InvalidOperationException("boom");
 		_trackAboutService
-			.Setup(service => service.GetAsync("t1", false))
+			.Setup(service => service.GetAsync(K("t1"), false))
 			.ThrowsAsync(error);
 
-		await _presenter.ShowTrackAboutAsync("t1");
+		await _presenter.ShowTrackAboutAsync(K("t1"));
 
 		_errorHandler.Verify(handler => handler.Handle(error), Times.Once);
 		_view.Verify(view => view.Show(), Times.Never);

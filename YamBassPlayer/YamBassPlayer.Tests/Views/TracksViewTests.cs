@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -8,13 +9,15 @@ namespace YamBassPlayer.Tests.Views;
 [NonParallelizable]
 public sealed class TracksViewTests : ViewTestBase
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private const int Width = 40;
     private const int Height = 6;
 
     private TracksView CreateView(int width = Width) => AddToTop(new TracksView { Width = width, Height = Height });
 
     private static Track Track(string title, string artist, string id)
-        => new(title, artist, "Альбом", id);
+        => new(title, artist, "Альбом", id) { SourceId = YandexMusicSourceId.Value };
 
     // KeyModifiers в Terminal.Gui 1.x не имеет члена None — используем default (0).
     private static KeyEvent Press(Key key) => new(key, default);
@@ -50,7 +53,7 @@ public sealed class TracksViewTests : ViewTestBase
     {
         var view = CreateView(width: 60);
 
-        view.SetTracks([Track("T", "A", "id1")], id => id == "id1");
+        view.SetTracks([Track("T", "A", "id1")], t => t.Id == "id1");
         Pump();
         view.Redraw(new Rect(0, 0, 60, Height));
 
@@ -107,7 +110,7 @@ public sealed class TracksViewTests : ViewTestBase
         view.SetTracks([Track("T", "A", "id1")], _ => false);
         Pump();
 
-        view.SetDownloadState("id1", new TrackDownloadState(TrackDownloadStatus.Downloading, 45, 450, true));
+        view.SetDownloadState(K("id1"), new TrackDownloadState(TrackDownloadStatus.Downloading, 45, 450, true));
         Pump();
         view.Redraw(new Rect(0, 0, 60, Height));
 
@@ -120,10 +123,10 @@ public sealed class TracksViewTests : ViewTestBase
         var view = CreateView(width: 60);
         view.SetTracks([Track("T", "A", "id1")], _ => false);
         Pump();
-        view.SetDownloadState("id1", new TrackDownloadState(TrackDownloadStatus.Downloading, 45, 450, true));
+        view.SetDownloadState(K("id1"), new TrackDownloadState(TrackDownloadStatus.Downloading, 45, 450, true));
         Pump();
 
-        view.SetDownloadState("id1", TrackDownloadState.Cached);
+        view.SetDownloadState(K("id1"), TrackDownloadState.Cached);
         Pump();
         view.Redraw(new Rect(0, 0, 60, Height));
 
@@ -141,7 +144,7 @@ public sealed class TracksViewTests : ViewTestBase
         view.SetTracks([Track("T", "A", "id1")], _ => false);
         Pump();
 
-        view.SetDownloadState("id1", TrackDownloadState.Failed);
+        view.SetDownloadState(K("id1"), TrackDownloadState.Failed);
         Pump();
         view.Redraw(new Rect(0, 0, 60, Height));
 
@@ -155,7 +158,7 @@ public sealed class TracksViewTests : ViewTestBase
         view.SetTracks([Track("T", "A", "id1")], _ => false);
         Pump();
 
-        view.SetDownloadState("id1", new TrackDownloadState(TrackDownloadStatus.Downloading, 0, 2 * 1024 * 1024, false));
+        view.SetDownloadState(K("id1"), new TrackDownloadState(TrackDownloadStatus.Downloading, 0, 2 * 1024 * 1024, false));
         Pump();
         view.Redraw(new Rect(0, 0, 60, Height));
 
@@ -177,7 +180,7 @@ public sealed class TracksViewTests : ViewTestBase
     public void Redraw_WithDurations_DrawsDurationColumn()
     {
         var view = CreateView(width: 76);
-        view.SetTracks([new Track("T", "A", "Альбом", "id1") { DurationMs = 215_000 }], _ => false);
+        view.SetTracks([new Track("T", "A", "Альбом", "id1") { SourceId = YandexMusicSourceId.Value, DurationMs = 215_000 }], _ => false);
         Pump();
         view.Redraw(new Rect(0, 0, 76, Height));
 
@@ -208,13 +211,13 @@ public sealed class TracksViewTests : ViewTestBase
     }
 
     [Test]
-    public void SetPlayingTrackId_RendersPlayingMarker()
+    public void SetPlayingTrack_RendersPlayingMarker()
     {
         var view = CreateView();
         view.SetTracks([Track("T1", "A1", "id1")], _ => false);
         Pump();
 
-        view.SetPlayingTrackId("id1");
+        view.SetPlayingTrack(K("id1"));
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));
 

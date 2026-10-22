@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -8,6 +9,8 @@ namespace YamBassPlayer.Tests.Views;
 [NonParallelizable]
 public sealed class TracksViewHostTests : ViewTestBase
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private const int Width = 55;   // у плиток: 55 / (26 + 1) = 2 колонки
     private const int Height = 5;
 
@@ -34,7 +37,7 @@ public sealed class TracksViewHostTests : ViewTestBase
     }
 
     private static Track Track(string title, string artist, string id)
-        => new(title, artist, "Альбом", id);
+        => new(title, artist, "Альбом", id) { SourceId = YandexMusicSourceId.Value };
 
     private static KeyEvent Press(Key key) => new(key, default);
 
@@ -194,14 +197,14 @@ public sealed class TracksViewHostTests : ViewTestBase
     }
 
     [Test]
-    public void SetPlayingTrackId_ForwardsToBothViews()
+    public void SetPlayingTrack_ForwardsToBothViews()
     {
         var (host, tiles, table) = CreateHost();
         host.SetTracks([Track("T1", "A1", "id1")], _ => false);
         Pump();
         host.SetFilter(null);
 
-        host.SetPlayingTrackId("id1");
+        host.SetPlayingTrack(K("id1"));
         Pump();
 
         table.Redraw(new Rect(0, 0, Width, Height));

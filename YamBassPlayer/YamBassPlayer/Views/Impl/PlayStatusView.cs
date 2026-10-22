@@ -5,9 +5,6 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class PlayStatusView : View, IPlayStatusView
 {
-	private const string LocalFavoriteButtonLabel = "Локально";
-	private const string YandexFavoriteButtonLabel = "Яндекс";
-
 	private const string PlayButtonLabel = "Играть";
 	private const string PauseButtonLabel = "Пауза";
 	private const string StopButtonLabel = "Стоп";
@@ -24,8 +21,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	private readonly VolumeBarView _volumeBar;
 	private readonly Button _prevButton;
 	private readonly Button _nextButton;
-	private readonly Button _favoriteButton;
-	private readonly Button _yandexFavoriteButton;
+	private readonly View _actionsBar;
 	private readonly Button _queueButton;
 	private readonly Button _playbackModeButton;
 
@@ -35,8 +31,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 	public event Action? OnNextClicked;
 	public event Action<int>? OnSeekRequested;
 	public event Action<int>? OnVolumeChangeRequested;
-	public event Action? OnLocalFavoriteToggleClicked;
-	public event Action? OnYandexFavoriteToggleClicked;
+	public event Action<string>? OnTrackActionClicked;
 	public event Action? OnQueueClicked;
 	public event Action? OnPlaybackModeToggled;
 	public event Action? OnRestartClicked;
@@ -96,27 +91,9 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		};
 		_nextButton.Clicked += () => OnNextClicked?.Invoke();
 
-		_favoriteButton = new Button
-		{
-			X = Pos.Right(_nextButton) + 3,
-			Y = 0,
-			Text = GetLocalFavoriteButtonText(isFavorite: false),
-			Enabled = false
-		};
-		_favoriteButton.Clicked += () => OnLocalFavoriteToggleClicked?.Invoke();
-
-		_yandexFavoriteButton = new Button
-		{
-			X = Pos.Right(_favoriteButton) + 1,
-			Y = 0,
-			Text = GetYandexFavoriteButtonText(isFavorite: false),
-			Enabled = false
-		};
-		_yandexFavoriteButton.Clicked += () => OnYandexFavoriteToggleClicked?.Invoke();
-
 		_queueButton = new Button
 		{
-			X = Pos.Right(_yandexFavoriteButton) + 1,
+			X = Pos.Right(_nextButton) + 3,
 			Y = 0,
 			Text = "Очередь"
 		};
@@ -129,6 +106,14 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			Text = "Поочерёдно"
 		};
 		_playbackModeButton.Clicked += () => OnPlaybackModeToggled?.Invoke();
+
+		_actionsBar = new View
+		{
+			X = Pos.Right(_playbackModeButton) + 1,
+			Y = 0,
+			Width = Dim.Fill(),
+			Height = 1
+		};
 
 		// Прошедшее и оставшееся время рисует сама полоса — по краям дорожки.
 		_seekBar = new SeekBarView
@@ -159,7 +144,7 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		_volumeBar.VolumeChangeRequested += percent => OnVolumeChangeRequested?.Invoke(percent);
 
 		_panel.Add(_playButton, _stopButton, _restartButton, _prevButton, _nextButton,
-			_favoriteButton, _yandexFavoriteButton, _queueButton, _playbackModeButton,
+			_queueButton, _playbackModeButton, _actionsBar,
 			_seekBar, _statusLabel, _volumeBar);
 		Add(_panel);
 	}
@@ -214,51 +199,30 @@ public sealed class PlayStatusView : View, IPlayStatusView
 		});
 	}
 
-	public void SetLocalFavoriteState(bool isFavorite)
+	public void SetTrackActions(IReadOnlyList<TrackActionButton> actions)
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_favoriteButton.Text = GetLocalFavoriteButtonText(isFavorite);
-		});
-	}
+			_actionsBar.RemoveAll();
 
-	public void SetYandexFavoriteState(bool isFavorite)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_yandexFavoriteButton.Text = GetYandexFavoriteButtonText(isFavorite);
-		});
-	}
+			Button? previous = null;
+			foreach (TrackActionButton action in actions)
+			{
+				TrackActionButton captured = action;
+				var button = new Button
+				{
+					X = previous is null ? 0 : Pos.Right(previous) + 1,
+					Y = 0,
+					Text = captured.Title,
+					Enabled = captured.Enabled
+				};
+				button.Clicked += () => OnTrackActionClicked?.Invoke(captured.Id);
 
-	public void SetLocalFavoriteVisibility(bool isVisible)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_favoriteButton.Visible = isVisible;
-		});
-	}
+				_actionsBar.Add(button);
+				previous = button;
+			}
 
-	public void SetLocalFavoriteEnabled(bool isEnabled)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_favoriteButton.Enabled = isEnabled;
-		});
-	}
-
-	public void SetYandexFavoriteVisibility(bool isVisible)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_yandexFavoriteButton.Visible = isVisible;
-		});
-	}
-
-	public void SetYandexFavoriteEnabled(bool isEnabled)
-	{
-		Application.MainLoop.Invoke(() =>
-		{
-			_yandexFavoriteButton.Enabled = isEnabled;
+			_actionsBar.SetNeedsDisplay();
 		});
 	}
 
@@ -274,10 +238,4 @@ public sealed class PlayStatusView : View, IPlayStatusView
 			};
 		});
 	}
-
-	private static string GetLocalFavoriteButtonText(bool isFavorite)
-		=> isFavorite ? $"{LocalFavoriteButtonLabel} +" : $"{LocalFavoriteButtonLabel} -";
-
-	private static string GetYandexFavoriteButtonText(bool isFavorite)
-		=> isFavorite ? $"{YandexFavoriteButtonLabel} +" : $"{YandexFavoriteButtonLabel} -";
 }

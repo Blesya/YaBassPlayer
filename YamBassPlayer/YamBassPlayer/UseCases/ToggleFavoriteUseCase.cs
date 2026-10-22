@@ -1,55 +1,47 @@
+using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
 using YamBassPlayer.Services;
 
 namespace YamBassPlayer.UseCases;
 
 /// <summary>
-/// Прикладной сценарий переключения избранного для трека в указанном источнике.
+/// Прикладной сценарий переключения локального избранного.
+/// Источник трека не важен: список хранится локально и общий для всех.
 /// </summary>
 public sealed class ToggleFavoriteUseCase
 {
-	private readonly ITrackFavoriteService _trackFavoriteService;
+	private readonly ILocalFavoriteService _favorites;
 	private readonly IPlayStatusPresenter _playStatusPresenter;
-	private readonly ITrackSourceDetector _trackSourceDetector;
 	private readonly IErrorHandler _errorHandler;
 
 	public ToggleFavoriteUseCase(
-		ITrackFavoriteService trackFavoriteService,
+		ILocalFavoriteService favorites,
 		IPlayStatusPresenter playStatusPresenter,
-		ITrackSourceDetector trackSourceDetector,
 		IErrorHandler errorHandler)
 	{
-		_trackFavoriteService = trackFavoriteService;
+		_favorites = favorites;
 		_playStatusPresenter = playStatusPresenter;
-		_trackSourceDetector = trackSourceDetector;
 		_errorHandler = errorHandler;
 	}
 
-	public async Task ExecuteAsync(string sourceId, string trackId)
+	public async Task ExecuteAsync(TrackKey key)
 	{
 		Logging.LogBeforeCall();
 
 		try
 		{
-			if (!_trackFavoriteService.SupportsSource(sourceId))
+			if (_favorites.IsTrackFavorite(key))
 			{
-				_playStatusPresenter.SetPlayStatus("Источник избранного недоступен");
-				return;
-			}
-
-			bool isFavorite = _trackFavoriteService.IsTrackFavorite(sourceId, trackId);
-			if (isFavorite)
-			{
-				await _trackFavoriteService.RemoveFromFavorites(sourceId, trackId);
+				await _favorites.RemoveFromFavorites(key);
 				_playStatusPresenter.SetPlayStatus("Удалён из избранного");
 			}
 			else
 			{
-				await _trackFavoriteService.AddToFavorites(sourceId, trackId);
+				await _favorites.AddToFavorites(key);
 				_playStatusPresenter.SetPlayStatus("Добавлен в избранное");
 			}
 
-			_playStatusPresenter.SetCurrentTrack(trackId, _trackSourceDetector.GetSourceId(trackId));
+			_playStatusPresenter.SetCurrentTrack(key);
 			Logging.LogAfterCall();
 		}
 		catch (Exception ex)

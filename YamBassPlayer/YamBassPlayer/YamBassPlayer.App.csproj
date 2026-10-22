@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <AssemblyName>YamBassPlayer</AssemblyName>
+        <RootNamespace>YamBassPlayer</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- CS0436: вендоренный NetDriver намеренно затеняет internal-типы Terminal.Gui. -->
+        <NoWarn>$(NoWarn);CS0436</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Autofac" Version="8.1.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\YamBassPlayer.Contracts\YamBassPlayer.Contracts.csproj" />
+        <ProjectReference Include="..\YamBassPlayer.Contracts.Ui\YamBassPlayer.Contracts.Ui.csproj" />
+        <ProjectReference Include="..\YamBassPlayer.Core\YamBassPlayer.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="YamBassPlayer.Tests" />
+    </ItemGroup>
+
+    <!-- Целевая платформа для нативных BASS-библиотек: RID важнее ОС сборочной машины,
+         иначе кросс-публикация (win-x64 с Linux-раннера) положит в пакет чужие .so/.dylib. -->
+    <PropertyGroup>
+        <BassTargetIsWindows Condition="'$(RuntimeIdentifier)' != ''">$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win'))</BassTargetIsWindows>
+        <BassTargetIsWindows Condition="'$(RuntimeIdentifier)' == ''">$([MSBuild]::IsOSPlatform('Windows'))</BassTargetIsWindows>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+    <ItemGroup>
+        <BassNative Include="libs\bass.dll;libs\bass_fx.dll" Condition="'$(BassTargetIsWindows)' == 'true'" />
+        <BassNative Include="libs\libbass.so;libs\libbass.dylib;libs\libbass_fx.dylib" Condition="'$(BassTargetIsWindows)' != 'true'" />
+    </ItemGroup>
+
+    <Target Name="CopyBass" AfterTargets="Build;Publish">
+        <Copy SourceFiles="@(BassNative)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(BassNative)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    </Target>
+</Project>

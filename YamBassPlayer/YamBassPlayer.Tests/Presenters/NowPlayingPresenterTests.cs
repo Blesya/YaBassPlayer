@@ -12,6 +12,8 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class NowPlayingPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private Mock<IAudioPlayer> _audio = null!;
     private Mock<IPlaybackQueue> _queue = null!;
     private Mock<ITrackCatalog> _trackCatalog = null!;
@@ -43,15 +45,15 @@ public sealed class NowPlayingPresenterTests
             _viewFactory.Object, _host.Object, _ui, _errorHandler.Object);
     }
 
-    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id);
+    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     // ── Загрузка трека ────────────────────────────────────────────────────
 
     [Test]
     public void ShowNowPlaying_WithCurrentTrack_LoadsAndDisplaysIt()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
-        _trackCatalog.Setup(p => p.GetAsync("t1")).ReturnsAsync(Track("t1"));
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
+        _trackCatalog.Setup(p => p.GetAsync(K("t1"))).ReturnsAsync(Track("t1"));
 
         _presenter.ShowNowPlaying();
 
@@ -62,20 +64,20 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_WithoutCurrentTrack_DoesNotLoad()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         _presenter.ShowNowPlaying();
 
-        _trackCatalog.Verify(p => p.GetAsync(It.IsAny<string>()), Times.Never);
+        _trackCatalog.Verify(p => p.GetAsync(It.IsAny<TrackKey>()), Times.Never);
         _host.Verify(h => h.Show(_view.Object), Times.Once);
     }
 
     [Test]
     public void ShowNowPlaying_WhenProviderFails_ReportsViaErrorHandler()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
         var ex = new InvalidOperationException("boom");
-        _trackCatalog.Setup(p => p.GetAsync("t1")).ThrowsAsync(ex);
+        _trackCatalog.Setup(p => p.GetAsync(K("t1"))).ThrowsAsync(ex);
 
         _presenter.ShowNowPlaying();
 
@@ -87,11 +89,11 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_OnTrackChangedWhileOpen_LoadsNewTrack()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
-        _trackCatalog.Setup(p => p.GetAsync(It.IsAny<string>()))
-            .ReturnsAsync((string id) => Track(id));
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
+        _trackCatalog.Setup(p => p.GetAsync(It.IsAny<TrackKey>()))
+            .ReturnsAsync((TrackKey key) => Track(key.TrackId));
         _host.Setup(h => h.Show(_view.Object))
-            .Callback(() => _eventBus.Publish(new TrackChangedEvent("t2")));
+            .Callback(() => _eventBus.Publish(new TrackChangedEvent(K("t2"))));
 
         _presenter.ShowNowPlaying();
 
@@ -101,13 +103,13 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_AfterClose_UnsubscribesFromTrackChanged()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         _presenter.ShowNowPlaying();
 
-        _eventBus.Publish(new TrackChangedEvent("t9"));
+        _eventBus.Publish(new TrackChangedEvent(K("t9")));
 
-        _trackCatalog.Verify(p => p.GetAsync("t9"), Times.Never);
+        _trackCatalog.Verify(p => p.GetAsync(K("t9")), Times.Never);
     }
 
     // ── Таймер спектра ────────────────────────────────────────────────────
@@ -115,7 +117,7 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_SpectrumTimer_UsesWaveformDataInWaveformMode()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         _view.SetupGet(v => v.SpectrumDataType).Returns(SpectrumDataType.Waveform);
         _audio.SetupGet(a => a.IsPlayed).Returns(true);
         var data = new float[] { 1f, 2f };
@@ -131,7 +133,7 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_SpectrumTimer_UsesChannelDataInFftMode()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         _view.SetupGet(v => v.SpectrumDataType).Returns(SpectrumDataType.Fft);
         _audio.SetupGet(a => a.IsPlayed).Returns(true);
         var data = new float[] { 3f };
@@ -147,7 +149,7 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_SpectrumTimer_WhenNotPlaying_DoesNotFetchData()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         _audio.SetupGet(a => a.IsPlayed).Returns(false);
         _host.Setup(h => h.Show(_view.Object)).Callback(() => _ui.Tick());
 
@@ -160,7 +162,7 @@ public sealed class NowPlayingPresenterTests
     [Test]
     public void ShowNowPlaying_AfterClose_SpectrumTimerStops()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
         _audio.SetupGet(a => a.IsPlayed).Returns(true);
 
         _presenter.ShowNowPlaying();

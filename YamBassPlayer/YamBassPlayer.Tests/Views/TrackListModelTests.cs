@@ -1,4 +1,5 @@
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -6,7 +7,9 @@ namespace YamBassPlayer.Tests.Views;
 [TestFixture]
 public sealed class TrackListModelTests
 {
-    private static Track Track(string id) => new($"Title-{id}", $"Artist-{id}", "Album", id);
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
+    private static Track Track(string id) => new($"Title-{id}", $"Artist-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     private static TrackListModel CreateModel(params string[] ids)
     {
@@ -16,11 +19,11 @@ public sealed class TrackListModelTests
     }
 
     [Test]
-    public void SelectByTrackId_SelectsMatchingIndex()
+    public void SelectByTrack_SelectsMatchingIndex()
     {
         var model = CreateModel("a", "b", "c");
 
-        bool found = model.SelectByTrackId("b");
+        bool found = model.SelectByTrack(K("b"));
 
         Assert.Multiple(() =>
         {
@@ -30,12 +33,12 @@ public sealed class TrackListModelTests
     }
 
     [Test]
-    public void SelectByTrackId_UnknownId_KeepsSelection()
+    public void SelectByTrack_UnknownId_KeepsSelection()
     {
         var model = CreateModel("a", "b");
         model.Select(1);
 
-        bool found = model.SelectByTrackId("zzz");
+        bool found = model.SelectByTrack(K("zzz"));
 
         Assert.Multiple(() =>
         {
@@ -45,22 +48,22 @@ public sealed class TrackListModelTests
     }
 
     [Test]
-    public void SelectByTrackId_RespectsFilter()
+    public void SelectByTrack_RespectsFilter()
     {
         var model = CreateModel("a", "b");
         model.SetFilter("Title-a");
 
-        Assert.That(model.SelectByTrackId("b"), Is.False);
+        Assert.That(model.SelectByTrack(K("b")), Is.False);
     }
 
     [Test]
-    public void SelectByTrackId_FiresChangedOnce()
+    public void SelectByTrack_FiresChangedOnce()
     {
         var model = CreateModel("a", "b");
         int changes = 0;
         model.Changed += () => changes++;
 
-        model.SelectByTrackId("b");
+        model.SelectByTrack(K("b"));
 
         Assert.That(changes, Is.EqualTo(1));
     }

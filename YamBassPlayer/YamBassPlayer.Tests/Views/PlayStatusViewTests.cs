@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using YamBassPlayer.Enums;
+using YamBassPlayer.Views;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -92,21 +93,17 @@ public sealed class PlayStatusViewTests : ViewTestBase
     }
 
     [Test]
-    public void FavoriteButtons_ShowStateWithoutSymbols()
+    public void SetTrackActions_ShowsPluginButtons()
     {
-        // Правый край панели шире экрана — сдвигаем панель влево, чтобы он попал в кадр.
         var view = CreateView(x: RightShift, width: WideWidth);
 
-        view.SetLocalFavoriteState(true);
-        view.SetYandexFavoriteState(false);
+        view.SetTrackActions([new TrackActionButton("like", "В избранное", true)]);
         Pump();
+        Assert.That(Render(view, WideWidth), Does.Contain("В избранное"));
 
-        string text = Render(view, WideWidth);
-        Assert.Multiple(() =>
-        {
-            Assert.That(text, Does.Contain("Локально +"));
-            Assert.That(text, Does.Contain("Яндекс -"));
-        });
+        view.SetTrackActions([new TrackActionButton("like", "Из избранного", true)]);
+        Pump();
+        Assert.That(Render(view, WideWidth), Does.Contain("Из избранного"));
     }
 
     [Test]

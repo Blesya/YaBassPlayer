@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -8,12 +9,14 @@ namespace YamBassPlayer.Tests.Views;
 [NonParallelizable]
 public sealed class PlaylistRowsViewTests : ViewTestBase
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private const int Width = 60;
     private const int Height = 6;   // 2 карточки по 3 строки
 
     private PlaylistRowsView CreateView() => AddToTop(new PlaylistRowsView { Width = Width, Height = Height });
 
-    private static Track Track(string title, string artist, string id) => new(title, artist, "Диск", id);
+    private static Track Track(string title, string artist, string id) => new(title, artist, "Диск", id) { SourceId = YandexMusicSourceId.Value };
 
     private static KeyEvent Press(Key key) => new(key, default);
 
@@ -46,12 +49,12 @@ public sealed class PlaylistRowsViewTests : ViewTestBase
     }
 
     [Test]
-    public void SetCurrentTrackId_RendersPlayingMarker()
+    public void SetCurrentTrack_RendersPlayingMarker()
     {
         var view = CreateView();
         view.SetTracks([Track("Первая", "A1", "id1"), Track("Вторая", "A2", "id2")]);
 
-        view.SetCurrentTrackId("id2");
+        view.SetCurrentTrack(K("id2"));
         view.Redraw(new Rect(0, 0, Width, Height));
 
         Assert.That(RenderText(Height, Width), Does.Contain("▶"));
@@ -65,12 +68,12 @@ public sealed class PlaylistRowsViewTests : ViewTestBase
         var view = CreateView();
         view.SetTracks([Track("Первая", "A1", "id1"), Track("Вторая", "A2", "id2")]);
 
-        string? activated = null;
+        TrackKey? activated = null;
         view.OnTrackActivated += id => activated = id;
 
         view.ProcessKey(Press(Key.Enter));
 
-        Assert.That(activated, Is.EqualTo("id1"));
+        Assert.That(activated, Is.EqualTo(K("id1")));
     }
 
     [Test]
@@ -79,13 +82,13 @@ public sealed class PlaylistRowsViewTests : ViewTestBase
         var view = CreateView();
         view.SetTracks([Track("Первая", "A1", "id1"), Track("Вторая", "A2", "id2")]);
 
-        string? activated = null;
+        TrackKey? activated = null;
         view.OnTrackActivated += id => activated = id;
 
         view.ProcessKey(Press(Key.CursorDown));
         view.ProcessKey(Press(Key.Enter));
 
-        Assert.That(activated, Is.EqualTo("id2"));
+        Assert.That(activated, Is.EqualTo(K("id2")));
     }
 
     [Test]
@@ -94,12 +97,12 @@ public sealed class PlaylistRowsViewTests : ViewTestBase
         var view = CreateView();
         view.SetTracks([Track("Первая", "A1", "id1"), Track("Вторая", "A2", "id2")]);
 
-        string? activated = null;
+        TrackKey? activated = null;
         view.OnTrackActivated += id => activated = id;
 
         // Высота карточки 3 строки: Y = 3 → вторая карточка.
         view.MouseEvent(new MouseEvent { X = 1, Y = 3, Flags = MouseFlags.Button1DoubleClicked });
 
-        Assert.That(activated, Is.EqualTo("id2"));
+        Assert.That(activated, Is.EqualTo(K("id2")));
     }
 }

@@ -37,7 +37,7 @@ public sealed class ShowMyWaveUseCaseTests
             _playbackQueue.Object);
     }
 
-    private static Playlist WavePlaylist() => new("Моя волна", PlaylistType.MyWave)
+    private static Playlist WavePlaylist() => new("my-wave", "Моя волна")
     {
         Description = "Персональная радиостанция Яндекс.Музыки",
         TrackCount = 5
@@ -54,7 +54,7 @@ public sealed class ShowMyWaveUseCaseTests
 
         Assert.Multiple(() =>
         {
-            _playbackPresenter.Verify(p => p.SetPlaylistType(PlaylistType.MyWave), Times.Once);
+            _playbackPresenter.Verify(p => p.SetPlaylistContext(PlaylistContext.Radio), Times.Once);
             _playlistsPresenter.Verify(p => p.NotifyTransientPlaylistActive(playlist), Times.Once);
             _myWaveWindowPresenter.Verify(w => w.ShowWindow(playlist), Times.Once);
             Assert.That(title, Is.EqualTo("Моя волна : Персональная радиостанция Яндекс.Музыки"));
@@ -70,7 +70,7 @@ public sealed class ShowMyWaveUseCaseTests
 
         Assert.Multiple(() =>
         {
-            _playbackPresenter.Verify(p => p.SetPlaylistType(It.IsAny<PlaylistType>()), Times.Never);
+            _playbackPresenter.Verify(p => p.SetPlaylistContext(It.IsAny<PlaylistContext>()), Times.Never);
             _myWaveWindowPresenter.Verify(w => w.ShowWindow(It.IsAny<Playlist>()), Times.Never);
             _playlistsPresenter.Verify(p => p.NotifyTransientPlaylistActive(It.IsAny<Playlist>()), Times.Never);
         });
@@ -79,14 +79,14 @@ public sealed class ShowMyWaveUseCaseTests
     [Test]
     public async Task ShowByTrackAsync_WhenNoCurrentTrack_Reports()
     {
-        _playbackQueue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _playbackQueue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         await _useCase.ShowByTrackAsync(_ => { });
 
         Assert.Multiple(() =>
         {
             _playStatus.Verify(p => p.SetPlayStatus("Сначала начните воспроизведение трека"), Times.Once);
-            _myWavePresenter.Verify(p => p.StartMyWaveFromTrackAsync(It.IsAny<string>()), Times.Never);
+            _myWavePresenter.Verify(p => p.StartMyWaveFromTrackAsync(It.IsAny<TrackKey>()), Times.Never);
         });
     }
 
@@ -94,14 +94,15 @@ public sealed class ShowMyWaveUseCaseTests
     public async Task ShowByTrackAsync_StartsWaveFromCurrentTrack()
     {
         var playlist = WavePlaylist();
-        _playbackQueue.SetupGet(q => q.CurrentTrackId).Returns("seed");
-        _myWavePresenter.Setup(p => p.StartMyWaveFromTrackAsync("seed")).ReturnsAsync(playlist);
+        _playbackQueue.SetupGet(q => q.CurrentTrack).Returns(new TrackKey(YandexMusicSourceId.Value, "seed"));
+        var seed = new TrackKey(YandexMusicSourceId.Value, "seed");
+        _myWavePresenter.Setup(p => p.StartMyWaveFromTrackAsync(seed)).ReturnsAsync(playlist);
 
         await _useCase.ShowByTrackAsync(_ => { });
 
         Assert.Multiple(() =>
         {
-            _myWavePresenter.Verify(p => p.StartMyWaveFromTrackAsync("seed"), Times.Once);
+            _myWavePresenter.Verify(p => p.StartMyWaveFromTrackAsync(seed), Times.Once);
             _myWaveWindowPresenter.Verify(w => w.ShowWindow(playlist), Times.Once);
         });
     }

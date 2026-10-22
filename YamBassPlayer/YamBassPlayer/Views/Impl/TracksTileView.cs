@@ -81,7 +81,7 @@ public sealed class TracksTileView : View, ITracksView
 		SetNeedsDisplay();
 	}
 
-	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 	{
 		Application.MainLoop.Invoke(() =>
 		{
@@ -95,7 +95,7 @@ public sealed class TracksTileView : View, ITracksView
 		});
 	}
 
-	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 		=> Application.MainLoop.Invoke(() => _model.AddTracks(tracks, isCached));
 
 	public void ClearTracks()
@@ -125,18 +125,18 @@ public sealed class TracksTileView : View, ITracksView
 		SetNeedsDisplay();
 	}
 
-	public void SetPlayingTrackId(string? trackId)
-		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
+	public void SetPlayingTrack(TrackKey? key)
+		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrack(key));
 
-	public void SelectTrack(string trackId)
+	public void SelectTrack(TrackKey key)
 		=> Application.MainLoop.Invoke(() =>
 		{
-			if (_model.SelectByTrackId(trackId))
+			if (_model.SelectByTrack(key))
 				_model.EnsureSelectedVisible(VisibleItems, ColumnStep);
 		});
 
-	public void SetDownloadState(string trackId, TrackDownloadState state)
-		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
+	public void SetDownloadState(TrackKey key, TrackDownloadState state)
+		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(key, state));
 
 	/// <summary>Состояние кэша в шапке плитки: «*», « 45%» или пусто.</summary>
 	private static string TileStatus(TrackListItem item)
@@ -166,7 +166,13 @@ public sealed class TracksTileView : View, ITracksView
 
 		var items = _model.Items;
 		if (items.Count == 0)
+		{
+			const string message = "Выберите плейлист";
+			Driver.SetAttribute(Themes.DimFor(ColorScheme));
+			Move(Math.Max(0, (bounds.Width - message.Length) / 2), Math.Max(0, bounds.Height / 2));
+			Driver.AddStr(message);
 			return;
+		}
 
 		for (int row = 0; row < visibleRows; row++)
 		{
@@ -180,7 +186,7 @@ public sealed class TracksTileView : View, ITracksView
 				int y = row * TileHeight;
 
 				bool isSelected = index == _model.SelectedIndex;
-				bool isPlaying = items[index].Track.Id == _model.PlayingTrackId;
+				bool isPlaying = items[index].Track.Key == _model.PlayingTrack;
 				DrawTile(x, y, items[index], isSelected, isPlaying, bounds);
 			}
 		}

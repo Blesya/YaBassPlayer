@@ -1,0 +1,9 @@
+{
+  "id": "yandex-music",
+  "name": "Яндекс.Музыка",
+  "version": "2.0.0",
+  "contractVersion": "1.0",
+  "entryAssembly": "YamBassPlayer.Plugins.YandexMusic.dll",
+  "description": "Источник Яндекс.Музыки: плейлисты, поиск, «Моя волна» и вход по токену.",
+  "author": "YamBassPlayer"
+}

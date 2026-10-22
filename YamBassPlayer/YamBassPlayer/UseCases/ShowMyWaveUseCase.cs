@@ -9,7 +9,7 @@ namespace YamBassPlayer.UseCases;
 /// Прикладной сценарий запуска «Моей волны»: персональной радиостанции
 /// или станции по текущему играющему треку.
 /// </summary>
-public sealed class ShowMyWaveUseCase
+public sealed class ShowMyWaveUseCase : IMyWaveService
 {
 	private readonly IMyWavePresenter _myWavePresenter;
 	private readonly IMyWaveWindowPresenter _myWaveWindowPresenter;
@@ -49,14 +49,14 @@ public sealed class ShowMyWaveUseCase
 	{
 		Logging.LogBeforeCall();
 
-		var trackId = _playbackQueue.CurrentTrackId;
-		if (trackId == null)
+		TrackKey? currentTrack = _playbackQueue.CurrentTrack;
+		if (currentTrack is null)
 		{
 			_playStatusPresenter.SetPlayStatus("Сначала начните воспроизведение трека");
 			return;
 		}
 
-		var playlist = await _myWavePresenter.StartMyWaveFromTrackAsync(trackId);
+		var playlist = await _myWavePresenter.StartMyWaveFromTrackAsync(currentTrack.Value);
 		if (playlist is null) return;
 
 		Activate(playlist, setWindowTitle);
@@ -65,8 +65,8 @@ public sealed class ShowMyWaveUseCase
 
 	private void Activate(Playlist playlist, Action<string> setWindowTitle)
 	{
-		_playbackPresenter.SetPlaylistType(PlaylistType.MyWave);
-		setWindowTitle($"{playlist.PlaylistName} : {playlist.Description}");
+		_playbackPresenter.SetPlaylistContext(PlaylistContext.Radio);
+		setWindowTitle($"{playlist.Title} : {playlist.Description}");
 		_playlistsPresenter.NotifyTransientPlaylistActive(playlist);
 		_myWaveWindowPresenter.ShowWindow(playlist);
 	}

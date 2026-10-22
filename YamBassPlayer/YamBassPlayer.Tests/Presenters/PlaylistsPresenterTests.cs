@@ -41,7 +41,7 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public async Task InitializeAsync_PushesTreeToViewAndInvalidatesCache()
     {
-        var playlist = new Playlist("Мои треки", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "Мои треки");
         SetupTree(playlist);
 
         await _presenter.InitializeAsync();
@@ -56,7 +56,7 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public async Task InitializeAsync_MarksFirstPlaylistAsPlayingAndRaisesChosen()
     {
-        var playlist = new Playlist("Мои треки", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "Мои треки");
         SetupTree(playlist);
 
         Playlist? chosen = null;
@@ -84,7 +84,7 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public void LoadPlaylistTree_TriggersInitialization()
     {
-        SetupTree(new Playlist("P", PlaylistType.Favorite));
+        SetupTree(new Playlist("favorite", "P"));
 
         _presenter.LoadPlaylistTree();
 
@@ -107,7 +107,7 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public async Task InitializeAsync_WhenPersistedSnapshotExists_UsesItImmediately()
     {
-        var playlist = new Playlist("Мои треки", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "Мои треки");
         _repository.Setup(r => r.GetPersistedSnapshot())
             .Returns(new PlaylistState { Playlists = [playlist] });
         _repository.Setup(r => r.GetPlaylists(It.IsAny<CancellationToken>()))
@@ -131,8 +131,8 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public async Task InitializeAsync_WhenSnapshotHasLastPlaylist_RestoresIt()
     {
-        var first = new Playlist("A", PlaylistType.Favorite);
-        var last = new Playlist("B", PlaylistType.Custom);
+        var first = new Playlist("favorite", "A");
+        var last = new Playlist("personal", "B");
         _repository.Setup(r => r.GetPersistedSnapshot())
             .Returns(new PlaylistState { Playlists = [first, last], LastPlaylist = last });
         _repository.Setup(r => r.GetPlaylists(It.IsAny<CancellationToken>()))
@@ -155,7 +155,7 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public async Task InitializeAsync_WhenSnapshotEmpty_FallsBackToRepository()
     {
-        var playlist = new Playlist("Мои треки", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "Мои треки");
         SetupTree(playlist);
         _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState());
 
@@ -164,12 +164,58 @@ public sealed class PlaylistsPresenterTests
         _repository.Verify(r => r.GetPlaylists(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Test]
+    public async Task RestoresLastPlaylistThatIsNotInSnapshot()
+    {
+        // «Загруженные» (Computed) не попадают в снимок, но указатель LastPlaylist на них сохраняется:
+        // после фонового обновления дерева должен быть выбран именно он.
+        var favorite = new Playlist("favorite", "Мои треки") { SourceId = YandexMusicSourceId.Value };
+        var cached = new Playlist("cached", "Загруженные") { Category = PlaylistCategory.Computed };
+        _repository.Setup(r => r.GetPersistedSnapshot())
+            .Returns(new PlaylistState { Playlists = [favorite], LastPlaylist = cached });
+        _repository.Setup(r => r.GetPlaylists(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([favorite, cached]);
+        _composer.SetupSequence(c => c.ComposeAsync(
+                It.IsAny<IReadOnlyList<Playlist>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([PlaylistTreeItem.FromPlaylist(favorite)])
+            .ReturnsAsync([PlaylistTreeItem.FromPlaylist(favorite), PlaylistTreeItem.FromPlaylist(cached)]);
+
+        Playlist? chosen = null;
+        _presenter.PlaylistChosen += p => chosen = p;
+
+        await _presenter.InitializeAsync();
+
+        Assert.Multiple(() =>
+        {
+            _view.Verify(v => v.MarkAsPlaying(cached), Times.Once);
+            Assert.That(chosen, Is.SameAs(cached));
+        });
+    }
+
+    [Test]
+    public async Task InitializeAsync_WhenLastPlaylistMissing_DoesNotSelectAnother()
+    {
+        var favorite = new Playlist("favorite", "Мои треки") { SourceId = YandexMusicSourceId.Value };
+        var last = new Playlist("personal", "Личный") { SourceId = YandexMusicSourceId.Value };
+        _repository.Setup(r => r.GetPersistedSnapshot())
+            .Returns(new PlaylistState { Playlists = [favorite], LastPlaylist = last });
+        _repository.Setup(r => r.GetPlaylists(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Playlist>());
+        _composer.Setup(c => c.ComposeAsync(It.IsAny<IReadOnlyList<Playlist>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { PlaylistTreeItem.FromPlaylist(favorite) });
+
+        await _presenter.InitializeAsync();
+
+        // Источник ещё не готов: прошлый плейлист не найден, но и первый попавшийся не выбираем.
+        _view.Verify(v => v.MarkAsPlaying(It.IsAny<Playlist>()), Times.Never);
+    }
+
     // ── Выбор плейлиста ───────────────────────────────────────────────────
 
     [Test]
     public void OnPlaylistSelected_MarksPlayingAndRaisesChosen()
     {
-        var playlist = new Playlist("P", PlaylistType.Custom);
+        var playlist = new Playlist("personal", "P");
         Playlist? chosen = null;
         _presenter.PlaylistChosen += p => chosen = p;
 
@@ -187,7 +233,7 @@ public sealed class PlaylistsPresenterTests
     [Test]
     public void NotifyTransientPlaylistActive_AddsAndMarksPlaying()
     {
-        var playlist = new Playlist("Поиск: кино", PlaylistType.YandexSearch);
+        var playlist = new Playlist("search", "Поиск: кино");
 
         _presenter.NotifyTransientPlaylistActive(playlist);
 

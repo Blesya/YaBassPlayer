@@ -2,12 +2,12 @@
   <!-- Единственный источник версии релиза: её читают сборка, окно «О программе» и GitHub Release.
        Меняем здесь, коммитим в master — CD сам соберёт и опубликует v<Version>. -->
   <PropertyGroup>
-    <Version>1.1.0</Version>
+    <Version>2.0.0</Version>
     <Product>YamBassPlayer</Product>
     <Company>Blesya</Company>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(MSBuildProjectName)' != 'YamBassPlayer.Api' and '$(MSBuildProjectName)' != 'YamBassPlayer.Api.Client' and '$(MSBuildProjectName)' != 'YamBassPlayer.Updater'">
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'YamBassPlayer.App'">
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
   </ItemGroup>
 </Project>

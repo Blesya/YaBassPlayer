@@ -31,24 +31,23 @@ public sealed class TrackAboutPresenter : ITrackAboutPresenter
 
 	public void ShowCurrentTrackAbout()
 	{
-		string? trackId = _playbackQueue.CurrentTrackId;
-		if (string.IsNullOrWhiteSpace(trackId))
+		if (_playbackQueue.CurrentTrack is not { } currentTrack)
 			return;
 
-		ShowTrackAbout(trackId);
+		ShowTrackAbout(currentTrack);
 	}
 
-	public void ShowTrackAbout(string trackId)
-		=> ShowTrackAboutAsync(trackId, forceRefresh: true).Forget();
+	public void ShowTrackAbout(TrackKey key)
+		=> ShowTrackAboutAsync(key, forceRefresh: true).Forget();
 
-	public async Task ShowTrackAboutAsync(string trackId, bool forceRefresh = false)
+	public async Task ShowTrackAboutAsync(TrackKey key, bool forceRefresh = false)
 	{
 		if (Interlocked.CompareExchange(ref _isShowing, 1, 0) != 0)
 			return;
 
 		try
 		{
-			TrackAboutInfo info = await _trackAboutService.GetAsync(trackId, forceRefresh);
+			TrackAboutInfo info = await _trackAboutService.GetAsync(key, forceRefresh);
 
 			_uiDispatcher.Invoke(() =>
 			{

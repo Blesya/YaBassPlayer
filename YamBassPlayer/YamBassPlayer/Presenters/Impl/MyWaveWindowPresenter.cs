@@ -46,16 +46,16 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		var view = _viewFactory.Create<IMyWaveView>();
 		view.SetWaveDescription(playlist.Description ?? "Персональная радиостанция");
 
-		string? currentTrackId = _playbackQueue.CurrentTrackId;
-		if (currentTrackId != null)
+		TrackKey? currentTrack = _playbackQueue.CurrentTrack;
+		if (currentTrack is not null)
 		{
-			LoadTrackInfo(view, currentTrackId).Forget();
+			LoadTrackInfo(view, currentTrack.Value).Forget();
 			UpdateNextTrackLabel(view).Forget();
 		}
 
 		_onTrackChangedHandler = e => _uiDispatcher.Invoke(() =>
 		{
-			LoadTrackInfo(view, e.TrackId).Forget();
+			LoadTrackInfo(view, e.Key).Forget();
 			UpdateNextTrackLabel(view).Forget();
 		});
 		_eventBus.Subscribe(_onTrackChangedHandler);
@@ -79,15 +79,15 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		}
 	}
 
-	private async Task LoadTrackInfo(IMyWaveView view, string trackId)
+	private async Task LoadTrackInfo(IMyWaveView view, TrackKey key)
 	{
 		try
 		{
-			Track track = await _trackCatalog.GetAsync(trackId);
+			Track track = await _trackCatalog.GetAsync(key);
 			view.SetTrack(track);
 			view.SetCover(null);
 
-			string coverPath = await _coverProvider.DownloadCoverAsync(trackId);
+			string coverPath = await _coverProvider.DownloadCoverAsync(track);
 			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, view.CoverSize.Width, view.CoverSize.Height);
 			view.SetCover(coverArt);
 		}
@@ -101,14 +101,14 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 	{
 		try
 		{
-			string? nextId = _playbackQueue.PeekNextTrackId;
-			if (nextId == null)
+			TrackKey? nextKey = _playbackQueue.PeekNext;
+			if (nextKey is null)
 			{
 				view.SetNextTrackLabel(null);
 				return;
 			}
 
-			Track next = await _trackCatalog.GetAsync(nextId);
+			Track next = await _trackCatalog.GetAsync(nextKey.Value);
 			view.SetNextTrackLabel($"{next.Artist} — {next.Title}");
 		}
 		catch

@@ -5,6 +5,8 @@ using YamBassPlayer.Configuration;
 using YamBassPlayer.Constants;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
+using YamBassPlayer.Plugins;
+using YamBassPlayer.Presenters;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
@@ -30,27 +32,8 @@ internal class Program
 			RestoreWindowPosition(consoleWindow);
 
 			var configuration = new AppConfigurationProvider();
-			var authService = new AuthService(
-				new DeviceAuthorizationService(configuration),
-				configuration);
-			bool authorized = await TryAuthorizeAsync(authService);
 
-			// Токена нет или он устарел — показываем окно входа с выбором способа.
-			if (!authorized)
-			{
-				authorized = RunAuthWindow(authService, configuration);
-			}
-
-			if (!authorized)
-			{
-				Log.Information("Авторизация не выполнена, приложение будет закрыто");
-				return;
-			}
-
-			ServicesProvider.Initialise(authService);
-			Log.Information("Сервисы инициализированы");
-
-			// UI поднимаем до инициализации BASS: при неудаче она показывает
+			// UI поднимаем до инициализации BASS и плагинов: при неудаче показывается
 			// MessageBox, а до Application.Init() драйвера ещё нет.
 			// Если терминал умеет VT — берём ANSI-драйвер с TrueColor-обложками,
 			// иначе Terminal.Gui поднимет штатный (16 цветов).
@@ -58,6 +41,28 @@ internal class Program
 			Application.Init(driver, mainLoopDriver);
 			uiInitialized = true;
 			Themes.InitializeDefaults();
+
+			// Авторизация больше не блокирует запуск: источники без токена
+			// показывают состояние «требуется настройка».
+			ServicesProvider.Initialise();
+			Log.Information("Сервисы инициализированы");
+
+			PluginLoader pluginLoader = ServicesProvider.Ioc.Resolve<PluginLoader>();
+			pluginLoader.LoadAll(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugins"));
+			Log.Information("Плагины загружены: {Count}", pluginLoader.LoadedPlugins.Count);
+
+			// Подписка до InitializeAsync: иначе вход в фоне (сохранённый токен)
+			// завершится раньше, чем дерево успеет узнать об этом.
+			IPlaylistsPresenter playlistsPresenter = ServicesProvider.Ioc.Resolve<IPlaylistsPresenter>();
+			foreach (IPlugin plugin in pluginLoader.LoadedPlugins)
+				plugin.Changed += () => playlistsPresenter.LoadPlaylistTree();
+
+			// Локальное избранное живёт в дереве: после сердечка его состав меняется.
+			ILocalFavoriteService favorites = ServicesProvider.Ioc.Resolve<ILocalFavoriteService>();
+			favorites.Changed += () => playlistsPresenter.LoadPlaylistTree();
+
+			foreach (IPlugin plugin in pluginLoader.LoadedPlugins)
+				_ = Task.Run(() => plugin.InitializeAsync(CancellationToken.None));
 
 			IAudioPlayer audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
 			audioPlayer.Init();
@@ -222,40 +227,4 @@ internal class Program
 		Log.Information("Положение окна сохранено: {X},{Y}", current.Value.X, current.Value.Y);
 	}
 
-	/// <summary>
-	/// Пытается войти без окна: сначала токеном из конфига, затем — тихо продлив его
-	/// refresh-токеном (access-токен истёк или был отозван).
-	/// </summary>
-	private static async Task<bool> TryAuthorizeAsync(IAuthService authService)
-	{
-		if (AuthService.HasToken() && await authService.AuthorizeFromConfigAsync())
-			return true;
-
-		return AuthService.HasRefreshToken() && await authService.TryRefreshAsync();
-	}
-
-	/// <summary>Открывает окно входа с выбором способа (код на сайте, QR-код или токен).</summary>
-	private static bool RunAuthWindow(IAuthService authService, IAppConfiguration configuration)
-	{
-		Log.Information("Требуется вход, открываем окно авторизации");
-		Application.Init();
-		Themes.InitializeDefaults();
-
-		try
-		{
-			var presenter = new AuthPresenter(
-				authService,
-				new QrCodeRenderer(),
-				new AuthView(),
-				new UiDispatcher(),
-				new UiErrorHandler(),
-				configuration);
-
-			return presenter.Run();
-		}
-		finally
-		{
-			Application.Shutdown();
-		}
-	}
 }

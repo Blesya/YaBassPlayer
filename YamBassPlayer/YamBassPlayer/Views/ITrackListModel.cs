@@ -20,23 +20,23 @@ public interface ITrackListModel
 	event Action? Changed;
 
 	IReadOnlyList<TrackListItem> Items { get; }
-	string? PlayingTrackId { get; }
+	TrackKey? PlayingTrack { get; }
 	int SelectedIndex { get; }
 	int ScrollOffset { get; }
 	bool IsLoadingMore { get; }
 
-	void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached);
-	void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached);
+	void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached);
+	void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached);
 	void Clear();
 	void SetFilter(string? filter);
-	void SetPlayingTrackId(string? trackId);
+	void SetPlayingTrack(TrackKey? key);
 	void SetLoadingMore(bool value);
 
 	/// <summary>
 	/// Обновляет состояние кэша одного трека. Список не пересобирается: меняется
 	/// только строка, поэтому прогресс загрузки виден без перезагрузки плейлиста.
 	/// </summary>
-	void SetDownloadState(string trackId, TrackDownloadState state);
+	void SetDownloadState(TrackKey key, TrackDownloadState state);
 
 	bool MoveUp(int step);
 	bool MoveDown(int step);
@@ -49,7 +49,7 @@ public interface ITrackListModel
 	bool Select(int index);
 
 	/// <summary>Ставит выделение на трек с указанным id. false — такого трека в списке нет.</summary>
-	bool SelectByTrackId(string trackId);
+	bool SelectByTrack(TrackKey key);
 
 	/// <summary>Прокручивает список на <paramref name="delta"/> элементов, с ограничением.</summary>
 	bool ScrollBy(int delta, int visibleCount);

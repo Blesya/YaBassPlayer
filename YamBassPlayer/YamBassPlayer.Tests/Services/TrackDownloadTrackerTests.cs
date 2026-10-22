@@ -1,4 +1,5 @@
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 
 namespace YamBassPlayer.Tests.Services;
@@ -6,19 +7,21 @@ namespace YamBassPlayer.Tests.Services;
 [TestFixture]
 public sealed class TrackDownloadTrackerTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     [Test]
     public void MarkDownloading_RaisesChangedForThatTrack()
     {
         var tracker = new TrackDownloadTracker();
-        var events = new List<(string TrackId, TrackDownloadState State)>();
-        tracker.Changed += (trackId, state) => events.Add((trackId, state));
+        var events = new List<(TrackKey Key, TrackDownloadState State)>();
+        tracker.Changed += (key, state) => events.Add((key, state));
 
-        tracker.MarkDownloading("t1");
+        tracker.MarkDownloading(K("t1"));
 
         Assert.Multiple(() =>
         {
             Assert.That(events, Has.Count.EqualTo(1));
-            Assert.That(events[0].TrackId, Is.EqualTo("t1"));
+            Assert.That(events[0].Key, Is.EqualTo(K("t1")));
             Assert.That(events[0].State.Status, Is.EqualTo(TrackDownloadStatus.Downloading));
         });
     }
@@ -30,7 +33,7 @@ public sealed class TrackDownloadTrackerTests
         TrackDownloadState? last = null;
         tracker.Changed += (_, state) => last = state;
 
-        tracker.ReportProgress("t1", new DownloadProgress(450, 1000));
+        tracker.ReportProgress(K("t1"), new DownloadProgress(450, 1000));
 
         Assert.Multiple(() =>
         {
@@ -47,7 +50,7 @@ public sealed class TrackDownloadTrackerTests
         TrackDownloadState? last = null;
         tracker.Changed += (_, state) => last = state;
 
-        tracker.ReportProgress("t1", new DownloadProgress(2048, 0));
+        tracker.ReportProgress(K("t1"), new DownloadProgress(2048, 0));
 
         Assert.Multiple(() =>
         {
@@ -60,9 +63,9 @@ public sealed class TrackDownloadTrackerTests
     public void MarkCached_DropsTrackFromActive()
     {
         var tracker = new TrackDownloadTracker();
-        tracker.MarkDownloading("t1");
+        tracker.MarkDownloading(K("t1"));
 
-        tracker.MarkCached("t1");
+        tracker.MarkCached(K("t1"));
 
         Assert.That(tracker.GetActive(), Is.Empty);
     }
@@ -71,13 +74,13 @@ public sealed class TrackDownloadTrackerTests
     public void GetActive_ReturnsDownloadingAndFailedOnly()
     {
         var tracker = new TrackDownloadTracker();
-        tracker.MarkDownloading("t1");
-        tracker.MarkFailed("t2");
-        tracker.MarkCached("t3");
+        tracker.MarkDownloading(K("t1"));
+        tracker.MarkFailed(K("t2"));
+        tracker.MarkCached(K("t3"));
 
         var active = tracker.GetActive();
 
-        Assert.That(active.Select(a => a.TrackId), Is.EquivalentTo(new[] { "t1", "t2" }));
+        Assert.That(active.Select(a => a.Key), Is.EquivalentTo(new[] { K("t1"), K("t2") }));
     }
 
     [Test]

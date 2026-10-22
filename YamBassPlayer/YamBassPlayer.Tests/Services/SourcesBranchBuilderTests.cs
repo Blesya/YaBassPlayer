@@ -1,6 +1,7 @@
 using Moq;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
+using YamBassPlayer.Plugins;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 
@@ -9,123 +10,161 @@ namespace YamBassPlayer.Tests.Services;
 [TestFixture]
 public sealed class SourcesBranchBuilderTests
 {
-    private Mock<IMusicSourceRegistry> _registry = null!;
+    private static readonly SourceId Yandex = new("yandex");
+
+    private Mock<IMusicSource> _yandexSource = null!;
+    private Mock<IMusicSource> _localSource = null!;
     private Mock<ILocalLibraryService> _localLibrary = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _registry = new Mock<IMusicSourceRegistry>();
         _localLibrary = new Mock<ILocalLibraryService>();
-
-        var yandexSource = new Mock<IMusicSource>();
-        yandexSource.SetupGet(s => s.DisplayName).Returns("Яндекс.Музыка");
-
-        var localSource = new Mock<IMusicSource>();
-        localSource.SetupGet(s => s.DisplayName).Returns("Локальная музыка");
-        localSource
-            .Setup(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<Playlist>());
-
         _localLibrary
             .Setup(l => l.GetLocalArtistsAsync(It.IsAny<int?>()))
             .ReturnsAsync(Array.Empty<(string artistName, int trackCount)>());
 
-        _registry.Setup(r => r.GetRequired(SourceIds.Yandex)).Returns(yandexSource.Object);
-        _registry.Setup(r => r.GetRequired(SourceIds.Local)).Returns(localSource.Object);
+        _yandexSource = CreateSource(Yandex, "Яндекс.Музыка");
+        _localSource = CreateSource(LocalMusicSource.Id, "Локальная музыка");
     }
 
-    private SourcesBranchBuilder CreateBuilder()
-        => new(_registry.Object, _localLibrary.Object);
+    private static Mock<IMusicSource> CreateSource(SourceId id, string displayName)
+    {
+        var source = new Mock<IMusicSource>();
+        source.SetupGet(s => s.Id).Returns(id);
+        source.SetupGet(s => s.DisplayName).Returns(displayName);
+        source
+            .Setup(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<Playlist>());
+        return source;
+    }
 
-    private static Playlist Yandex(
-        string name,
-        PlaylistType type,
-        string? ownerUid = null,
-        string? kind = null)
-        => new(name, type)
+    private SourcesBranchBuilder CreateBuilder(params IMusicSource[] sources)
+        => new(Registry(sources), _localLibrary.Object);
+
+    private static IMusicSourceRegistry Registry(params IMusicSource[] sources)
+    {
+        var registry = new Mock<IMusicSourceRegistry>();
+        registry.SetupGet(r => r.Sources).Returns(sources);
+        return registry.Object;
+    }
+
+    private static Playlist YandexPlaylist(string kind, string title, string? group = null)
+        => new(kind, title)
         {
-            SourceId = SourceIds.Yandex,
-            TrackCount = 3,
-            Payload = ownerUid is null
-                ? null
-                : new PlaylistPayload { YandexOwnerUid = ownerUid, YandexKind = kind }
+            SourceId = Yandex,
+            Category = PlaylistCategory.Data,
+            Group = group,
+            TrackCount = 3
         };
 
-    private static PlaylistTreeItem GetYandexNode(PlaylistTreeItem root)
-        => root.Children
-            .OfType<PlaylistTreeItem>()
-            .Single(node => Equals(node.Tag, SourceIds.Yandex));
+    private static PlaylistTreeItem Node(PlaylistTreeItem root, string tag)
+        => root.Children.OfType<PlaylistTreeItem>().Single(node => Equals(node.Tag, tag));
 
     [Test]
-    public async Task BuildBranch_OwnPlaylists_GoToOwnSubgroup()
+    public async Task BuildsNodePerSource()
     {
-        var playlists = new List<Playlist>
-        {
-            Yandex("Мои треки", PlaylistType.Favorite),
-            Yandex("Плейлист дня", PlaylistType.Custom),
-            Yandex("Мой микс", PlaylistType.YandexOwnPlaylist, "1", "10"),
-            Yandex("Чужой микс", PlaylistType.YandexLikedPlaylist, "2", "20")
-        };
-
-        var root = await CreateBuilder().BuildBranchAsync(playlists);
-
-        var yandexNode = GetYandexNode(root!);
-        var ownGroup = yandexNode.Children
-            .OfType<PlaylistTreeItem>()
-            .Single(node => node.Label == "Мои плейлисты");
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync();
 
         Assert.Multiple(() =>
         {
-            Assert.That(
-                ownGroup.Children.OfType<PlaylistTreeItem>().Select(node => node.Playlist!.PlaylistName),
-                Is.EqualTo(new[] { "Мой микс" }));
-
-            // Всё, что было в корне, остаётся на месте.
-            Assert.That(
-                yandexNode.Children.OfType<PlaylistTreeItem>().Any(node => node.Playlist?.Type == PlaylistType.Favorite),
-                Is.True);
-            Assert.That(
-                yandexNode.Children.OfType<PlaylistTreeItem>().Any(node => node.Playlist?.Type == PlaylistType.Custom),
-                Is.True);
-            Assert.That(
-                yandexNode.Children.OfType<PlaylistTreeItem>().Any(node => node.Playlist?.Type == PlaylistType.YandexLikedPlaylist),
-                Is.True);
+            Assert.That(Node(root!, "yandex").Label, Is.EqualTo("Яндекс.Музыка"));
+            Assert.That(Node(root!, "local").Label, Is.EqualTo("Локальная музыка"));
         });
     }
 
     [Test]
-    public async Task BuildBranch_WithoutOwnPlaylists_DoesNotAddEmptySubgroup()
+    public async Task GroupsChildrenByGroupInOrder()
     {
-        var playlists = new List<Playlist>
+        _yandexSource
+            .Setup(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                YandexPlaylist("favorite", "Мои треки"),
+                YandexPlaylist("own", "Мой микс", "Мои плейлисты"),
+                YandexPlaylist("liked", "Чужой микс", "Мои плейлисты")
+            });
+
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync();
+        var yandexNode = Node(root!, "yandex");
+
+        Assert.Multiple(() =>
         {
-            Yandex("Мои треки", PlaylistType.Favorite),
-            Yandex("Плейлист дня", PlaylistType.Custom)
-        };
-
-        var root = await CreateBuilder().BuildBranchAsync(playlists);
-
-        var yandexNode = GetYandexNode(root!);
-
-        Assert.That(
-            yandexNode.Children.OfType<PlaylistTreeItem>().Any(node => node.Label == "Мои плейлисты"),
-            Is.False);
+            Assert.That(yandexNode.Children.OfType<PlaylistTreeItem>().First().Label, Is.EqualTo("Мои треки"));
+            var group = yandexNode.Children.OfType<PlaylistTreeItem>().Single(node => node.Label == "Мои плейлисты");
+            Assert.That(group.Children.OfType<PlaylistTreeItem>().Select(node => node.Playlist!.Title),
+                Is.EqualTo(new[] { "Мой микс", "Чужой микс" }));
+        });
     }
 
     [Test]
-    public async Task BuildBranch_KeepsFavoriteFirst()
+    public async Task UsesSnapshotPlaylistsWhenProvided()
     {
-        var playlists = new List<Playlist>
+        var snapshot = new List<Playlist> { YandexPlaylist("favorite", "Мои треки") };
+
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync(snapshot);
+
+        Assert.That(
+            Node(root!, "yandex").Children.OfType<PlaylistTreeItem>().Single().Playlist!.Title,
+            Is.EqualTo("Мои треки"));
+        _yandexSource.Verify(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task LocalArtistNodesCarryLocalSource()
+    {
+        _localLibrary
+            .Setup(l => l.GetLocalArtistsAsync(It.IsAny<int?>()))
+            .ReturnsAsync(new[] { ("Кино", 4) });
+        _localLibrary
+            .Setup(l => l.GetLocalAlbumsAsync("Кино", It.IsAny<int?>()))
+            .ReturnsAsync(Array.Empty<(string albumName, int trackCount)>());
+        _localLibrary
+            .Setup(l => l.GetAllLocalAlbumsAsync(It.IsAny<int?>()))
+            .ReturnsAsync(Array.Empty<(string albumName, int trackCount)>());
+
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync();
+        var localNode = Node(root!, "local");
+        var artistsRoot = localNode.Children.OfType<PlaylistTreeItem>().Single(node => node.Label == "Исполнители");
+
+        Assert.That(
+            artistsRoot.Children.OfType<PlaylistTreeItem>().Single().Playlist!.SourceId,
+            Is.EqualTo(LocalMusicSource.Id));
+    }
+
+    [Test]
+    public async Task RequiresSetup_ShowsHintAndSkipsFetching()
+    {
+        _yandexSource.SetupGet(s => s.State).Returns(SourceState.RequiresSetup);
+
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync();
+        var yandexNode = Node(root!, "yandex");
+
+        Assert.Multiple(() =>
         {
-            Yandex("Плейлист дня", PlaylistType.Custom),
-            Yandex("Мои треки", PlaylistType.Favorite),
-            Yandex("Мой микс", PlaylistType.YandexOwnPlaylist, "1", "10")
+            Assert.That(
+                yandexNode.Children.OfType<PlaylistTreeItem>().Single().Label,
+                Is.EqualTo("Настройте источник"));
+            _yandexSource.Verify(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()), Times.Never);
+        });
+    }
+
+    [Test]
+    public async Task ShowsAllLocalPlaylistAfterRestart()
+    {
+        var snapshot = new List<Playlist>
+        {
+            new("all", "Вся локальная музыка")
+            {
+                SourceId = LocalMusicSource.Id,
+                Category = PlaylistCategory.Data
+            }
         };
 
-        var root = await CreateBuilder().BuildBranchAsync(playlists);
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync(snapshot);
 
-        var first = GetYandexNode(root!).Children.OfType<PlaylistTreeItem>().First();
-
-        Assert.That(first.Playlist?.Type, Is.EqualTo(PlaylistType.Favorite));
+        Assert.That(
+            Node(root!, "local").Children.OfType<PlaylistTreeItem>().Any(node => node.Playlist?.Title == "Вся локальная музыка"),
+            Is.True);
     }
 }

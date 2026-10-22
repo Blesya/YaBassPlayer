@@ -4,9 +4,14 @@ using YamBassPlayer.Services;
 
 namespace YamBassPlayer.Presenters.Impl;
 
+/// <summary>
+/// «Моя волна»: запускает радио источника, складывает батчи в кэш и очередь.
+/// Источник выбирается по возможности <see cref="IRadioSource"/>, поэтому
+/// презентер не знает, чьё это радио.
+/// </summary>
 public class MyWavePresenter : IMyWavePresenter
 {
-	private readonly IYandexRadioService _radioService;
+	private readonly IMusicSourceRegistry _sources;
 	private readonly ITrackInfoProvider _trackInfoProvider;
 	private readonly ITrackRepositoryCache _trackRepositoryCache;
 	private readonly ITracksPresenter _tracksPresenter;
@@ -14,8 +19,11 @@ public class MyWavePresenter : IMyWavePresenter
 	private readonly IPlayStatusPresenter _playStatusPresenter;
 	private readonly IErrorHandler _errorHandler;
 
+	private IRadioSource? _radio;
+	private SourceId _radioSourceId;
+
 	public MyWavePresenter(
-		IYandexRadioService radioService,
+		IMusicSourceRegistry sources,
 		ITrackInfoProvider trackInfoProvider,
 		ITrackRepositoryCache trackRepositoryCache,
 		ITracksPresenter tracksPresenter,
@@ -23,7 +31,7 @@ public class MyWavePresenter : IMyWavePresenter
 		IPlayStatusPresenter playStatusPresenter,
 		IErrorHandler errorHandler)
 	{
-		_radioService = radioService;
+		_sources = sources;
 		_trackInfoProvider = trackInfoProvider;
 		_trackRepositoryCache = trackRepositoryCache;
 		_tracksPresenter = tracksPresenter;
@@ -33,23 +41,36 @@ public class MyWavePresenter : IMyWavePresenter
 	}
 
 	public Task<Playlist?> StartMyWaveAsync()
-		=> StartWaveInternalAsync(
-			() => _radioService.StartMyWaveAsync(),
-			"Моя волна",
-			"Персональная радиостанция Яндекс.Музыки");
-
-	public async Task<Playlist?> StartMyWaveFromTrackAsync(string trackId)
 	{
+		var found = FindRadio(_playbackQueue.CurrentTrack?.SourceId);
+		if (found is null)
+			return Task.FromResult<Playlist?>(null);
+
+		ActivateRadio(found.Value);
+		return StartWaveInternalAsync(
+			() => found.Value.Radio.StartPersonalRadioAsync(),
+			"Моя волна",
+			"Персональная радиостанция");
+	}
+
+	public async Task<Playlist?> StartMyWaveFromTrackAsync(TrackKey key)
+	{
+		var found = FindRadio(key.SourceId);
+		if (found is null)
+			return null;
+
+		ActivateRadio(found.Value);
+
 		string description = "По треку";
 		try
 		{
-			var track = await _trackInfoProvider.GetTrackInfoById(trackId);
+			var track = await _trackInfoProvider.GetTrackInfoById(key);
 			description = $"По треку: {track.Artist} — {track.Title}";
 		}
 		catch { }
 
 		return await StartWaveInternalAsync(
-			() => _radioService.StartTrackWaveAsync(trackId),
+			() => found.Value.Radio.StartTrackRadioAsync(key),
 			"Моя волна",
 			description);
 	}
@@ -70,28 +91,31 @@ public class MyWavePresenter : IMyWavePresenter
 				return null;
 			}
 
-			var (trackIds, tracks) = await _radioService.FetchNextBatchAsync();
-			if (trackIds.Count == 0)
+			RadioBatch batch = await _radio!.FetchNextBatchAsync();
+			if (batch.Keys.Count == 0)
 			{
 				_playStatusPresenter.SetPlayStatus("Нет треков в волне");
 				return null;
 			}
 
-			foreach (var track in tracks)
+			foreach (var track in batch.Tracks)
 				await _trackInfoProvider.SaveAsync(track);
 
-			_trackRepositoryCache.ReplaceMyWaveTracks(tracks);
+			_trackRepositoryCache.ReplaceMyWaveTracks(batch.Tracks);
 
-			var playlist = new Playlist(playlistName, PlaylistType.MyWave)
+			var playlist = new Playlist("my-wave", playlistName)
 			{
+				SourceId = _radioSourceId,
+				Category = PlaylistCategory.Transient,
+				Context = PlaylistContext.Radio,
 				Description = description,
-				TrackCount = trackIds.Count
+				TrackCount = batch.Keys.Count
 			};
 
 			await _tracksPresenter.LoadTracksFor(playlist);
 
 			// Запускаем первый трек волны автоматически
-			_playbackQueue.SetQueue(trackIds, 0);
+			_playbackQueue.SetQueue(batch.Keys, 0);
 			return playlist;
 		}
 		catch (Exception ex)
@@ -103,17 +127,20 @@ public class MyWavePresenter : IMyWavePresenter
 
 	public async Task FetchMoreTracksAsync()
 	{
+		if (_radio is null)
+			return;
+
 		try
 		{
-			var (trackIds, tracks) = await _radioService.FetchNextBatchAsync();
-			if (trackIds.Count == 0)
+			RadioBatch batch = await _radio.FetchNextBatchAsync();
+			if (batch.Keys.Count == 0)
 				return;
 
-			foreach (var track in tracks)
+			foreach (var track in batch.Tracks)
 				await _trackInfoProvider.SaveAsync(track);
 
-			_trackRepositoryCache.AppendMyWaveTracks(tracks);
-			_playbackQueue.AddToQueue(trackIds);
+			_trackRepositoryCache.AppendMyWaveTracks(batch.Tracks);
+			_playbackQueue.AddToQueue(batch.Keys);
 		}
 		catch (Exception ex)
 		{
@@ -121,12 +148,36 @@ public class MyWavePresenter : IMyWavePresenter
 		}
 	}
 
-	public Task NotifyTrackStartedAsync(string trackId)
-		=> _radioService.SendTrackStartedAsync(trackId);
+	public Task NotifyTrackStartedAsync(TrackKey key)
+		=> _radio?.SendTrackStartedAsync(key) ?? Task.CompletedTask;
 
-	public Task NotifyTrackFinishedAsync(string trackId, double totalPlayedSeconds = 0)
-		=> _radioService.SendTrackFinishedAsync(trackId, totalPlayedSeconds);
+	public Task NotifyTrackFinishedAsync(TrackKey key, double totalPlayedSeconds = 0)
+		=> _radio?.SendTrackFinishedAsync(key, totalPlayedSeconds) ?? Task.CompletedTask;
 
-	public Task NotifyTrackSkippedAsync(string trackId, double totalPlayedSeconds = 0)
-		=> _radioService.SendTrackSkippedAsync(trackId, totalPlayedSeconds);
+	public Task NotifyTrackSkippedAsync(TrackKey key, double totalPlayedSeconds = 0)
+		=> _radio?.SendTrackSkippedAsync(key, totalPlayedSeconds) ?? Task.CompletedTask;
+
+	private (IMusicSource Source, IRadioSource Radio)? FindRadio(SourceId? preferred)
+	{
+		if (preferred is { } sourceId
+			&& _sources.Get(sourceId) is { } preferredSource
+			&& preferredSource is IRadioSource preferredRadio)
+		{
+			return (preferredSource, preferredRadio);
+		}
+
+		foreach (IMusicSource source in _sources.Sources)
+		{
+			if (source is IRadioSource radio)
+				return (source, radio);
+		}
+
+		return null;
+	}
+
+	private void ActivateRadio((IMusicSource Source, IRadioSource Radio) found)
+	{
+		_radio = found.Radio;
+		_radioSourceId = found.Source.Id;
+	}
 }

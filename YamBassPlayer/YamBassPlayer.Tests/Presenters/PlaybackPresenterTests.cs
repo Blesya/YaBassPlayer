@@ -10,6 +10,8 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class PlaybackPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private Mock<ITrackFileProvider> _trackFileProvider = null!;
     private Mock<IPlaybackQueue> _playbackQueue = null!;
     private Mock<ITrackInfoProvider> _trackInfoProvider = null!;
@@ -44,8 +46,10 @@ public sealed class PlaybackPresenterTests
     }
 
     private void SetupTrack(string id)
-        => _trackInfoProvider.Setup(p => p.GetTrackInfoById(id))
-            .ReturnsAsync(new Track($"Title-{id}", $"Artist-{id}", "Album", id));
+        => _trackInfoProvider.Setup(p => p.GetTrackInfoById(K(id)))
+            .ReturnsAsync(new Track($"Title-{id}", $"Artist-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value });
+
+    private static Track Matches(string id) => It.Is<Track>(t => t.Key == K(id));
 
     // ── Загрузка выбранного трека ─────────────────────────────────────────
 
@@ -53,15 +57,15 @@ public sealed class PlaybackPresenterTests
     public async Task PlaySelectedTrackAsync_DownloadsPlaysAndReportsStatus()
     {
         SetupTrack("t1");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         Assert.Multiple(() =>
         {
             _audioPlayer.Verify(a => a.Play("/tmp/t1.mp3", It.IsAny<string>()), Times.Once);
-            _listenTimer.Verify(l => l.OnTrackStart("t1", ListenSource.Regular), Times.Once);
-            _playStatusPresenter.Verify(s => s.SetCurrentTrack("t1", SourceIds.Yandex), Times.Once);
+            _listenTimer.Verify(l => l.OnTrackStart(K("t1"), PlaylistContext.Regular), Times.Once);
+            _playStatusPresenter.Verify(s => s.SetCurrentTrack(K("t1")), Times.Once);
         });
     }
 
@@ -69,14 +73,14 @@ public sealed class PlaybackPresenterTests
     public async Task PlaySelectedTrackAsync_WhenDownloadFails_DoesNotPlay()
     {
         SetupTrack("t1");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync(string.Empty);
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync(string.Empty);
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         Assert.Multiple(() =>
         {
             _audioPlayer.Verify(a => a.Play(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-            _listenTimer.Verify(l => l.OnTrackStart(It.IsAny<string>(), It.IsAny<ListenSource>()), Times.Never);
+            _listenTimer.Verify(l => l.OnTrackStart(It.IsAny<TrackKey>(), It.IsAny<PlaylistContext>()), Times.Never);
         });
     }
 
@@ -85,16 +89,16 @@ public sealed class PlaybackPresenterTests
     {
         SetupTrack("t1");
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
+            .Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>()))
             .ThrowsAsync(new TrackUnavailableException("t1"));
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         Assert.Multiple(() =>
         {
             _audioPlayer.Verify(a => a.Play(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _trackAboutPresenter.Verify(
-                p => p.ShowTrackAboutAsync("t1", true),
+                p => p.ShowTrackAboutAsync(K("t1"), true),
                 Times.Once);
         });
     }
@@ -104,16 +108,16 @@ public sealed class PlaybackPresenterTests
     {
         SetupTrack("t1");
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
+            .Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>()))
             .ThrowsAsync(new TrackUnavailableException("t1"));
-        _playbackQueue.SetupGet(q => q.TrackIds).Returns(new[] { "t1", "t2" });
+        _playbackQueue.SetupGet(q => q.TrackKeys).Returns(new[] { K("t1"), K("t2") });
 
-        await _presenter.PlaySelectedTrackAsync("t1", isAutomatic: true);
+        await _presenter.PlaySelectedTrackAsync(K("t1"), isAutomatic: true);
 
         Assert.Multiple(() =>
         {
             _trackAboutPresenter.Verify(
-                p => p.ShowTrackAboutAsync(It.IsAny<string>(), It.IsAny<bool>()),
+                p => p.ShowTrackAboutAsync(It.IsAny<TrackKey>(), It.IsAny<bool>()),
                 Times.Never);
             _playbackQueue.Verify(q => q.NextAutomatic(), Times.Once);
         });
@@ -125,15 +129,15 @@ public sealed class PlaybackPresenterTests
         SetupTrack("t1");
         IProgress<DownloadProgress>? capturedProgress = null;
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
-            .Callback<string, IProgress<DownloadProgress>>((_, progress) => capturedProgress = progress)
+            .Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>()))
+            .Callback<Track, IProgress<DownloadProgress>>((_, progress) => capturedProgress = progress)
             .ReturnsAsync("/tmp/t1.mp3");
 
         var titles = new List<string>();
         _playStatusPresenter.Setup(s => s.SetTitle(It.IsAny<string>()))
             .Callback<string>(title => titles.Add(title));
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         Assert.That(capturedProgress, Is.Not.Null);
         capturedProgress!.Report(new DownloadProgress(5_000_000, 10_000_000));
@@ -148,15 +152,15 @@ public sealed class PlaybackPresenterTests
         SetupTrack("t1");
         IProgress<DownloadProgress>? capturedProgress = null;
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
-            .Callback<string, IProgress<DownloadProgress>>((_, progress) => capturedProgress = progress)
+            .Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>()))
+            .Callback<Track, IProgress<DownloadProgress>>((_, progress) => capturedProgress = progress)
             .ReturnsAsync("/tmp/t1.mp3");
 
         var titles = new List<string>();
         _playStatusPresenter.Setup(s => s.SetTitle(It.IsAny<string>()))
             .Callback<string>(title => titles.Add(title));
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         capturedProgress!.Report(new DownloadProgress(1_048_576, 0));
 
@@ -168,17 +172,17 @@ public sealed class PlaybackPresenterTests
     [Test]
     public async Task PlaySelectedTrackAsync_MyWave_NotifiesStartedAndFetchesMoreWhenNoNext()
     {
-        _presenter.SetPlaylistType(PlaylistType.MyWave);
+        _presenter.SetPlaylistContext(PlaylistContext.Radio);
         SetupTrack("t1");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
         _playbackQueue.SetupGet(q => q.HasNext).Returns(false);
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         Assert.Multiple(() =>
         {
-            _listenTimer.Verify(l => l.OnTrackStart("t1", ListenSource.MyWave), Times.Once);
-            _myWavePresenter.Verify(m => m.NotifyTrackStartedAsync("t1"), Times.Once);
+            _listenTimer.Verify(l => l.OnTrackStart(K("t1"), PlaylistContext.Radio), Times.Once);
+            _myWavePresenter.Verify(m => m.NotifyTrackStartedAsync(K("t1")), Times.Once);
             _myWavePresenter.Verify(m => m.FetchMoreTracksAsync(), Times.Once);
         });
     }
@@ -186,12 +190,12 @@ public sealed class PlaybackPresenterTests
     [Test]
     public async Task PlaySelectedTrackAsync_MyWave_WithNext_DoesNotFetchMore()
     {
-        _presenter.SetPlaylistType(PlaylistType.MyWave);
+        _presenter.SetPlaylistContext(PlaylistContext.Radio);
         SetupTrack("t1");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
         _playbackQueue.SetupGet(q => q.HasNext).Returns(true);
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
 
         _myWavePresenter.Verify(m => m.FetchMoreTracksAsync(), Times.Never);
     }
@@ -199,58 +203,58 @@ public sealed class PlaybackPresenterTests
     [Test]
     public async Task PlaySelectedTrackAsync_MyWave_NotifiesFinishedForPreviousTrack()
     {
-        _presenter.SetPlaylistType(PlaylistType.MyWave);
+        _presenter.SetPlaylistContext(PlaylistContext.Radio);
         SetupTrack("t1");
         SetupTrack("t2");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync(It.IsAny<string>(), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/x.mp3");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(It.IsAny<Track>(), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/x.mp3");
         _playbackQueue.SetupGet(q => q.HasNext).Returns(true);
         _audioPlayer.Setup(a => a.GetCurrentPosition()).Returns(TimeSpan.FromSeconds(10));
 
-        await _presenter.PlaySelectedTrackAsync("t1");
-        await _presenter.PlaySelectedTrackAsync("t2");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
+        await _presenter.PlaySelectedTrackAsync(K("t2"));
 
-        _myWavePresenter.Verify(m => m.NotifyTrackFinishedAsync("t1", 10), Times.Once);
+        _myWavePresenter.Verify(m => m.NotifyTrackFinishedAsync(K("t1"), 10), Times.Once);
     }
 
     [Test]
     public async Task MarkMyWaveSkipPending_MakesNextPlayNotifySkipped()
     {
-        _presenter.SetPlaylistType(PlaylistType.MyWave);
+        _presenter.SetPlaylistContext(PlaylistContext.Radio);
         SetupTrack("t1");
         SetupTrack("t2");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync(It.IsAny<string>(), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/x.mp3");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(It.IsAny<Track>(), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/x.mp3");
         _playbackQueue.SetupGet(q => q.HasNext).Returns(true);
         _audioPlayer.Setup(a => a.GetCurrentPosition()).Returns(TimeSpan.FromSeconds(5));
 
-        await _presenter.PlaySelectedTrackAsync("t1");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
         _presenter.MarkMyWaveSkipPending();
-        await _presenter.PlaySelectedTrackAsync("t2");
+        await _presenter.PlaySelectedTrackAsync(K("t2"));
 
         Assert.Multiple(() =>
         {
-            _myWavePresenter.Verify(m => m.NotifyTrackSkippedAsync("t1", 5), Times.Once);
-            _myWavePresenter.Verify(m => m.NotifyTrackFinishedAsync(It.IsAny<string>(), It.IsAny<double>()), Times.Never);
+            _myWavePresenter.Verify(m => m.NotifyTrackSkippedAsync(K("t1"), 5), Times.Once);
+            _myWavePresenter.Verify(m => m.NotifyTrackFinishedAsync(It.IsAny<TrackKey>(), It.IsAny<double>()), Times.Never);
         });
     }
 
     [Test]
-    public async Task SetPlaylistType_NonMyWave_StopsNotifyingMyWave()
+    public async Task SetPlaylistContext_Regular_StopsNotifyingMyWave()
     {
-        _presenter.SetPlaylistType(PlaylistType.MyWave);
+        _presenter.SetPlaylistContext(PlaylistContext.Radio);
         SetupTrack("t1");
         SetupTrack("t2");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync(It.IsAny<string>(), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/x.mp3");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(It.IsAny<Track>(), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/x.mp3");
         _playbackQueue.SetupGet(q => q.HasNext).Returns(true);
         _audioPlayer.Setup(a => a.GetCurrentPosition()).Returns(TimeSpan.FromSeconds(7));
 
-        await _presenter.PlaySelectedTrackAsync("t1");
-        _presenter.SetPlaylistType(PlaylistType.Favorite);
-        await _presenter.PlaySelectedTrackAsync("t2");
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
+        _presenter.SetPlaylistContext(PlaylistContext.Regular);
+        await _presenter.PlaySelectedTrackAsync(K("t2"));
 
         Assert.Multiple(() =>
         {
-            _myWavePresenter.Verify(m => m.NotifyTrackFinishedAsync(It.IsAny<string>(), It.IsAny<double>()), Times.Never);
-            _listenTimer.Verify(l => l.OnTrackStart("t2", ListenSource.Regular), Times.Once);
+            _myWavePresenter.Verify(m => m.NotifyTrackFinishedAsync(It.IsAny<TrackKey>(), It.IsAny<double>()), Times.Never);
+            _listenTimer.Verify(l => l.OnTrackStart(K("t2"), PlaylistContext.Regular), Times.Once);
         });
     }
 
@@ -265,20 +269,20 @@ public sealed class PlaybackPresenterTests
         var staleDownloadStarted = new TaskCompletionSource();
         var staleDownloadRelease = new TaskCompletionSource<string>();
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
-            .Returns(async (string _, IProgress<DownloadProgress> __) =>
+            .Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>()))
+            .Returns(async (Track _, IProgress<DownloadProgress> __) =>
             {
                 staleDownloadStarted.SetResult();
                 return await staleDownloadRelease.Task;
             });
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t2", It.IsAny<IProgress<DownloadProgress>>()))
+            .Setup(p => p.DownloadTrackAsync(Matches("t2"), It.IsAny<IProgress<DownloadProgress>>()))
             .ReturnsAsync("/tmp/t2.mp3");
 
-        Task stalePlay = _presenter.PlaySelectedTrackAsync("t1");
+        Task stalePlay = _presenter.PlaySelectedTrackAsync(K("t1"));
         await staleDownloadStarted.Task;
 
-        await _presenter.PlaySelectedTrackAsync("t2");
+        await _presenter.PlaySelectedTrackAsync(K("t2"));
 
         staleDownloadRelease.SetResult("/tmp/t1.mp3");
         await stalePlay;
@@ -287,7 +291,7 @@ public sealed class PlaybackPresenterTests
         {
             _audioPlayer.Verify(a => a.Play("/tmp/t1.mp3", It.IsAny<string>()), Times.Never);
             _audioPlayer.Verify(a => a.Play("/tmp/t2.mp3", It.IsAny<string>()), Times.Once);
-            _listenTimer.Verify(l => l.OnTrackStart("t1", It.IsAny<ListenSource>()), Times.Never);
+            _listenTimer.Verify(l => l.OnTrackStart(K("t1"), It.IsAny<PlaylistContext>()), Times.Never);
         });
     }
 
@@ -299,22 +303,22 @@ public sealed class PlaybackPresenterTests
         var downloadStarted = new TaskCompletionSource();
         var downloadRelease = new TaskCompletionSource<string>();
         _trackFileProvider
-            .Setup(p => p.DownloadTrackAsync("t1", It.IsAny<IProgress<DownloadProgress>>()))
-            .Returns(async (string _, IProgress<DownloadProgress> __) =>
+            .Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>()))
+            .Returns(async (Track _, IProgress<DownloadProgress> __) =>
             {
                 downloadStarted.TrySetResult();
                 return await downloadRelease.Task;
             });
 
-        Task first = _presenter.PlaySelectedTrackAsync("t1");
+        Task first = _presenter.PlaySelectedTrackAsync(K("t1"));
         await downloadStarted.Task;
-        Task second = _presenter.PlaySelectedTrackAsync("t1");
+        Task second = _presenter.PlaySelectedTrackAsync(K("t1"));
 
         downloadRelease.SetResult("/tmp/t1.mp3");
         await Task.WhenAll(first, second);
 
         _audioPlayer.Verify(a => a.Play("/tmp/t1.mp3", It.IsAny<string>()), Times.Once);
-        _listenTimer.Verify(l => l.OnTrackStart("t1", ListenSource.Regular), Times.Once);
+        _listenTimer.Verify(l => l.OnTrackStart(K("t1"), PlaylistContext.Regular), Times.Once);
     }
 
     // ── Предзагрузка следующего трека ─────────────────────────────────────
@@ -322,34 +326,35 @@ public sealed class PlaybackPresenterTests
     [Test]
     public async Task PreloadNextTrackAsync_SkipsWhenTrackAlreadyDownloaded()
     {
-        _playbackQueue.SetupGet(q => q.PeekNextTrackId).Returns("n1");
-        _trackFileProvider.Setup(p => p.IsTrackDownloaded("n1")).Returns(true);
+        _playbackQueue.SetupGet(q => q.PeekNext).Returns(K("n1"));
+        SetupTrack("n1");
+        _trackFileProvider.Setup(p => p.IsTrackDownloaded(It.Is<Track>(t => t.Key == K("n1")))).Returns(true);
 
         await _presenter.PreloadNextTrackAsync();
 
-        _trackFileProvider.Verify(p => p.DownloadTrackAsync(It.IsAny<string>(), It.IsAny<IProgress<DownloadProgress>>()), Times.Never);
+        _trackFileProvider.Verify(p => p.DownloadTrackAsync(It.IsAny<Track>(), It.IsAny<IProgress<DownloadProgress>>()), Times.Never);
     }
 
     [Test]
     public async Task PreloadNextTrackAsync_DownloadsWhenNotCached()
     {
-        _playbackQueue.SetupGet(q => q.PeekNextTrackId).Returns("n1");
-        _trackFileProvider.Setup(p => p.IsTrackDownloaded("n1")).Returns(false);
+        _playbackQueue.SetupGet(q => q.PeekNext).Returns(K("n1"));
         SetupTrack("n1");
-        _trackFileProvider.Setup(p => p.DownloadTrackAsync("n1", It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/n1.mp3");
+        _trackFileProvider.Setup(p => p.IsTrackDownloaded(It.IsAny<Track>())).Returns(false);
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(Matches("n1"), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/n1.mp3");
 
         await _presenter.PreloadNextTrackAsync();
 
-        _trackFileProvider.Verify(p => p.DownloadTrackAsync("n1", It.IsAny<IProgress<DownloadProgress>>()), Times.Once);
+        _trackFileProvider.Verify(p => p.DownloadTrackAsync(Matches("n1"), It.IsAny<IProgress<DownloadProgress>>()), Times.Once);
     }
 
     [Test]
     public async Task PreloadNextTrackAsync_WhenNoNext_DoesNothing()
     {
-        _playbackQueue.SetupGet(q => q.PeekNextTrackId).Returns((string?)null);
+        _playbackQueue.SetupGet(q => q.PeekNext).Returns((TrackKey?)null);
 
         await _presenter.PreloadNextTrackAsync();
 
-        _trackFileProvider.Verify(p => p.DownloadTrackAsync(It.IsAny<string>(), It.IsAny<IProgress<DownloadProgress>>()), Times.Never);
+        _trackFileProvider.Verify(p => p.DownloadTrackAsync(It.IsAny<Track>(), It.IsAny<IProgress<DownloadProgress>>()), Times.Never);
     }
 }

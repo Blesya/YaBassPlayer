@@ -9,7 +9,7 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class YandexSearchPresenterTests
 {
-    private Mock<ISourceSearchService> _searchService = null!;
+    private Mock<IEntitySearchSource> _searchService = null!;
     private Mock<IViewFactory> _viewFactory = null!;
     private Mock<IYandexSearchView> _view = null!;
     private YandexSearchPresenter _presenter = null!;
@@ -17,14 +17,14 @@ public sealed class YandexSearchPresenterTests
     [SetUp]
     public void SetUp()
     {
-        _searchService = new Mock<ISourceSearchService>();
-        _viewFactory = new Mock<IViewFactory>();
+        _searchService = new Mock<IEntitySearchSource>();
+        
         _view = new Mock<IYandexSearchView>();
-        _viewFactory.Setup(f => f.Create<IYandexSearchView>()).Returns(_view.Object);
-        _presenter = new YandexSearchPresenter(_searchService.Object, _viewFactory.Object);
+        
+        _presenter = new YandexSearchPresenter(_searchService.Object, () => _view.Object);
     }
 
-    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id);
+    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
     private static Artist Artist(string id) => new(id, $"Artist-{id}");
     private static Album Album(string id) => new(id, $"Album-{id}");
 
@@ -37,8 +37,7 @@ public sealed class YandexSearchPresenterTests
 
         Assert.Multiple(() =>
         {
-            _viewFactory.Verify(f => f.Create<IYandexSearchView>(), Times.Once);
-            _view.Verify(v => v.Show(), Times.Once);
+                        _view.Verify(v => v.Show(), Times.Once);
         });
     }
 
@@ -54,7 +53,7 @@ public sealed class YandexSearchPresenterTests
         Assert.Multiple(() =>
         {
             _view.Verify(v => v.ShowError(It.Is<string>(s => s.Contains("Введите текст"))), Times.Once);
-            _searchService.Verify(s => s.SearchAllAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+            _searchService.Verify(s => s.SearchAllAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
         });
     }
 
@@ -62,7 +61,7 @@ public sealed class YandexSearchPresenterTests
     public void SearchClicked_PerformsSearchAndTogglesLoading()
     {
         var result = new SearchResult { Tracks = [Track("a")] };
-        _searchService.Setup(s => s.SearchAllAsync(SourceIds.Yandex, "кино", 20)).ReturnsAsync(result);
+        _searchService.Setup(s => s.SearchAllAsync("кино", 20, It.IsAny<CancellationToken>())).ReturnsAsync(result);
         _presenter.ShowYandexSearchDialog();
 
         _view.Raise(v => v.OnSearchClicked += null, "кино");
@@ -78,7 +77,7 @@ public sealed class YandexSearchPresenterTests
     [Test]
     public void SearchFailure_ShowsErrorAndStopsLoading()
     {
-        _searchService.Setup(s => s.SearchAllAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+        _searchService.Setup(s => s.SearchAllAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("boom"));
         _presenter.ShowYandexSearchDialog();
 
@@ -130,7 +129,7 @@ public sealed class YandexSearchPresenterTests
     {
         var artistTracks = new[] { Track("a1"), Track("a2") };
         _view.Setup(v => v.GetMarkedItems()).Returns([new ArtistItem(Artist("ar"))]);
-        _searchService.Setup(s => s.GetArtistTracksAsync(SourceIds.Yandex, "ar")).ReturnsAsync(artistTracks);
+        _searchService.Setup(s => s.GetArtistTracksAsync("ar", It.IsAny<CancellationToken>())).ReturnsAsync(artistTracks);
         _presenter.ShowYandexSearchDialog();
 
         _view.Raise(v => v.OnOkClicked += null);
@@ -143,7 +142,7 @@ public sealed class YandexSearchPresenterTests
     {
         var albumTracks = new[] { Track("al1") };
         _view.Setup(v => v.GetMarkedItems()).Returns([new AlbumItem(Album("al"))]);
-        _searchService.Setup(s => s.GetAlbumTracksAsync(SourceIds.Yandex, "al")).ReturnsAsync(albumTracks);
+        _searchService.Setup(s => s.GetAlbumTracksAsync("al", It.IsAny<CancellationToken>())).ReturnsAsync(albumTracks);
         _presenter.ShowYandexSearchDialog();
 
         _view.Raise(v => v.OnOkClicked += null);

@@ -7,15 +7,15 @@ public interface ITracksView
 	event Action<int>? OnTrackSelected;
 	event Action<int>? OnCellActivated;
 	event Action? NeedMoreTracks;
-	void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached);
-	void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached);
+	void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached);
+	void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached);
 	void ClearTracks();
-	void SetPlayingTrackId(string? trackId);
+	void SetPlayingTrack(TrackKey? key);
 	void SetFilter(string? filter);
 
-	/// <summary>Выделяет трек с указанным id и прокручивает список к нему.</summary>
-	void SelectTrack(string trackId);
+	/// <summary>Выделить трек с указанным ключом и прокрутить список к нему.</summary>
+	void SelectTrack(TrackKey key);
 
-	/// <summary>Обновляет состояние кэша одного трека без пересборки списка.</summary>
-	void SetDownloadState(string trackId, TrackDownloadState state);
+	/// <summary>Обновить состояние загрузки для трека с указанным ключом.</summary>
+	void SetDownloadState(TrackKey key, TrackDownloadState state);
 }

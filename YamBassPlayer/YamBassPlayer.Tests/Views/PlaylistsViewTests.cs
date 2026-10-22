@@ -15,8 +15,13 @@ public sealed class PlaylistsViewTests : ViewTestBase
 
     private PlaylistsView CreateView() => AddToTop(new PlaylistsView { Width = Width, Height = Height });
 
-    private static Playlist Pl(string name, PlaylistType type = PlaylistType.Favorite, int count = 3)
-        => new(name, type) { TrackCount = count };
+    private static Playlist Pl(string name, string kind = "favorite", int count = 3)
+        => new(kind, name)
+        {
+            SourceId = new SourceId("yandex"),
+            Category = kind == "search" ? PlaylistCategory.Transient : PlaylistCategory.Data,
+            TrackCount = count
+        };
 
     private static TreeView? FindTree(View root)
     {
@@ -40,7 +45,7 @@ public sealed class PlaylistsViewTests : ViewTestBase
     {
         var view = CreateView();
 
-        view.SetPlaylistTree([PlaylistTreeItem.FromPlaylist(Pl("Избранное", PlaylistType.Favorite, 7))]);
+        view.SetPlaylistTree([PlaylistTreeItem.FromPlaylist(Pl("Избранное", "favorite", 7))]);
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));
 
@@ -87,10 +92,10 @@ public sealed class PlaylistsViewTests : ViewTestBase
     public void AddOrUpdateTransientPlaylist_AddsNewRoot()
     {
         var view = CreateView();
-        view.SetPlaylistTree([PlaylistTreeItem.FromPlaylist(Pl("Избранное", PlaylistType.Favorite))]);
+        view.SetPlaylistTree([PlaylistTreeItem.FromPlaylist(Pl("Избранное", "favorite"))]);
         Pump();
 
-        view.AddOrUpdateTransientPlaylist(Pl("Результаты поиска", PlaylistType.YandexSearch));
+        view.AddOrUpdateTransientPlaylist(Pl("Результаты поиска", "search"));
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));
 
@@ -101,10 +106,10 @@ public sealed class PlaylistsViewTests : ViewTestBase
     public void AddOrUpdateTransientPlaylist_ReplacesRootOfSameType()
     {
         var view = CreateView();
-        view.SetPlaylistTree([PlaylistTreeItem.FromPlaylist(Pl("Старый поиск", PlaylistType.YandexSearch))]);
+        view.SetPlaylistTree([PlaylistTreeItem.FromPlaylist(Pl("Старый поиск", "search"))]);
         Pump();
 
-        view.AddOrUpdateTransientPlaylist(Pl("Новый поиск", PlaylistType.YandexSearch));
+        view.AddOrUpdateTransientPlaylist(Pl("Новый поиск", "search"));
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));
 
@@ -129,7 +134,7 @@ public sealed class PlaylistsViewTests : ViewTestBase
         view.SetPlaylistTree([parent]);
         Pump();
 
-        var transient = new Playlist("Треки исполнителя", PlaylistType.YandexSearch) { ParentTag = "ya" };
+        var transient = new Playlist("search", "Треки исполнителя") { SourceId = new SourceId("ya") };
         view.AddOrUpdateTransientPlaylist(transient);
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));
@@ -143,8 +148,8 @@ public sealed class PlaylistsViewTests : ViewTestBase
     public void PlaylistSelected_IsRaisedWhenSelectionChanges()
     {
         var view = CreateView();
-        var first = PlaylistTreeItem.FromPlaylist(Pl("Первый", PlaylistType.Favorite));
-        var second = PlaylistTreeItem.FromPlaylist(Pl("Второй", PlaylistType.Custom));
+        var first = PlaylistTreeItem.FromPlaylist(Pl("Первый", "favorite"));
+        var second = PlaylistTreeItem.FromPlaylist(Pl("Второй", "custom"));
         view.SetPlaylistTree([first, second]);
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));

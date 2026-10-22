@@ -12,6 +12,8 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class MyWaveWindowPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private const int CoverWidth = 100;
     private const int CoverHeight = 55;
 
@@ -49,15 +51,15 @@ public sealed class MyWaveWindowPresenterTests
             _eventBus, _viewFactory.Object, _host.Object, _ui, _errorHandler.Object);
     }
 
-    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id);
+    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     private static Playlist Wave(string? description = null)
-        => new("Моя волна", PlaylistType.MyWave) { Description = description! };
+        => new("my-wave", "Моя волна") { Description = description! };
 
     private void SetupTrackWithCover(string trackId, CoverArt? art)
     {
-        _trackCatalog.Setup(p => p.GetAsync(trackId)).ReturnsAsync(Track(trackId));
-        _coverProvider.Setup(c => c.DownloadCoverAsync(trackId)).ReturnsAsync($"covers/{trackId}.png");
+        _trackCatalog.Setup(p => p.GetAsync(K(trackId))).ReturnsAsync(Track(trackId));
+        _coverProvider.Setup(c => c.DownloadCoverAsync(It.Is<Track>(t => t.Id == trackId))).ReturnsAsync($"covers/{trackId}.png");
         _coverArtService
             .Setup(c => c.RenderAsync($"covers/{trackId}.png", CoverWidth, CoverHeight, It.IsAny<CancellationToken>()))
             .ReturnsAsync(art);
@@ -87,7 +89,7 @@ public sealed class MyWaveWindowPresenterTests
     public void ShowWindow_WithCurrentTrack_LoadsTrackAndCover()
     {
         var art = new CoverArt(1, 1, []);
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
         SetupTrackWithCover("t1", art);
 
         _presenter.ShowWindow(Wave());
@@ -102,11 +104,11 @@ public sealed class MyWaveWindowPresenterTests
     [Test]
     public void ShowWindow_WithoutCurrentTrack_DoesNotLoad()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         _presenter.ShowWindow(Wave());
 
-        _trackCatalog.Verify(p => p.GetAsync(It.IsAny<string>()), Times.Never);
+        _trackCatalog.Verify(p => p.GetAsync(It.IsAny<TrackKey>()), Times.Never);
         _host.Verify(h => h.Show(_view.Object), Times.Once);
     }
 
@@ -114,8 +116,8 @@ public sealed class MyWaveWindowPresenterTests
     public void ShowWindow_WhenTrackLoadFails_ReportsViaErrorHandler()
     {
         var ex = new InvalidOperationException("boom");
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
-        _trackCatalog.Setup(p => p.GetAsync("t1")).ThrowsAsync(ex);
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
+        _trackCatalog.Setup(p => p.GetAsync(K("t1"))).ThrowsAsync(ex);
 
         _presenter.ShowWindow(Wave());
 
@@ -127,10 +129,10 @@ public sealed class MyWaveWindowPresenterTests
     [Test]
     public void ShowWindow_WithNextTrack_ShowsNextLabel()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
-        _queue.SetupGet(q => q.PeekNextTrackId).Returns("t2");
-        _trackCatalog.Setup(p => p.GetAsync(It.IsAny<string>()))
-            .ReturnsAsync((string id) => Track(id));
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
+        _queue.SetupGet(q => q.PeekNext).Returns(K("t2"));
+        _trackCatalog.Setup(p => p.GetAsync(It.IsAny<TrackKey>()))
+            .ReturnsAsync((TrackKey key) => Track(key.TrackId));
 
         _presenter.ShowWindow(Wave());
 
@@ -140,9 +142,9 @@ public sealed class MyWaveWindowPresenterTests
     [Test]
     public void ShowWindow_WithoutNextTrack_ClearsLabel()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("t1");
-        _queue.SetupGet(q => q.PeekNextTrackId).Returns((string?)null);
-        _trackCatalog.Setup(p => p.GetAsync("t1")).ReturnsAsync(Track("t1"));
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
+        _queue.SetupGet(q => q.PeekNext).Returns((TrackKey?)null);
+        _trackCatalog.Setup(p => p.GetAsync(K("t1"))).ReturnsAsync(Track("t1"));
 
         _presenter.ShowWindow(Wave());
 
@@ -154,11 +156,11 @@ public sealed class MyWaveWindowPresenterTests
     [Test]
     public void ShowWindow_OnTrackChangedWhileOpen_LoadsNewTrack()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
-        _trackCatalog.Setup(p => p.GetAsync(It.IsAny<string>()))
-            .ReturnsAsync((string id) => Track(id));
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
+        _trackCatalog.Setup(p => p.GetAsync(It.IsAny<TrackKey>()))
+            .ReturnsAsync((TrackKey key) => Track(key.TrackId));
         _host.Setup(h => h.Show(_view.Object))
-            .Callback(() => _eventBus.Publish(new TrackChangedEvent("t5")));
+            .Callback(() => _eventBus.Publish(new TrackChangedEvent(K("t5"))));
 
         _presenter.ShowWindow(Wave());
 
@@ -168,12 +170,12 @@ public sealed class MyWaveWindowPresenterTests
     [Test]
     public void ShowWindow_AfterClose_UnsubscribesFromTrackChanged()
     {
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         _presenter.ShowWindow(Wave());
 
-        _eventBus.Publish(new TrackChangedEvent("t9"));
+        _eventBus.Publish(new TrackChangedEvent(K("t9")));
 
-        _trackCatalog.Verify(p => p.GetAsync("t9"), Times.Never);
+        _trackCatalog.Verify(p => p.GetAsync(K("t9")), Times.Never);
     }
 }

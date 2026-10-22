@@ -23,7 +23,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\YamBassPlayer\YamBassPlayer.csproj" />
+    <Content Include="Data\Fixtures\*.sql">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YamBassPlayer\YamBassPlayer.App.csproj" />
+    <ProjectReference Include="..\plugins\YamBassPlayer.Plugins.YandexMusic\YamBassPlayer.Plugins.YandexMusic.csproj" />
+    <ProjectReference Include="..\YamBassPlayer.Contracts\YamBassPlayer.Contracts.csproj" />
+    <ProjectReference Include="..\YamBassPlayer.Contracts.Ui\YamBassPlayer.Contracts.Ui.csproj" />
+    <ProjectReference Include="..\YamBassPlayer.Core\YamBassPlayer.Core.csproj" />
     <ProjectReference Include="..\YamBassPlayer.Updater\YamBassPlayer.Updater.csproj" />
   </ItemGroup>
 

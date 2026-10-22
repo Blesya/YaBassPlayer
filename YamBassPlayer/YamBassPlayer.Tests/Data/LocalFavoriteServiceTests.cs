@@ -1,249 +1,135 @@
 using Microsoft.Data.Sqlite;
+using YamBassPlayer.Models;
+using YamBassPlayer.Services;
+using YamBassPlayer.Services.Impl;
 
 namespace YamBassPlayer.Tests.Data;
-
-using YamBassPlayer.Services.Impl;
 
 [TestFixture]
 public sealed class LocalFavoriteServiceTests
 {
+    private static readonly TrackKey Local = new(LocalMusicSource.Id, "/music/a.mp3");
+    private static readonly TrackKey Yandex = new(new SourceId("yandex"), "12345");
+
     private SharedMemoryDbConnectionFactory _factory = null!;
-    private SqliteConnection _connection = null!;
+    private DbWriteLock _writeLock = null!;
+    private LocalFavoriteService _service = null!;
 
     [SetUp]
     public void SetUp()
     {
         _factory = new SharedMemoryDbConnectionFactory();
-        _connection = _factory.Anchor;
+        _writeLock = new DbWriteLock();
 
-        // Schema is now owned by DatabaseInitializer, not by LocalFavoriteService's constructor.
-        new DatabaseInitializer(_factory).Initialize();
+        using SqliteConnection connection = _factory.Create();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            """
+            CREATE TABLE favoriteLocalTracks (
+                sourceId TEXT NOT NULL,
+                trackId  TEXT NOT NULL,
+                addedAt  TEXT NOT NULL,
+                PRIMARY KEY (sourceId, trackId)
+            );
+            """;
+        command.ExecuteNonQuery();
+
+        _service = new LocalFavoriteService(_factory, _writeLock);
     }
 
     [TearDown]
     public void TearDown()
     {
-        _factory?.Dispose();
-    }
-
-    // ── Constructor ───────────────────────────────────────────────────────
-
-    [Test]
-    public void Constructor_CreatesTable()
-    {
-        // EnsureSchema() no longer runs in the constructor; the table is created by the initializer.
-        _ = new LocalFavoriteService(_factory);
-
-        Assert.That(
-            SqliteSchemaHelper.HasTable(_connection, "favoriteLocalTracks"),
-            Is.True);
+        _writeLock.Dispose();
+        _factory.Dispose();
     }
 
     [Test]
-    public async Task Constructor_LoadsExistingFavorites()
+    public async Task AddToFavorites_KeepsSourceAndPutsNewestFirst()
     {
-        // Pre-populate the table with known tracks
-        InsertFavoriteTrackDirect("preloaded_1", 1000);
-        InsertFavoriteTrackDirect("preloaded_2", 2000);
+        await _service.AddToFavorites(Local);
+        await _service.AddToFavorites(Yandex);
 
-        var service = new LocalFavoriteService(_factory);
-
-        // Wait for LoadFavorites (runs on ThreadPool) to complete
-        await WaitForFavoritesLoaded(service, "preloaded_1", TimeSpan.FromSeconds(3));
+        IReadOnlyList<TrackKey> keys = await _service.GetAllFavoriteKeys();
 
         Assert.Multiple(() =>
         {
-            Assert.That(service.IsTrackFavorite("preloaded_1"), Is.True);
-            Assert.That(service.IsTrackFavorite("preloaded_2"), Is.True);
-            Assert.That(service.IsTrackFavorite("nonexistent"), Is.False);
-        });
-    }
-
-    // ── AddToFavorites ────────────────────────────────────────────────────
-
-    [Test]
-    public async Task AddToFavorites_InsertsTrack_AndIsTrackFavoriteReturnsTrue()
-    {
-        var service = new LocalFavoriteService(_factory);
-
-        await service.AddToFavorites("test123");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(service.IsTrackFavorite("test123"), Is.True);
-
-            // Verify it's actually in the database
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM favoriteLocalTracks WHERE trackId = 'test123';";
-            Assert.That(Convert.ToInt32(cmd.ExecuteScalar()), Is.EqualTo(1));
-        });
-    }
-
-    [Test]
-    public async Task AddToFavorites_FiresOnFavoriteAdded()
-    {
-        var service = new LocalFavoriteService(_factory);
-        var eventFired = false;
-        string? firedTrackId = null;
-
-        service.OnFavoriteAdded += (id) =>
-        {
-            eventFired = true;
-            firedTrackId = id;
-        };
-
-        await service.AddToFavorites("test_event");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(eventFired, Is.True);
-            Assert.That(firedTrackId, Is.EqualTo("test_event"));
+            Assert.That(_service.IsTrackFavorite(Local), Is.True);
+            Assert.That(_service.IsTrackFavorite(Yandex), Is.True);
+            Assert.That(keys, Is.EqualTo(new[] { Yandex, Local }));
+            Assert.That(CountRows(), Is.EqualTo(2L));
         });
     }
 
     [Test]
     public async Task AddToFavorites_IsIdempotent()
     {
-        var service = new LocalFavoriteService(_factory);
+        await _service.AddToFavorites(Local);
+        await _service.AddToFavorites(Local);
 
-        await service.AddToFavorites("dup_test");
-        // Second add should not throw and should have no effect
-        await service.AddToFavorites("dup_test");
-
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM favoriteLocalTracks WHERE trackId = 'dup_test';";
-        var count = Convert.ToInt32(cmd.ExecuteScalar());
-        Assert.That(count, Is.EqualTo(1));
+        Assert.That(CountRows(), Is.EqualTo(1L));
     }
 
-    // ── RemoveFromFavorites ───────────────────────────────────────────────
-
     [Test]
-    public async Task RemoveFromFavorites_DeletesTrack_AndIsTrackFavoriteReturnsFalse()
+    public async Task RemoveFromFavorites_RemovesOnlyThatKey()
     {
-        var service = new LocalFavoriteService(_factory);
+        await _service.AddToFavorites(Local);
+        await _service.AddToFavorites(Yandex);
 
-        await service.AddToFavorites("remove_me");
-
-        await service.RemoveFromFavorites("remove_me");
+        await _service.RemoveFromFavorites(Local);
 
         Assert.Multiple(() =>
         {
-            Assert.That(service.IsTrackFavorite("remove_me"), Is.False);
-
-            // Verify it's gone from the database
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM favoriteLocalTracks WHERE trackId = 'remove_me';";
-            Assert.That(Convert.ToInt32(cmd.ExecuteScalar()), Is.EqualTo(0));
+            Assert.That(_service.IsTrackFavorite(Local), Is.False);
+            Assert.That(_service.IsTrackFavorite(Yandex), Is.True);
+            Assert.That(CountRows(), Is.EqualTo(1L));
         });
     }
 
     [Test]
-    public async Task RemoveFromFavorites_FiresOnFavoriteRemoved()
+    public async Task Constructor_LoadsPersistedFavoritesNewestFirst()
     {
-        var service = new LocalFavoriteService(_factory);
-        await service.AddToFavorites("remove_event");
+        await Insert("local", "/music/older.mp3", "2026-01-01T00:00:00.0000000Z");
+        await Insert("yandex", "999", "2026-01-02T00:00:00.0000000Z");
 
-        var eventFired = false;
-        string? firedTrackId = null;
+        var service = new LocalFavoriteService(_factory, _writeLock);
 
-        service.OnFavoriteRemoved += (id) =>
+        Assert.That(await service.GetAllFavoriteKeys(), Is.EqualTo(new[]
         {
-            eventFired = true;
-            firedTrackId = id;
-        };
-
-        await service.RemoveFromFavorites("remove_event");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(eventFired, Is.True);
-            Assert.That(firedTrackId, Is.EqualTo("remove_event"));
-        });
+            new TrackKey(new SourceId("yandex"), "999"),
+            new TrackKey(LocalMusicSource.Id, "/music/older.mp3"),
+        }));
     }
 
     [Test]
-    public async Task RemoveFromFavorites_IsIdempotent_OnNonExisting()
+    public async Task Changed_FiresOnAddAndRemove()
     {
-        var service = new LocalFavoriteService(_factory);
+        int changes = 0;
+        _service.Changed += () => changes++;
 
-        // Removing a non-existing track should not throw
-        Assert.DoesNotThrowAsync(async () =>
-            await service.RemoveFromFavorites("never_added"));
+        await _service.AddToFavorites(Local);
+        await _service.RemoveFromFavorites(Local);
+
+        Assert.That(changes, Is.EqualTo(2));
     }
 
-    // ── GetAllFavoriteTrackIds ────────────────────────────────────────────
-
-    [Test]
-    public async Task GetAllFavoriteTrackIds_ReturnsAllInDescOrder()
+    private async Task Insert(string sourceId, string trackId, string addedAt)
     {
-        // Pre-populate the table with known timestamps
-        InsertFavoriteTrackDirect("track_a", 1000);
-        InsertFavoriteTrackDirect("track_b", 2000);
-        InsertFavoriteTrackDirect("track_c", 3000);
-
-        var service = new LocalFavoriteService(_factory);
-
-        var allIds = await service.GetAllFavoriteTrackIds();
-
-        Assert.That(allIds, Is.EqualTo(new[] { "track_c", "track_b", "track_a" }));
+        using SqliteConnection connection = _factory.Create();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO favoriteLocalTracks (sourceId, trackId, addedAt) VALUES (@s, @t, @a);";
+        command.Parameters.AddWithValue("@s", sourceId);
+        command.Parameters.AddWithValue("@t", trackId);
+        command.Parameters.AddWithValue("@a", addedAt);
+        await command.ExecuteNonQueryAsync();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Inserts a row directly into favoriteLocalTracks (creates the table first if needed).
-    /// </summary>
-    private void InsertFavoriteTrackDirect(string trackId, long addedAt)
+    private long CountRows()
     {
-        using var createCmd = _connection.CreateCommand();
-        createCmd.CommandText =
-            """
-            CREATE TABLE IF NOT EXISTS favoriteLocalTracks (
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                trackId TEXT    UNIQUE NOT NULL,
-                addedAt INTEGER NOT NULL
-            );
-            """;
-        createCmd.ExecuteNonQuery();
-
-        using var insertCmd = _connection.CreateCommand();
-        insertCmd.CommandText =
-            """
-            INSERT OR IGNORE INTO favoriteLocalTracks (trackId, addedAt)
-            VALUES ($trackId, $addedAt);
-            """;
-        insertCmd.Parameters.AddWithValue("$trackId", trackId);
-        insertCmd.Parameters.AddWithValue("$addedAt", addedAt);
-        insertCmd.ExecuteNonQuery();
-    }
-
-    /// <summary>
-    /// Waits for LoadFavorites to complete by polling IsTrackFavorite with a timeout.
-    /// </summary>
-    private static async Task WaitForFavoritesLoaded(
-        LocalFavoriteService service,
-        string knownTrackId,
-        TimeSpan timeout)
-    {
-        using var cts = new CancellationTokenSource(timeout);
-        while (!cts.IsCancellationRequested)
-        {
-            if (service.IsTrackFavorite(knownTrackId))
-                return;
-
-            try
-            {
-                await Task.Delay(20, cts.Token);
-            }
-            catch (TaskCanceledException)
-            {
-                break;
-            }
-        }
-
-        throw new TimeoutException(
-            $"LoadFavorites did not complete within {timeout.TotalSeconds}s. " +
-            $"Track '{knownTrackId}' was not loaded.");
+        using SqliteConnection connection = _factory.Create();
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM favoriteLocalTracks;";
+        return (long)command.ExecuteScalar()!;
     }
 }

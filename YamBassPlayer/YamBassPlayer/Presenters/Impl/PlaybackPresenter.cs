@@ -20,8 +20,8 @@ public sealed class PlaybackPresenter(
 	ITrackAboutPresenter trackAboutPresenter)
 	: IPlaybackPresenter
 {
-	private PlaylistType _currentPlaylistType = PlaylistType.Favorite;
-	private string? _currentMyWaveTrackId;
+	private PlaylistContext _currentContext = PlaylistContext.Regular;
+	private TrackKey? _currentMyWaveTrack;
 	private bool _myWaveSkipPending;
 
 	/// <summary>
@@ -43,23 +43,24 @@ public sealed class PlaybackPresenter(
 	/// </summary>
 	private int _consecutiveUnavailable;
 
-	public void SetPlaylistType(PlaylistType playlistType)
+	public void SetPlaylistContext(PlaylistContext context)
 	{
-		_currentPlaylistType = playlistType;
-		if (playlistType != PlaylistType.MyWave)
+		_currentContext = context;
+
+		if (context != PlaylistContext.Radio)
 		{
-			_currentMyWaveTrackId = null;
+			_currentMyWaveTrack = null;
 			_myWaveSkipPending = false;
 		}
 	}
 
 	public void MarkMyWaveSkipPending()
 	{
-		if (_currentPlaylistType == PlaylistType.MyWave)
+		if (_currentContext == PlaylistContext.Radio)
 			_myWaveSkipPending = true;
 	}
 
-	public async Task PlaySelectedTrackAsync(string trackId, bool isAutomatic = false)
+	public async Task PlaySelectedTrackAsync(TrackKey key, bool isAutomatic = false)
 	{
 		Logging.LogBeforeCall();
 
@@ -67,7 +68,7 @@ public sealed class PlaybackPresenter(
 
 		try
 		{
-			Track track = await trackInfoProvider.GetTrackInfoById(trackId);
+			Track track = await trackInfoProvider.GetTrackInfoById(key);
 			if (!IsCurrentRequest(requestVersion))
 				return;
 
@@ -86,7 +87,7 @@ public sealed class PlaybackPresenter(
 			string filePath;
 			try
 			{
-				filePath = await trackFileProvider.DownloadTrackAsync(trackId, downloadProgress);
+				filePath = await trackFileProvider.DownloadTrackAsync(track, downloadProgress);
 			}
 			catch (TrackUnavailableException)
 			{
@@ -115,19 +116,13 @@ public sealed class PlaybackPresenter(
 				audioPlayer.Play(filePath);
 				_consecutiveUnavailable = 0;
 
-				var source = _currentPlaylistType switch
-				{
-					PlaylistType.MyWave => ListenSource.MyWave,
-					_ => ListenSource.Regular
-				};
+				listenTimer.OnTrackStart(track.Key, _currentContext);
+				playStatusPresenter.SetCurrentTrack(track.Key);
 
-				listenTimer.OnTrackStart(trackId, source);
-				playStatusPresenter.SetCurrentTrack(track.Id, track.SourceType);
-
-				if (_currentPlaylistType == PlaylistType.MyWave)
+				if (_currentContext == PlaylistContext.Radio)
 				{
-					_currentMyWaveTrackId = trackId;
-					_ = myWavePresenter.NotifyTrackStartedAsync(trackId);
+					_currentMyWaveTrack = track.Key;
+					_ = myWavePresenter.NotifyTrackStartedAsync(track.Key);
 
 					if (!playbackQueue.HasNext)
 						_ = myWavePresenter.FetchMoreTracksAsync();
@@ -150,12 +145,15 @@ public sealed class PlaybackPresenter(
 
 		try
 		{
-			var nextTrackId = playbackQueue.PeekNextTrackId;
-			if (nextTrackId == null || trackFileProvider.IsTrackDownloaded(nextTrackId))
+			TrackKey? nextKey = playbackQueue.PeekNext;
+			if (nextKey is null)
 				return;
 
-			Track nextTrack = await trackInfoProvider.GetTrackInfoById(nextTrackId);
+			Track nextTrack = await trackInfoProvider.GetTrackInfoById(nextKey.Value);
 			if (requestVersion != Volatile.Read(ref _playRequestVersion))
+				return;
+
+			if (trackFileProvider.IsTrackDownloaded(nextTrack))
 				return;
 
 			string preloadTitle = $"Предзагрузка: {nextTrack.Artist} - {nextTrack.Title}";
@@ -169,7 +167,7 @@ public sealed class PlaybackPresenter(
 			});
 			try
 			{
-				await trackFileProvider.DownloadTrackAsync(nextTrackId, downloadProgress);
+				await trackFileProvider.DownloadTrackAsync(nextTrack, downloadProgress);
 			}
 			catch (TrackUnavailableException)
 			{
@@ -190,12 +188,12 @@ public sealed class PlaybackPresenter(
 		if (!isAutomatic)
 		{
 			playStatusPresenter.SetPlayStatus("Трек недоступен");
-			await trackAboutPresenter.ShowTrackAboutAsync(track.Id, forceRefresh: true);
+			await trackAboutPresenter.ShowTrackAboutAsync(track.Key, forceRefresh: true);
 			return;
 		}
 
 		// Автопереход: окно не открываем, просто пробуем следующий трек.
-		int queueSize = Math.Max(1, playbackQueue.TrackIds.Count);
+		int queueSize = Math.Max(1, playbackQueue.TrackKeys.Count);
 		if (++_consecutiveUnavailable < queueSize)
 		{
 			playStatusPresenter.SetPlayStatus($"Пропуск недоступного трека: {track.Artist} - {track.Title}");
@@ -216,14 +214,14 @@ public sealed class PlaybackPresenter(
 	/// </summary>
 	private void NotifyMyWavePreviousTrack()
 	{
-		if (_currentPlaylistType != PlaylistType.MyWave || _currentMyWaveTrackId == null)
+		if (_currentContext != PlaylistContext.Radio || _currentMyWaveTrack is not { } currentMyWaveTrack)
 			return;
 
 		double played = audioPlayer.GetCurrentPosition().TotalSeconds;
 		if (_myWaveSkipPending)
-			_ = myWavePresenter.NotifyTrackSkippedAsync(_currentMyWaveTrackId, played);
+			_ = myWavePresenter.NotifyTrackSkippedAsync(currentMyWaveTrack, played);
 		else
-			_ = myWavePresenter.NotifyTrackFinishedAsync(_currentMyWaveTrackId, played);
+			_ = myWavePresenter.NotifyTrackFinishedAsync(currentMyWaveTrack, played);
 
 		_myWaveSkipPending = false;
 	}

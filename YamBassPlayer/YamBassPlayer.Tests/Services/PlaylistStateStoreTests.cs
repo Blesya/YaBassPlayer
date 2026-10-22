@@ -1,5 +1,6 @@
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 
 namespace YamBassPlayer.Tests.Services;
@@ -7,205 +8,190 @@ namespace YamBassPlayer.Tests.Services;
 [TestFixture]
 public sealed class PlaylistStateStoreTests
 {
-    private string _path = null!;
+    private string _file = null!;
+    private string _stateDir = null!;
+    private IPluginStateFile _pluginState = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _path = Path.Combine(Path.GetTempPath(), $"playlist_state_{Guid.NewGuid():N}.json");
+        _file = Path.Combine(Path.GetTempPath(), "ybp-state-" + Guid.NewGuid().ToString("N") + ".json");
+        _stateDir = Path.Combine(Path.GetTempPath(), "ybp-plugin-state-" + Guid.NewGuid().ToString("N"));
+        _pluginState = new PluginStateFile(_stateDir);
     }
 
     [TearDown]
     public void TearDown()
     {
-        if (File.Exists(_path))
-            File.Delete(_path);
+        if (File.Exists(_file))
+            File.Delete(_file);
+
+        string backup = Path.Combine(Path.GetDirectoryName(_file)!, "playlist_state.v1.json");
+        if (File.Exists(backup))
+            File.Delete(backup);
+
+        if (Directory.Exists(_stateDir))
+            Directory.Delete(_stateDir, true);
     }
 
-    // ──────────────── Load ────────────────
-
-    [Test]
-    public void Load_WhenFileMissing_ReturnsNull()
-    {
-        var store = new PlaylistStateStore(_path);
-
-        Assert.That(store.Load(), Is.Null);
-    }
-
-    [Test]
-    public void Load_WhenFileCorrupted_ReturnsNull()
-    {
-        File.WriteAllText(_path, "{ this is not json");
-        var store = new PlaylistStateStore(_path);
-
-        Assert.That(store.Load(), Is.Null);
-    }
-
-    [Test]
-    public void Load_WhenVersionMismatch_ReturnsNull()
-    {
-        File.WriteAllText(_path, """{ "Version": 99, "Playlists": [] }""");
-        var store = new PlaylistStateStore(_path);
-
-        Assert.That(store.Load(), Is.Null);
-    }
-
-    // ──────────────── Round-trip ────────────────
-
-    [Test]
-    public void SaveThenLoad_RoundTripsPlaylists()
-    {
-        var playlist = new Playlist("Мои треки", PlaylistType.Favorite)
+    private static Playlist Data(string title, string kind = "favorite")
+        => new(kind, title)
         {
-            Description = "Треки, которые вам понравились",
-            TrackCount = 42,
-            SourceId = SourceIds.Yandex,
-            ParentTag = "tag"
+            SourceId = new SourceId("yandex"),
+            Category = PlaylistCategory.Data,
+            TrackCount = 3
         };
-        var store = new PlaylistStateStore(_path);
-        store.Save(new PlaylistState { Playlists = [playlist] });
 
-        var loaded = store.Load();
+    [Test]
+    public void SaveThenLoad_RoundTripsDataPlaylists()
+    {
+        var store = new PlaylistStateStore(_file, _pluginState);
+        store.Save(new PlaylistState { Playlists = [Data("Мои треки")] });
 
-        Assert.That(loaded, Is.Not.Null);
-        var restored = loaded!.Playlists.Single();
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
+
+        Assert.That(loaded!.Playlists, Has.Count.EqualTo(1));
+        Assert.That(loaded.Playlists[0].Title, Is.EqualTo("Мои треки"));
+        Assert.That(loaded.Playlists[0].SourceId, Is.EqualTo(new SourceId("yandex")));
+    }
+
+    [Test]
+    public void Load_NormalizesLegacyLocalFavoriteToRoot()
+    {
+        var localFavorite = new Playlist("favorite", "Локальное Избранное")
+        {
+            SourceId = LocalMusicSource.Id,
+            Category = PlaylistCategory.Data,
+            TrackCount = 2
+        };
+        var store = new PlaylistStateStore(_file, _pluginState);
+        store.Save(new PlaylistState { Playlists = [localFavorite], LastPlaylist = localFavorite });
+
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
+
         Assert.Multiple(() =>
         {
-            Assert.That(restored.PlaylistName, Is.EqualTo("Мои треки"));
-            Assert.That(restored.Type, Is.EqualTo(PlaylistType.Favorite));
-            Assert.That(restored.Description, Is.EqualTo("Треки, которые вам понравились"));
-            Assert.That(restored.TrackCount, Is.EqualTo(42));
-            Assert.That(restored.SourceId, Is.EqualTo(SourceIds.Yandex));
-            Assert.That(restored.ParentTag, Is.EqualTo("tag"));
+            Assert.That(loaded!.Playlists[0].SourceId, Is.Null);
+            Assert.That(loaded.Playlists[0].Kind, Is.EqualTo("favorite"));
+            Assert.That(loaded.Playlists[0].Title, Is.EqualTo("Локальное избранное"));
+            Assert.That(loaded.LastPlaylist?.SourceId, Is.Null);
         });
     }
 
     [Test]
-    public void SaveThenLoad_RoundTripsDayOfWeekAndPayload()
+    public void Save_WritesOnlyDataPlaylists()
     {
-        var playlist = new Playlist("Среда", PlaylistType.TopByDay)
-        {
-            DayOfWeek = DayOfWeek.Wednesday,
-            Payload = new PlaylistPayload { FolderId = 7, ArtistName = "A", AlbumName = "B" }
-        };
-        var store = new PlaylistStateStore(_path);
-        store.Save(new PlaylistState { Playlists = [playlist] });
-
-        var restored = store.Load()!.Playlists.Single();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(restored.DayOfWeek, Is.EqualTo(DayOfWeek.Wednesday));
-            Assert.That(restored.Payload, Is.Not.Null);
-            Assert.That(restored.Payload!.FolderId, Is.EqualTo(7));
-            Assert.That(restored.Payload.ArtistName, Is.EqualTo("A"));
-            Assert.That(restored.Payload.AlbumName, Is.EqualTo("B"));
-        });
-    }
-
-    [Test]
-    public void SaveThenLoad_RoundTripsYandexPlaylistPayload()
-    {
-        var playlist = new Playlist("Мой микс", PlaylistType.YandexOwnPlaylist)
-        {
-            SourceId = SourceIds.Yandex,
-            Payload = new PlaylistPayload { YandexOwnerUid = "42", YandexKind = "7" }
-        };
-        var store = new PlaylistStateStore(_path);
-        store.Save(new PlaylistState { Playlists = [playlist] });
-
-        var restored = store.Load()!.Playlists.Single();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(restored.Type, Is.EqualTo(PlaylistType.YandexOwnPlaylist));
-            Assert.That(restored.Payload!.YandexOwnerUid, Is.EqualTo("42"));
-            Assert.That(restored.Payload.YandexKind, Is.EqualTo("7"));
-            Assert.That(restored.TrackCacheKey, Is.EqualTo("42:7"));
-        });
-    }
-
-    [Test]
-    public void SaveThenLoad_RoundTripsTrackIdCaches()
-    {
-        var store = new PlaylistStateStore(_path);
+        var store = new PlaylistStateStore(_file, _pluginState);
         store.Save(new PlaylistState
         {
-            FavoriteTrackIds = ["f1", "f2"],
-            CustomPlaylistTrackIds = new Dictionary<string, List<string>>
+            Playlists =
+            [
+                Data("Мои треки"),
+                new("cached", "Загруженные") { Category = PlaylistCategory.Computed },
+                new("queue", "Очередь") { Category = PlaylistCategory.Transient }
+            ]
+        });
+
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
+
+        Assert.That(loaded!.Playlists.Select(p => p.Title), Is.EqualTo(new[] { "Мои треки" }));
+    }
+
+    [Test]
+    public void Save_KeepsNonTransientLastPlaylist()
+    {
+        var store = new PlaylistStateStore(_file, _pluginState);
+        store.Save(new PlaylistState
+        {
+            Playlists = [Data("Мои треки")],
+            LastPlaylist = new Playlist("cached", "Загруженные") { Category = PlaylistCategory.Computed }
+        });
+
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
+
+        Assert.That(loaded!.LastPlaylist?.Title, Is.EqualTo("Загруженные"));
+    }
+
+    [Test]
+    public void Save_DropsTransientLastPlaylist()
+    {
+        var store = new PlaylistStateStore(_file, _pluginState);
+        store.Save(new PlaylistState
+        {
+            Playlists = [Data("Мои треки")],
+            LastPlaylist = new Playlist("queue", "Очередь") { Category = PlaylistCategory.Transient }
+        });
+
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
+
+        Assert.That(loaded!.LastPlaylist, Is.Null);
+    }
+
+    [Test]
+    public void SaveThenLoad_RoundTripsLastTrack()
+    {
+        var store = new PlaylistStateStore(_file, _pluginState);
+        store.Save(new PlaylistState
+        {
+            Playlists = [Data("Мои треки")],
+            LastTrack = new TrackKey(new SourceId("yandex"), "987654")
+        });
+
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
+
+        Assert.That(loaded!.LastTrack, Is.EqualTo(new TrackKey(new SourceId("yandex"), "987654")));
+    }
+
+    [Test]
+    public void Save_WritesSourceIdAsString()
+    {
+        var store = new PlaylistStateStore(_file, _pluginState);
+        store.Save(new PlaylistState { Playlists = [Data("Мои треки")] });
+
+        string json = File.ReadAllText(_file);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(json, Does.Contain("\"SourceId\": \"yandex\""));
+            Assert.That(json, Does.Not.Contain("\"Value\""));
+        });
+    }
+
+    [Test]
+    public void Load_CorruptFileReturnsNull()
+    {
+        File.WriteAllText(_file, "{ not json");
+
+        Assert.That(new PlaylistStateStore(_file, _pluginState).Load(), Is.Null);
+    }
+
+    [Test]
+    public void Load_VersionOneMigratesToVersionTwo()
+    {
+        File.WriteAllText(_file, """
             {
-                ["Мой плейлист"] = ["c1", "c2", "c3"]
+              "Version": 1,
+              "Playlists": [
+                { "Name": "Мои треки", "Type": "Favorite", "TrackCount": 1 }
+              ],
+              "FavoriteTrackIds": [ "123" ],
+              "LastPlaylist": { "Name": "Загруженные", "Type": "Cached" },
+              "LastTrackId": "123"
             }
-        });
+            """);
 
-        var loaded = store.Load();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(loaded!.FavoriteTrackIds, Is.EqualTo(new[] { "f1", "f2" }));
-            Assert.That(loaded.CustomPlaylistTrackIds["Мой плейлист"], Is.EqualTo(new[] { "c1", "c2", "c3" }));
-        });
-    }
-
-    [Test]
-    public void SaveThenLoad_RoundTripsLastPlaylist()
-    {
-        var last = new Playlist("Топ 10", PlaylistType.Top10) { TrackCount = 10 };
-        var store = new PlaylistStateStore(_path);
-        store.Save(new PlaylistState { Playlists = [last], LastPlaylist = last });
-
-        var restored = store.Load()!.LastPlaylist;
+        var loaded = new PlaylistStateStore(_file, _pluginState).Load();
 
         Assert.Multiple(() =>
         {
-            Assert.That(restored, Is.Not.Null);
-            Assert.That(restored!.PlaylistName, Is.EqualTo("Топ 10"));
-            Assert.That(restored.Type, Is.EqualTo(PlaylistType.Top10));
-            Assert.That(restored.TrackCount, Is.EqualTo(10));
+            Assert.That(loaded!.Playlists, Has.Count.EqualTo(1));
+            Assert.That(loaded.Playlists[0].Kind, Is.EqualTo("favorite"));
+            Assert.That(loaded.Playlists[0].SourceId, Is.EqualTo(new SourceId("yandex")));
+            Assert.That(loaded.LastPlaylist?.Kind, Is.EqualTo("cached"));
+            Assert.That(loaded.LastTrack, Is.EqualTo(new TrackKey(new SourceId("yandex"), "123")));
+            Assert.That(File.ReadAllText(_file), Does.Contain("\"Version\": 2"));
+            Assert.That(File.Exists(Path.Combine(Path.GetDirectoryName(_file)!, "playlist_state.v1.json")), Is.True);
+            Assert.That(_pluginState.Get<List<string>>("yandex-music", "favoriteTrackIds"), Is.EqualTo(new List<string> { "123" }));
         });
-    }
-
-    [Test]
-    public void SaveThenLoad_PersistsLastPlaylistNull()
-    {
-        var store = new PlaylistStateStore(_path);
-        store.Save(new PlaylistState { Playlists = [new Playlist("P", PlaylistType.Cached)] });
-
-        Assert.That(store.Load()!.LastPlaylist, Is.Null);
-    }
-
-    [Test]
-    public void SaveThenLoad_RoundTripsLastTrackId()
-    {
-        var store = new PlaylistStateStore(_path);
-        store.Save(new PlaylistState
-        {
-            Playlists = [new Playlist("P", PlaylistType.Favorite)],
-            LastTrackId = "142978574"
-        });
-
-        Assert.That(store.Load()!.LastTrackId, Is.EqualTo("142978574"));
-    }
-
-    [Test]
-    public void Save_CreatesMissingDirectory()
-    {
-        string nested = Path.Combine(
-            Path.GetTempPath(),
-            $"playlist_state_dir_{Guid.NewGuid():N}",
-            "state.json");
-        try
-        {
-            var store = new PlaylistStateStore(nested);
-            store.Save(new PlaylistState { Playlists = [new Playlist("P", PlaylistType.Cached)] });
-
-            Assert.That(File.Exists(nested), Is.True);
-        }
-        finally
-        {
-            var dir = Path.GetDirectoryName(nested)!;
-            if (Directory.Exists(dir))
-                Directory.Delete(dir, recursive: true);
-        }
     }
 }

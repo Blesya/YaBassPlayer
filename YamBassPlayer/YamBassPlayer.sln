@@ -1,17 +1,23 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.4.11620.152
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer", "YamBassPlayer\YamBassPlayer.csproj", "{F22FC382-5E48-4B7A-9BFC-9C95EC18FE9E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.App", "YamBassPlayer\YamBassPlayer.App.csproj", "{F22FC382-5E48-4B7A-9BFC-9C95EC18FE9E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Tests", "YamBassPlayer.Tests\YamBassPlayer.Tests.csproj", "{750C2BFE-3C43-4E3C-A3BB-9B92F94B3683}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Api", "YamBassPlayer.Api\YamBassPlayer.Api.csproj", "{07FE8820-6996-42E6-AF15-60CEFDCF0366}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Api.Client", "YamBassPlayer.Api.Client\YamBassPlayer.Api.Client.csproj", "{A8081705-2641-4220-9455-0705FE64D532}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Plugins.YandexMusic.Api", "plugins\YamBassPlayer.Plugins.YandexMusic.Api\YamBassPlayer.Plugins.YandexMusic.Api.csproj", "{07FE8820-6996-42E6-AF15-60CEFDCF0366}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Updater", "YamBassPlayer.Updater\YamBassPlayer.Updater.csproj", "{5E517CF2-F562-4A09-BBFD-193FBCCE377B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Contracts", "YamBassPlayer.Contracts\YamBassPlayer.Contracts.csproj", "{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Contracts.Ui", "YamBassPlayer.Contracts.Ui\YamBassPlayer.Contracts.Ui.csproj", "{3C5DAC2C-08E2-41BC-9A24-C660144493DB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Core", "YamBassPlayer.Core\YamBassPlayer.Core.csproj", "{64F21679-A52C-4D50-9117-4F2C46DB12A7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Plugins.YandexMusic", "plugins\YamBassPlayer.Plugins.YandexMusic\YamBassPlayer.Plugins.YandexMusic.csproj", "{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -59,18 +65,6 @@ Global
 		{07FE8820-6996-42E6-AF15-60CEFDCF0366}.Release|x64.Build.0 = Release|Any CPU
 		{07FE8820-6996-42E6-AF15-60CEFDCF0366}.Release|x86.ActiveCfg = Release|Any CPU
 		{07FE8820-6996-42E6-AF15-60CEFDCF0366}.Release|x86.Build.0 = Release|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Debug|x64.Build.0 = Debug|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Debug|x86.Build.0 = Debug|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Release|x64.ActiveCfg = Release|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Release|x64.Build.0 = Release|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Release|x86.ActiveCfg = Release|Any CPU
-		{A8081705-2641-4220-9455-0705FE64D532}.Release|x86.Build.0 = Release|Any CPU
 		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -83,6 +77,54 @@ Global
 		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x64.Build.0 = Release|Any CPU
 		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x86.ActiveCfg = Release|Any CPU
 		{5E517CF2-F562-4A09-BBFD-193FBCCE377B}.Release|x86.Build.0 = Release|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Debug|x64.Build.0 = Debug|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Debug|x86.Build.0 = Debug|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Release|x64.ActiveCfg = Release|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Release|x64.Build.0 = Release|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Release|x86.ActiveCfg = Release|Any CPU
+		{7F353DB5-E8A1-43C9-BAC2-4C1FC6411EAD}.Release|x86.Build.0 = Release|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Debug|x64.Build.0 = Debug|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Debug|x86.Build.0 = Debug|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Release|x64.ActiveCfg = Release|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Release|x64.Build.0 = Release|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Release|x86.ActiveCfg = Release|Any CPU
+		{3C5DAC2C-08E2-41BC-9A24-C660144493DB}.Release|x86.Build.0 = Release|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Debug|x64.Build.0 = Debug|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Debug|x86.Build.0 = Debug|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Release|x64.ActiveCfg = Release|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Release|x64.Build.0 = Release|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Release|x86.ActiveCfg = Release|Any CPU
+		{64F21679-A52C-4D50-9117-4F2C46DB12A7}.Release|x86.Build.0 = Release|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Debug|x64.Build.0 = Debug|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Debug|x86.Build.0 = Debug|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x64.ActiveCfg = Release|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x64.Build.0 = Release|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x86.ActiveCfg = Release|Any CPU
+		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

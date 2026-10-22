@@ -34,7 +34,6 @@ public sealed class MainWindowCoordinator : IDisposable
 	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 	private readonly IEqualizerPresenter _equalizerPresenter;
 	private readonly ILocalSearchPresenter _localSearchPresenter;
-	private readonly IYandexSearchPresenter _yandexSearchPresenter;
 	private readonly IDatabaseStatisticsPresenter _dbStatsPresenter;
 	private readonly INowPlayingPresenter _nowPlayingPresenter;
 	private readonly ILargeTrackInfoPresenter _largeTrackInfoPresenter;
@@ -48,9 +47,9 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly ShowMyWaveUseCase _showMyWaveUseCase;
 	private CancellationTokenSource? _startupCts;
 	private Window _window = null!; // Set later via SetWindow()
-	private string? _currentTrackId;
-	private string? _previousTrackId;
-	private string? _previous2Id;
+	private TrackKey? _currentTrack;
+	private TrackKey? _previousTrack;
+	private TrackKey? _previous2;
 
 	public MainWindowCoordinator(
 		IPlaylistsPresenter playlistsPresenter,
@@ -58,7 +57,6 @@ public sealed class MainWindowCoordinator : IDisposable
 		IPlayStatusPresenter playStatusPresenter,
 		IEqualizerPresenter equalizerPresenter,
 		ILocalSearchPresenter localSearchPresenter,
-		IYandexSearchPresenter yandexSearchPresenter,
 		IDatabaseStatisticsPresenter dbStatsPresenter,
 		INowPlayingPresenter nowPlayingPresenter,
 		ILargeTrackInfoPresenter largeTrackInfoPresenter,
@@ -85,7 +83,6 @@ public sealed class MainWindowCoordinator : IDisposable
 		_playStatusPresenter = playStatusPresenter;
 		_equalizerPresenter = equalizerPresenter;
 		_localSearchPresenter = localSearchPresenter;
-		_yandexSearchPresenter = yandexSearchPresenter;
 		_dbStatsPresenter = dbStatsPresenter;
 		_nowPlayingPresenter = nowPlayingPresenter;
 		_largeTrackInfoPresenter = largeTrackInfoPresenter;
@@ -124,7 +121,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		_startupCts = new CancellationTokenSource();
 		_updateScheduler.Start();
-		_onTrackChangedHandler = e => OnTrackForPlaySelected(e.TrackId, _playbackQueue.LastChangeWasAutomatic);
+		_onTrackChangedHandler = e => OnTrackForPlaySelected(e.Key, _playbackQueue.LastChangeWasAutomatic);
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		_playStatusPresenter.OnStopClicked += StopPlayback;
@@ -135,11 +132,11 @@ public sealed class MainWindowCoordinator : IDisposable
 
 		_playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
 
-		_playbackQueue.OnTrackChanged += trackId =>
+		_playbackQueue.OnTrackChanged += key =>
 		{
-			_previous2Id = _previousTrackId;
-			_previousTrackId = _currentTrackId;
-			_currentTrackId = trackId;
+			_previous2 = _previousTrack;
+			_previousTrack = _currentTrack;
+			_currentTrack = key;
 		};
 
 		_playlistsPresenter.PlaylistChosen += _ =>
@@ -168,7 +165,7 @@ public sealed class MainWindowCoordinator : IDisposable
 		_eventBus.Subscribe((PlaybackModeCommandEvent e) => SetPlaybackMode(e.Mode));
 		_eventBus.Subscribe((PlayTrackAtCommandEvent e) => PlayTrackAt(e.Index));
 		_eventBus.Subscribe((SearchCommandEvent e) => RunSearchAsync(e.Source, e.Query, e.Kind));
-		_eventBus.Subscribe((LikeCommandEvent e) => ToggleFavoriteCommandAsync(e.SourceId, e.TrackId));
+		_eventBus.Subscribe((LikeCommandEvent e) => ToggleFavoriteCommandAsync(e.Key));
 		_eventBus.Subscribe((HelpCommandEvent e) => HelpDialog.Show("Справка по командам", e.HelpText));
 
 		_audioPlayer.OnPreloadRequested += OnPreloadNextTrack;
@@ -210,12 +207,12 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	// ── Playback ──────────────────────────────────────────────────────────
 
-	private void OnTrackForPlaySelected(string trackId, bool isAutomatic)
-		=> PlaySelectedTrackAsync(trackId, isAutomatic).Forget();
+	private void OnTrackForPlaySelected(TrackKey key, bool isAutomatic)
+		=> PlaySelectedTrackAsync(key, isAutomatic).Forget();
 
-	private async Task PlaySelectedTrackAsync(string trackId, bool isAutomatic)
+	private async Task PlaySelectedTrackAsync(TrackKey key, bool isAutomatic)
 	{
-		try { await _playbackPresenter.PlaySelectedTrackAsync(trackId, isAutomatic); }
+		try { await _playbackPresenter.PlaySelectedTrackAsync(key, isAutomatic); }
 		catch (Exception ex) { ex.Handle(); }
 	}
 
@@ -224,10 +221,10 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	private async Task LoadPlaylistAsync(Playlist playlist)
 	{
-		Log.Information("Загрузка плейлиста: «{PlaylistName}» ({Type})", playlist.PlaylistName, playlist.Type);
-		_playbackPresenter.SetPlaylistType(playlist.Type);
+		Log.Information("Загрузка плейлиста: «{Title}» ({Kind})", playlist.Title, playlist.Kind);
+		_playbackPresenter.SetPlaylistContext(playlist.Context);
 		await _tracksPresenter.LoadTracksFor(playlist);
-		SetWindowTitle($"{playlist.PlaylistName} : {playlist.Description}");
+		SetWindowTitle($"{playlist.Title} : {playlist.Description}");
 	}
 
 	private void OnPreloadNextTrack(object? sender, EventArgs e)
@@ -353,22 +350,23 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		try
 		{
-			var trackIds = _playbackQueue.TrackIds;
-			if (trackIds.Count == 0)
+			var trackKeys = _playbackQueue.TrackKeys;
+			if (trackKeys.Count == 0)
 			{
 				_playStatusPresenter.SetPlayStatus("Очередь воспроизведения пуста");
 				return;
 			}
 
-			_trackRepositoryCache.ReplaceQueueTrackIds(trackIds);
-			var queuePlaylist = new Playlist("Текущая очередь", PlaylistType.Queue)
+			_trackRepositoryCache.ReplaceQueueTrackIds(trackKeys);
+			var queuePlaylist = new Playlist("queue", "Текущая очередь")
 			{
+				Category = PlaylistCategory.Transient,
 				Description = "Текущая очередь воспроизведения",
-				TrackCount = trackIds.Count
+				TrackCount = trackKeys.Count
 			};
 
 			await _tracksPresenter.LoadTracksFor(queuePlaylist);
-			SetWindowTitle($"{queuePlaylist.PlaylistName} : {queuePlaylist.Description}");
+			SetWindowTitle($"{queuePlaylist.Title} : {queuePlaylist.Description}");
 			_playlistsPresenter.NotifyTransientPlaylistActive(queuePlaylist);
 		}
 		catch (Exception ex) { ex.Handle(); }
@@ -376,37 +374,16 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	// ── Search / Favorites ────────────────────────────────────────────────
 
-	public void ToggleFavoriteCommandAsync(string sourceId, string trackId)
+	public void ToggleFavoriteCommandAsync(TrackKey key)
 	{
-		Logging.LogUserAction($"переключение избранного ({sourceId})");
-		_toggleFavoriteUseCase.ExecuteAsync(sourceId, trackId).Forget();
+		Logging.LogUserAction($"переключение избранного ({key.SourceId})");
+		_toggleFavoriteUseCase.ExecuteAsync(key).Forget();
 	}
 
-	public void RunSearchAsync(string source, string query, SearchEntityKind kind = SearchEntityKind.Tracks)
+	public void RunSearchAsync(SourceId source, string query, SearchEntityKind kind = SearchEntityKind.Tracks)
 	{
 		Logging.LogUserAction($"поиск ({source}): «{query}»");
 		_searchAndLoadPlaylistUseCase.SearchAndLoadAsync(source, query, kind, SetWindowTitle).Forget();
-	}
-
-	public void ShowYandexSearchDialog()
-	{
-		Logging.LogUserAction("поиск по Яндекс.Музыке");
-		ShowYandexSearchDialogAsync().Forget();
-	}
-
-	private async Task ShowYandexSearchDialogAsync()
-	{
-		try
-		{
-			_yandexSearchPresenter.ShowYandexSearchDialog();
-			if (_yandexSearchPresenter.WasCancelled()) return;
-
-			var selectedTracks = _yandexSearchPresenter.GetSelectedTracks();
-			if (selectedTracks.Count == 0) return;
-
-			await _searchAndLoadPlaylistUseCase.LoadYandexSelectionAsync(selectedTracks, SetWindowTitle);
-		}
-		catch (Exception ex) { ex.Handle(); }
 	}
 
 	public void ShowLocalSearchDialog()
@@ -425,7 +402,7 @@ public sealed class MainWindowCoordinator : IDisposable
 			var selectedTracks = _localSearchPresenter.GetSelectedTracks();
 			if (selectedTracks.Count == 0) return;
 
-			await _searchAndLoadPlaylistUseCase.LoadLocalSelectionAsync(selectedTracks, SetWindowTitle);
+			await _searchAndLoadPlaylistUseCase.LoadSelectionAsync(LocalMusicSource.Id, selectedTracks, SetWindowTitle);
 		}
 		catch (Exception ex) { ex.Handle(); }
 	}
@@ -497,7 +474,7 @@ public sealed class MainWindowCoordinator : IDisposable
 
 		try
 		{
-			if (_currentTrackId == null)
+			if (_currentTrack is not { } currentTrack)
 			{
 				_playStatusPresenter.SetPlayStatus("Сначала начните воспроизведение трека");
 				return;
@@ -510,22 +487,26 @@ public sealed class MainWindowCoordinator : IDisposable
 			}
 
 			var result = _nextTrackPredictor.GetNext(
-				_previousTrackId ?? "",
-				_currentTrackId,
-				_previous2Id ?? "");
+				_previousTrack?.TrackId ?? "",
+				currentTrack.TrackId,
+				_previous2?.TrackId ?? "");
 			if (!result.IsSuccess)
 			{
 				HelpDialog.Show("Рекомендация следующего трека", result.Message);
 				return;
 			}
 
+			// Рекомендация приходит голым идентификатором: вне источника он адресуется
+			// ключом текущего трека (модель обучена внутри одного источника).
+			var recommended = new TrackKey(currentTrack.SourceId, result.TrackId!);
+
 			// Ставим рекомендованный трек текущим в очереди. SetQueue поднимет
 			// OnTrackChanged → обновятся prev/current и запустится воспроизведение.
-			var trackIds = _playbackQueue.TrackIds.ToList();
-			if (!trackIds.Contains(result.TrackId!))
-				trackIds.Add(result.TrackId!);
-			int index = trackIds.IndexOf(result.TrackId!);
-			_playbackQueue.SetQueue(trackIds, index);
+			var trackKeys = _playbackQueue.TrackKeys.ToList();
+			if (!trackKeys.Contains(recommended))
+				trackKeys.Add(recommended);
+			int index = trackKeys.IndexOf(recommended);
+			_playbackQueue.SetQueue(trackKeys, index);
 		}
 		catch (Exception ex)
 		{

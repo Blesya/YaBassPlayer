@@ -20,7 +20,7 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 	private readonly IEventBus _eventBus;
 	private readonly IErrorHandler _errorHandler;
 	private readonly Action<TrackChangedEvent> _onTrackChangedHandler;
-	private string? _loadingTrackId;
+	private TrackKey? _loadingTrack;
 
 	public TrackInfoPanelPresenter(
 		ITrackInfoPanelView view,
@@ -41,25 +41,25 @@ public sealed class TrackInfoPanelPresenter : ITrackInfoPanelPresenter
 		_eventBus = eventBus;
 		_errorHandler = errorHandler;
 
-		_onTrackChangedHandler = e => ShowTrack(e.TrackId).Forget();
+		_onTrackChangedHandler = e => ShowTrack(e.Key).Forget();
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
-		if (_playbackQueue.CurrentTrackId is { } currentTrackId)
-			ShowTrack(currentTrackId).Forget();
+		if (_playbackQueue.CurrentTrack is { } currentTrack)
+			ShowTrack(currentTrack).Forget();
 	}
 
-	private async Task ShowTrack(string trackId)
+	private async Task ShowTrack(TrackKey key)
 	{
-		if (trackId == _loadingTrackId)
+		if (key == _loadingTrack)
 			return;
-		_loadingTrackId = trackId;
+		_loadingTrack = key;
 
 		try
 		{
-			Track track = await _trackCatalog.GetAsync(trackId);
+			Track track = await _trackCatalog.GetAsync(key);
 			_view.SetTrack(track);
 
-			string coverPath = await _coverProvider.DownloadCoverAsync(track.Id);
+			string coverPath = await _coverProvider.DownloadCoverAsync(track);
 			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, _view.CoverSize.Width, _view.CoverSize.Height);
 			_view.SetCover(coverArt);
 

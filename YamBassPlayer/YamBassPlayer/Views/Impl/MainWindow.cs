@@ -6,6 +6,8 @@ using YamBassPlayer.Presenters;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Impl;
+using YamBassPlayer.Plugins;
 using YamBassPlayer.Spectrum;
 
 namespace YamBassPlayer.Views.Impl;
@@ -46,6 +48,9 @@ public sealed class MainWindow : Window
 	private readonly TracksViewHost _tracksView;
 	private readonly TrackInfoPanelView _trackInfoPanel;
 	private readonly PlaylistsView _playlistsView;
+	private readonly MenuRegistry _menuRegistry;
+	private readonly PluginLoadReportStore _pluginReports;
+	private MenuBarItem _pluginsMenuBarItem = null!;
 	private SplashScreenView? _splashScreen;
 	private SpectrumView _spectrum = null!;
 	private Button _spectrumModeButton = null!;
@@ -75,7 +80,9 @@ public sealed class MainWindow : Window
 		CommandInputPresenter commandInputPresenter,
 		PlaylistsView playlistsView,
 		TracksViewHost tracksView,
-		TrackInfoPanelView trackInfoPanelView)
+		TrackInfoPanelView trackInfoPanelView,
+		MenuRegistry menuRegistry,
+		PluginLoadReportStore pluginReports)
 		: base(AppInfo.WindowTitle)
 	{
 		_coordinator = coordinator;
@@ -86,10 +93,15 @@ public sealed class MainWindow : Window
 		_tracksView = tracksView;
 		_trackInfoPanel = trackInfoPanelView;
 		_playlistsView = playlistsView;
+		_menuRegistry = menuRegistry;
+		_pluginReports = pluginReports;
 
 		// ── Menu bar (pure UI composition) ─────────────────────────────
 		MenuBar menuBar = CreateMenuBar();
 		Application.Top.Add(menuBar);
+
+		foreach (PluginMenuGroup group in _menuRegistry.Groups)
+			group.Plugin.Changed += RefreshPluginMenu;
 
 		// ── View layout ────────────────────────────────────────────────
 		// Нижняя полоса (снизу вверх): командная строка 2, панель управления 6,
@@ -283,6 +295,8 @@ public sealed class MainWindow : Window
 			Title = _tracksView.IsTilesActive ? "Вид треков: Плитки" : "Вид треков: Таблица"
 		};
 
+		_pluginsMenuBarItem = new MenuBarItem("Плагины", BuildPluginMenuItems());
+
 		return new MenuBar(new[]
 		{
 			new MenuBarItem("Файл", new[]
@@ -312,16 +326,9 @@ public sealed class MainWindow : Window
 			}),
 			new MenuBarItem("Инструменты", new[]
 			{
-				new MenuItem("Локальный поиск", "", _coordinator.ShowLocalSearchDialog),
-				new MenuItem("Поиск по ЯМ", "", _coordinator.ShowYandexSearchDialog),
-				new MenuItem("Моя волна [F9]", "", _coordinator.ShowMyWave),
-				new MenuItem("Моя волна по треку", "", () => _coordinator.ShowMyWaveByTrack()),
-				new MenuItem("Статистика БД", "", _coordinator.ShowDbStats),
-				null,
-				new MenuItem("Добавить папку...", "", _coordinator.ShowAddLocalFolderDialog),
-				new MenuItem("Управление папками...", "", _coordinator.ShowLocalFolderManagerDialog),
-				new MenuItem("Сканировать библиотеку", "", _coordinator.ScanLocalLibrary)
+				new MenuItem("Статистика БД", "", _coordinator.ShowDbStats)
 			}),
+			_pluginsMenuBarItem,
 			new MenuBarItem("Вид", new[]
 			{
 				new MenuItem("Визуализация [F5]", "", _coordinator.ShowNowPlaying),
@@ -337,8 +344,137 @@ public sealed class MainWindow : Window
 		});
 	}
 
-	private void ToggleTracksViewMode()
+	/// <summary>
+	/// Плагин изменил состояние (вход, папки) — пересобираем подменю,
+	/// чтобы подписи и доступность пунктов не отставали.
+	/// </summary>
+	private void RefreshPluginMenu()
 	{
+		Application.MainLoop.Invoke(() =>
+		{
+			_pluginsMenuBarItem.Children = BuildPluginMenuItems();
+			Application.Top.SetNeedsDisplay();
+		});
+	}
+
+	private MenuItem[] BuildPluginMenuItems()
+	{
+		var items = new List<MenuItem>();
+
+		foreach (PluginMenuGroup group in _menuRegistry.Groups)
+			items.Add(new MenuBarItem(group.DisplayName, BuildPluginEntries(group)));
+
+		// Сломанный плагин остаётся видимым, но недоступным: иначе пропажа
+		// пункта выглядит как «ничего не было», а причина — только в диагностике.
+		foreach (PluginLoadReport report in _pluginReports.Reports.Where(report => !report.IsLoaded))
+			items.Add(new MenuItem($"{report.Name} (ошибка)", "", () => ShowPluginDiagnostics(), () => false));
+
+		if (items.Count > 0)
+			items.Add(null!);
+
+		items.Add(new MenuItem("Диагностика…", "", ShowPluginDiagnostics));
+		return items.ToArray();
+	}
+
+	/// <summary>
+	/// Пункты плагина — вложенное подменю. MenuBar в Terminal.Gui 1.19 раскрывает
+	/// дочерний <see cref="MenuBarItem"/> как подменю, поэтому отдельное окно не нужно.
+	/// </summary>
+	private MenuItem[] BuildPluginEntries(PluginMenuGroup group)
+	{
+		var entries = new List<MenuItem>();
+
+		foreach (PluginMenuEntry entry in group.Menu.GetEntries())
+		{
+			PluginMenuEntry captured = entry;
+			entries.Add(new MenuItem(
+				captured.Title,
+				captured.Shortcut ?? "",
+				() => RunPluginEntry(group, captured),
+				() => captured.IsEnabled));
+		}
+
+		entries.Add(null!);
+		entries.Add(new MenuItem("Настройка", "", () => ConfigurePlugin(group)));
+
+		return entries.ToArray();
+	}
+
+	private void RunPluginEntry(PluginMenuGroup group, PluginMenuEntry entry)
+	{
+		Logging.LogUserAction($"плагин {group.PluginId}: {entry.Title}");
+
+		_ = Task.Run(async () =>
+		{
+			try
+			{
+				await entry.Invoke();
+			}
+			catch (Exception ex)
+			{
+				Serilog.Log.Error(ex, "Действие плагина {PluginId} завершилось ошибкой", group.PluginId);
+			}
+		});
+	}
+
+	private void ConfigurePlugin(PluginMenuGroup group)
+	{
+		Logging.LogUserAction($"настройка плагина {group.PluginId}");
+		_ = ConfigurePluginAsync(group);
+	}
+
+	private async Task ConfigurePluginAsync(PluginMenuGroup group)
+	{
+		try
+		{
+			await group.Plugin.ConfigureAsync(CancellationToken.None);
+		}
+		catch (Exception ex)
+		{
+			Serilog.Log.Error(ex, "Настройка плагина {PluginId} завершилась ошибкой", group.PluginId);
+			Application.MainLoop.Invoke(() =>
+				MessageBox.Query("Плагин", $"Не удалось настроить {group.DisplayName}:\n{ex.Message}", "OK"));
+		}
+	}
+
+	private void ShowPluginDiagnostics()
+	{
+		IReadOnlyList<PluginLoadReport> reports = _pluginReports.Reports;
+		if (reports.Count == 0)
+		{
+			MessageBox.Query("Плагины", "Плагины не загружены", "OK");
+			return;
+		}
+
+		string text = string.Join("\n\n", reports.Select(DescribePlugin));
+
+		MessageBox.Query("Плагины", text, "OK");
+	}
+
+	private static string DescribePlugin(PluginLoadReport report)
+	{
+		var lines = new List<string>
+		{
+			$"{report.Name} ({report.PluginId}) — {DescribePluginStatus(report)}",
+			$"  путь: {report.Path}",
+			$"  версия: {report.Version ?? "—"}",
+			$"  контракт: {report.ContractVersion ?? "—"}"
+		};
+
+		if (!string.IsNullOrWhiteSpace(report.Error))
+			lines.Add($"  ошибка: {report.Error}");
+
+		return string.Join("\n", lines);
+	}
+
+	private static string DescribePluginStatus(PluginLoadReport report) => report.Status switch
+	{
+		PluginLoadStatus.Loaded => "загружен",
+		PluginLoadStatus.Incompatible => "несовместим: " + report.Error,
+		_ => "ошибка: " + report.Error
+	};
+
+	private void ToggleTracksViewMode()	{
 		_tracksView.ToggleView();
 		_tracksViewMenuItem.Title = _tracksView.IsTilesActive
 			? "Вид треков: Плитки"

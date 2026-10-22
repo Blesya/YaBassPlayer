@@ -46,18 +46,20 @@ public sealed class LargeTrackInfoPresenterTests
             _errorHandler.Object);
     }
 
-    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id);
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
+    private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     [Test]
     public void ShowLargeTrackInfo_LoadsPlaylistAndCurrentTrack()
     {
         var tracks = new[] { Track("a"), Track("b") };
         var current = Track("a");
-        _queue.SetupGet(q => q.TrackIds).Returns(tracks.Select(t => t.Id).ToList());
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("a");
-        _trackCatalog.Setup(p => p.GetManyAsync(It.IsAny<IEnumerable<string>>())).ReturnsAsync(tracks);
-        _trackCatalog.Setup(p => p.GetAsync("a")).ReturnsAsync(current);
-        _coverProvider.Setup(p => p.DownloadCoverAsync("a")).ReturnsAsync("/covers/a.png");
+        _queue.SetupGet(q => q.TrackKeys).Returns(tracks.Select(t => t.Key).ToList());
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("a"));
+        _trackCatalog.Setup(p => p.GetManyAsync(It.IsAny<IEnumerable<TrackKey>>())).ReturnsAsync(tracks);
+        _trackCatalog.Setup(p => p.GetAsync(K("a"))).ReturnsAsync(current);
+        _coverProvider.Setup(p => p.DownloadCoverAsync(current)).ReturnsAsync("/covers/a.png");
         _coverArtService
             .Setup(s => s.RenderAsync("/covers/a.png", 100, 55, It.IsAny<CancellationToken>()))
             .ReturnsAsync((CoverArt?)null);
@@ -67,7 +69,7 @@ public sealed class LargeTrackInfoPresenterTests
         Assert.Multiple(() =>
         {
             _view.Verify(v => v.SetPlaylist(It.Is<IReadOnlyList<Track>>(t => t.SequenceEqual(tracks))), Times.Once);
-            _view.Verify(v => v.SetCurrentTrackId("a"), Times.Once);
+            _view.Verify(v => v.SetCurrentTrack(K("a")), Times.Once);
             _view.Verify(v => v.SetTrack(current), Times.Once);
             _view.Verify(v => v.SetCover(null), Times.Once);
             _view.Verify(v => v.Show(), Times.Once);
@@ -77,8 +79,8 @@ public sealed class LargeTrackInfoPresenterTests
     [Test]
     public void ShowLargeTrackInfo_WithEmptyQueue_DoesNotLoadPlaylistButStillShows()
     {
-        _queue.SetupGet(q => q.TrackIds).Returns([]);
-        _queue.SetupGet(q => q.CurrentTrackId).Returns((string?)null);
+        _queue.SetupGet(q => q.TrackKeys).Returns([]);
+        _queue.SetupGet(q => q.CurrentTrack).Returns((TrackKey?)null);
 
         _presenter.ShowLargeTrackInfo();
 
@@ -92,9 +94,9 @@ public sealed class LargeTrackInfoPresenterTests
     [Test]
     public void ShowLargeTrackInfo_WhenTrackInfoFails_ReportsThroughErrorHandler()
     {
-        _queue.SetupGet(q => q.TrackIds).Returns([]);
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("a");
-        _trackCatalog.Setup(p => p.GetAsync("a"))
+        _queue.SetupGet(q => q.TrackKeys).Returns([]);
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("a"));
+        _trackCatalog.Setup(p => p.GetAsync(K("a")))
             .ThrowsAsync(new InvalidOperationException("boom"));
 
         _presenter.ShowLargeTrackInfo();

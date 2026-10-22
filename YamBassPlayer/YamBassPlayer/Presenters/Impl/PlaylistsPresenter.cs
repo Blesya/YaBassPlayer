@@ -15,6 +15,9 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 	private Playlist? _currentPlaylist;
 
+	/// <summary>Плейлист из снимка, который ещё не найден в дереве (например, «Загруженные»).</summary>
+	private Playlist? _restoredLastPlaylist;
+
 	public event Action<Playlist>? PlaylistChosen;
 
 	public PlaylistsPresenter(
@@ -45,7 +48,14 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 			if (persisted is { Playlists.Count: > 0 })
 			{
 				Log.Information("Плейлисты восстановлены из снимка: {Count}", persisted.Playlists.Count);
-				await ApplyPlaylistsAsync(persisted.Playlists, persisted.LastPlaylist, ct);
+				_restoredLastPlaylist = persisted.LastPlaylist;
+				// Если прошлый плейлист ещё недоступен (например, источник ждёт входа),
+				// не подменяем его первым попавшимся: дождёмся фонового обновления.
+				await ApplyPlaylistsAsync(
+					persisted.Playlists,
+					persisted.LastPlaylist,
+					ct,
+					selectIfNotFound: persisted.LastPlaylist is null);
 
 				// 2. В фоне актуализируем состав и перерисовываем дерево.
 				_ = RefreshAsync(ct);
@@ -84,7 +94,10 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 			Log.Information("Дерево плейлистов обновлено из источников: {Count}", playlists.Count);
 
 			// Если выбран временный плейлист (поиск/очередь) — не навязываем первый из дерева.
-			await ApplyPlaylistsAsync(playlists, _currentPlaylist, ct, selectIfNotFound: _currentPlaylist is null);
+			// Пока прошлый плейлист не найден (источник ждёт входа), тоже не подменяем его.
+			var preferred = _restoredLastPlaylist ?? _currentPlaylist;
+			bool selectIfNotFound = _restoredLastPlaylist is null && _currentPlaylist is null;
+			await ApplyPlaylistsAsync(playlists, preferred, ct, selectIfNotFound: selectIfNotFound);
 			Logging.LogAfterCall();
 		}
 		catch (Exception ex)
@@ -108,6 +121,8 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 		_view.SetPlaylistTree(roots);
 
 		var selected = preferred is not null ? FindPlaylist(roots, preferred) : null;
+		if (selected is not null && preferred is not null)
+			_restoredLastPlaylist = null;
 		if (selected is null && selectIfNotFound)
 			selected = FindFirstSelectablePlaylist(roots);
 
@@ -123,9 +138,7 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 	{
 		foreach (var item in items)
 		{
-			if (item.Playlist is not null
-				&& item.Playlist.Type == target.Type
-				&& item.Playlist.PlaylistName == target.PlaylistName)
+			if (item.Playlist is not null && item.Playlist.HasSameIdentity(target))
 			{
 				return item.Playlist;
 			}
@@ -167,7 +180,7 @@ public class PlaylistsPresenter : IPlaylistsPresenter
 
 	private void OnPlaylistSelected(Playlist playlist)
 	{
-		Logging.LogUserAction($"выбран плейлист «{playlist.PlaylistName}» ({playlist.Type})");
+		Logging.LogUserAction($"выбран плейлист «{playlist.Title}» ({playlist.Kind})");
 		_currentPlaylist = playlist;
 		_view.MarkAsPlaying(playlist);
 		PlaylistChosen?.Invoke(playlist);

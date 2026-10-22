@@ -15,19 +15,19 @@ public sealed class TrackListModel : ITrackListModel
 	public event Action? Changed;
 
 	public IReadOnlyList<TrackListItem> Items => _items;
-	public string? PlayingTrackId { get; private set; }
+	public TrackKey? PlayingTrack { get; private set; }
 	public int SelectedIndex { get; private set; }
 	public int ScrollOffset { get; private set; }
 	public bool IsLoadingMore { get; private set; }
 
-	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 	{
 		_allItems.Clear();
 		int number = 0;
 		foreach (Track track in tracks)
 		{
 			number++;
-			_allItems.Add(new TrackListItem(track, number.ToString(), CachedState(isCached(track.Id))));
+			_allItems.Add(new TrackListItem(track, number.ToString(), CachedState(isCached(track))));
 		}
 
 		ApplyFilter();
@@ -37,13 +37,13 @@ public sealed class TrackListModel : ITrackListModel
 		Changed?.Invoke();
 	}
 
-	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 	{
 		int number = _allItems.Count;
 		foreach (Track track in tracks)
 		{
 			number++;
-			_allItems.Add(new TrackListItem(track, number.ToString(), CachedState(isCached(track.Id))));
+			_allItems.Add(new TrackListItem(track, number.ToString(), CachedState(isCached(track))));
 		}
 
 		ApplyFilter();
@@ -69,15 +69,15 @@ public sealed class TrackListModel : ITrackListModel
 		Changed?.Invoke();
 	}
 
-	public void SetPlayingTrackId(string? trackId)
+	public void SetPlayingTrack(TrackKey? key)
 	{
-		PlayingTrackId = trackId;
+		PlayingTrack = key;
 		Changed?.Invoke();
 	}
 
-	public void SetDownloadState(string trackId, TrackDownloadState state)
+	public void SetDownloadState(TrackKey key, TrackDownloadState state)
 	{
-		if (!ApplyDownloadState(_allItems, trackId, state))
+		if (!ApplyDownloadState(_allItems, key, state))
 			return;
 
 		// Фильтр и порядок не меняются — список пересобирается из тех же элементов.
@@ -88,12 +88,12 @@ public sealed class TrackListModel : ITrackListModel
 	private static TrackDownloadState CachedState(bool isCached)
 		=> isCached ? TrackDownloadState.Cached : TrackDownloadState.Idle;
 
-	private static bool ApplyDownloadState(List<TrackListItem> items, string trackId, TrackDownloadState state)
+	private static bool ApplyDownloadState(List<TrackListItem> items, TrackKey key, TrackDownloadState state)
 	{
 		bool changed = false;
 		for (int i = 0; i < items.Count; i++)
 		{
-			if (!string.Equals(items[i].Track.Id, trackId, StringComparison.Ordinal)
+			if (items[i].Track.Key != key
 				|| items[i].Download == state)
 			{
 				continue;
@@ -141,12 +141,12 @@ public sealed class TrackListModel : ITrackListModel
 
 	public bool Select(int index) => MoveSelectionTo(index);
 
-	public bool SelectByTrackId(string trackId)
+	public bool SelectByTrack(TrackKey key)
 	{
 		int index = -1;
 		for (int i = 0; i < _items.Count; i++)
 		{
-			if (string.Equals(_items[i].Track.Id, trackId, StringComparison.Ordinal))
+			if (_items[i].Track.Key == key)
 			{
 				index = i;
 				break;

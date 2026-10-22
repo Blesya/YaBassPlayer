@@ -8,12 +8,12 @@ public interface IMyWavePresenter
 	Task<Playlist?> StartMyWaveAsync();
 
 	/// <summary>Запускает "Мою волну" по текущему играющему треку.</summary>
-	Task<Playlist?> StartMyWaveFromTrackAsync(string trackId);
+	Task<Playlist?> StartMyWaveFromTrackAsync(TrackKey key);
 
 	/// <summary>Догружает следующий батч треков и добавляет их в очередь.</summary>
 	Task FetchMoreTracksAsync();
 
-	Task NotifyTrackStartedAsync(string trackId);
-	Task NotifyTrackFinishedAsync(string trackId, double totalPlayedSeconds = 0);
-	Task NotifyTrackSkippedAsync(string trackId, double totalPlayedSeconds = 0);
+	Task NotifyTrackStartedAsync(TrackKey key);
+	Task NotifyTrackFinishedAsync(TrackKey key, double totalPlayedSeconds = 0);
+	Task NotifyTrackSkippedAsync(TrackKey key, double totalPlayedSeconds = 0);
 }

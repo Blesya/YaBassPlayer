@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <!-- Плагин грузится из plugins/<id>/: нужен deps.json и свои зависимости рядом. -->
+        <EnableDynamicLoading>true</EnableDynamicLoading>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Net.Codecrete.QrCodeGenerator" Version="3.2.1" />
+        <PackageReference Include="Serilog" Version="4.3.1" />
+        <PackageReference Include="Terminal.Gui" Version="1.19.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Контракты общие с хостом: их копии в папке плагина быть не должно. -->
+        <ProjectReference Include="..\..\YamBassPlayer.Contracts\YamBassPlayer.Contracts.csproj">
+            <Private>false</Private>
+            <ExcludeAssets>runtime</ExcludeAssets>
+        </ProjectReference>
+        <ProjectReference Include="..\..\YamBassPlayer.Contracts.Ui\YamBassPlayer.Contracts.Ui.csproj">
+            <Private>false</Private>
+            <ExcludeAssets>runtime</ExcludeAssets>
+        </ProjectReference>
+        <ProjectReference Include="..\YamBassPlayer.Plugins.YandexMusic.Api\YamBassPlayer.Plugins.YandexMusic.Api.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <Target Name="CopyPluginToHost" AfterTargets="Build">
+        <PropertyGroup>
+            <HostPluginsDirectory>$(MSBuildThisFileDirectory)..\..\YamBassPlayer\bin\$(Configuration)\$(TargetFramework)\plugins\yandex-music</HostPluginsDirectory>
+        </PropertyGroup>
+        <ItemGroup>
+            <PluginOutput Include="$(TargetDir)**\*.*"
+                          Exclude="$(TargetDir)Terminal.Gui.dll;$(TargetDir)Terminal.Gui.pdb;$(TargetDir)NStack.dll;$(TargetDir)NStack.pdb;$(TargetDir)Serilog.dll;$(TargetDir)Serilog.pdb" />
+        </ItemGroup>
+        <Copy SourceFiles="@(PluginOutput)"
+              DestinationFiles="@(PluginOutput->'$(HostPluginsDirectory)\%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+    </Target>
+</Project>

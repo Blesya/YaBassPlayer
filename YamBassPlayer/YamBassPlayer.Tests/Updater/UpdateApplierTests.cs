@@ -83,6 +83,57 @@ public sealed class UpdateApplierTests
         Assert.That(Directory.Exists(Path.Combine(_target, "bass.dll")), Is.True);
     }
 
+    [Test]
+    public void Apply_PluginFiles_KeepRelativeLayout()
+    {
+        string pluginDirectory = Path.Combine(_staging, "plugins", "yandex-music");
+        Directory.CreateDirectory(pluginDirectory);
+        Write(pluginDirectory, "plugin.dll", "new-plugin");
+
+        Directory.CreateDirectory(Path.Combine(_target, "plugins", "yandex-music"));
+        Write(Path.Combine(_target, "plugins", "yandex-music"), "plugin.dll", "old-plugin");
+
+        UpdateApplyResult result = UpdateApplier.Apply(
+            Payload(Path.Combine("plugins", "yandex-music", "plugin.dll")),
+            _target,
+            _backup,
+            _staging);
+
+        Assert.That(result.Replaced, Is.EqualTo(1));
+        Assert.That(Read(Path.Combine(_target, "plugins", "yandex-music"), "plugin.dll"), Is.EqualTo("new-plugin"));
+        Assert.That(Read(Path.Combine(_backup, "plugins", "yandex-music"), "plugin.dll"), Is.EqualTo("old-plugin"));
+    }
+
+    [Test]
+    public void Apply_PluginUpdate_RemovesObsoleteFiles()
+    {
+        string stagingPlugin = Path.Combine(_staging, "plugins", "yandex-music");
+        Directory.CreateDirectory(stagingPlugin);
+        Write(stagingPlugin, "new.dll", "new");
+
+        string targetPlugin = Path.Combine(_target, "plugins", "yandex-music");
+        Directory.CreateDirectory(targetPlugin);
+        Write(targetPlugin, "old.dll", "old");
+        Write(targetPlugin, "plugin.json", "{}");
+
+        UpdateApplyResult result = UpdateApplier.Apply(
+            Payload(Path.Combine("plugins", "yandex-music", "new.dll")),
+            _target,
+            _backup,
+            _staging);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Added, Is.EqualTo(1));
+            Assert.That(File.Exists(Path.Combine(targetPlugin, "old.dll")), Is.False);
+            Assert.That(File.Exists(Path.Combine(targetPlugin, "plugin.json")), Is.False);
+            Assert.That(Read(targetPlugin, "new.dll"), Is.EqualTo("new"));
+            Assert.That(
+                Read(Path.Combine(_backup, "plugins", "yandex-music"), "old.dll"),
+                Is.EqualTo("old"));
+        });
+    }
+
     private List<string> Payload(params string[] names)
         => names.Select(name => Path.Combine(_staging, name)).ToList();
 

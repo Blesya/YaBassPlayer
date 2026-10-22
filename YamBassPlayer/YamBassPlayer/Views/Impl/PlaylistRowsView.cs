@@ -7,14 +7,14 @@ public sealed class PlaylistRowsView : View
 {
 	private const int CardHeight = 3;
 
-	private readonly record struct CardData(string DisplayNumber, string Artist, string Title, string Album, string TrackId);
+	private readonly record struct CardData(string DisplayNumber, string Artist, string Title, string Album, TrackKey Key);
 
 	private readonly List<CardData> _cards = [];
-	private string? _currentTrackId;
+	private TrackKey? _currentTrack;
 	private int _selectedIndex;
 	private int _scrollOffset;
 
-	public Action<string>? OnTrackActivated;
+	public Action<TrackKey>? OnTrackActivated;
 
 	public PlaylistRowsView()
 	{
@@ -27,7 +27,7 @@ public sealed class PlaylistRowsView : View
 		for (int i = 0; i < tracks.Count; i++)
 		{
 			Track t = tracks[i];
-			_cards.Add(new CardData((i + 1).ToString(), t.Artist, t.Title, t.Album, t.Id));
+			_cards.Add(new CardData((i + 1).ToString(), t.Artist, t.Title, t.Album, t.Key));
 		}
 
 		_selectedIndex = 0;
@@ -36,19 +36,19 @@ public sealed class PlaylistRowsView : View
 		SetNeedsDisplay();
 	}
 
-	public void SetCurrentTrackId(string? trackId)
+	public void SetCurrentTrack(TrackKey? key)
 	{
-		_currentTrackId = trackId;
+		_currentTrack = key;
 		ScrollToCurrentTrack();
 		SetNeedsDisplay();
 	}
 
 	private void ScrollToCurrentTrack()
 	{
-		if (_currentTrackId == null || _cards.Count == 0)
+		if (_currentTrack is null || _cards.Count == 0)
 			return;
 
-		int idx = _cards.FindIndex(c => c.TrackId == _currentTrackId);
+		int idx = _cards.FindIndex(c => c.Key == _currentTrack);
 		if (idx < 0)
 			return;
 
@@ -92,7 +92,7 @@ public sealed class PlaylistRowsView : View
 				return true;
 
 			case Key.Enter:
-				OnTrackActivated?.Invoke(_cards[_selectedIndex].TrackId);
+				OnTrackActivated?.Invoke(_cards[_selectedIndex].Key);
 				return true;
 
 			default:
@@ -135,7 +135,7 @@ public sealed class PlaylistRowsView : View
 				_selectedIndex = row;
 				EnsureSelectedVisible();
 				SetNeedsDisplay();
-				OnTrackActivated?.Invoke(_cards[_selectedIndex].TrackId);
+				OnTrackActivated?.Invoke(_cards[_selectedIndex].Key);
 			}
 			return true;
 		}
@@ -186,7 +186,7 @@ public sealed class PlaylistRowsView : View
 				break;
 
 			int y = row * CardHeight;
-			DrawCard(0, y, _cards[idx], idx == _selectedIndex, _cards[idx].TrackId == _currentTrackId, bounds);
+			DrawCard(0, y, _cards[idx], idx == _selectedIndex, _cards[idx].Key == _currentTrack, bounds);
 		}
 	}
 

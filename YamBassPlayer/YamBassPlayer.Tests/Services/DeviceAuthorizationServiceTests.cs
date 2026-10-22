@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Moq;
+using YamBassPlayer.Plugins;
 using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
@@ -137,8 +138,8 @@ public sealed class DeviceAuthorizationServiceTests
 
     private static DeviceAuthorizationService CreateService(HttpMessageHandler handler)
     {
-        var configuration = new Mock<IAppConfiguration>();
-        configuration.Setup(c => c.GetOrCreateDeviceId()).Returns("device-1");
+        var configuration = new Mock<IPluginSettings>();
+        configuration.Setup(c => c.Get("deviceId")).Returns("device-1");
         return new DeviceAuthorizationService(configuration.Object, handler);
     }
 

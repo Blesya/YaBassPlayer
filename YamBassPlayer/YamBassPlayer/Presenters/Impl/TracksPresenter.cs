@@ -1,4 +1,4 @@
-﻿using YamBassPlayer.Extensions;
+using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Events;
@@ -19,7 +19,7 @@ public class TracksPresenter : ITracksPresenter
 	private List<Track> _tracks = new();
 
 	/// <summary>Трек, выделенный пользователем: переживает перезагрузку списка.</summary>
-	private string? _selectedTrackId;
+	private TrackKey? _selectedTrack;
 
 	private const int TracksPerBatch = 100;
 
@@ -39,7 +39,7 @@ public class TracksPresenter : ITracksPresenter
 		_view.OnTrackSelected += OnTrackSelected;
 		_view.NeedMoreTracks += () => OnNeedMoreTracks().Forget();
 		_view.OnCellActivated += ViewOnTrackSelected;
-		_onTrackChangedHandler = e => OnPlayingTrackChanged(e.TrackId);
+		_onTrackChangedHandler = e => OnPlayingTrackChanged(e.Key);
 		_eventBus.Subscribe(_onTrackChangedHandler);
 
 		_downloadTracker.Changed += OnDownloadChanged;
@@ -64,7 +64,7 @@ public class TracksPresenter : ITracksPresenter
 			RestoreSelection();
 		}
 
-		_view.SetPlayingTrackId(_playbackQueue.CurrentTrackId);
+		_view.SetPlayingTrack(_playbackQueue.CurrentTrack);
 		ReplayActiveDownloads();
 		Logging.LogAfterCall();
 	}
@@ -73,8 +73,8 @@ public class TracksPresenter : ITracksPresenter
 	/// Состояние загрузки приходит из потока скачивания; в UI-поток его переводит
 	/// сама вьюха. Ошибки загрузки видны в строке трека, пока трек не перезагрузят.
 	/// </summary>
-	private void OnDownloadChanged(string trackId, TrackDownloadState state)
-		=> _view.SetDownloadState(trackId, state);
+	private void OnDownloadChanged(TrackKey key, TrackDownloadState state)
+		=> _view.SetDownloadState(key, state);
 
 	/// <summary>
 	/// Список могли пересобрать прямо во время загрузки — досылаем активные состояния,
@@ -82,8 +82,8 @@ public class TracksPresenter : ITracksPresenter
 	/// </summary>
 	private void ReplayActiveDownloads()
 	{
-		foreach ((string trackId, TrackDownloadState state) in _downloadTracker.GetActive())
-			_view.SetDownloadState(trackId, state);
+		foreach ((TrackKey key, TrackDownloadState state) in _downloadTracker.GetActive())
+			_view.SetDownloadState(key, state);
 	}
 
 	private void ViewOnTrackSelected(int trackNumber)
@@ -92,15 +92,15 @@ public class TracksPresenter : ITracksPresenter
 		if (trackNumber < 0 || trackNumber >= allTrackIds.Count)
 			return;
 
-		_selectedTrackId = allTrackIds[trackNumber];
+		_selectedTrack = allTrackIds[trackNumber];
 		Logging.LogUserAction($"воспроизведение трека №{trackNumber + 1} из списка");
 		_playbackQueue.SetQueue(allTrackIds, trackNumber);
 	}
 
-	private void OnPlayingTrackChanged(string trackId)
+	private void OnPlayingTrackChanged(TrackKey key)
 	{
-		_trackRepository.SetLastPlayedTrack(trackId);
-		_view.SetPlayingTrackId(trackId);
+		_trackRepository.SetLastPlayedTrack(key);
+		_view.SetPlayingTrack(key);
 	}
 
 	/// <summary>
@@ -110,9 +110,20 @@ public class TracksPresenter : ITracksPresenter
 	/// </summary>
 	private void RestoreSelection()
 	{
-		string? trackId = _selectedTrackId ?? _trackRepository.GetPersistedSnapshot()?.LastTrackId;
-		if (!string.IsNullOrWhiteSpace(trackId))
-			_view.SelectTrack(trackId);
+		if (_selectedTrack is { } selected)
+		{
+			_view.SelectTrack(selected);
+			return;
+		}
+
+		// Снимок хранит ключ трека; восстанавливаем выделение по уже загруженному списку.
+		TrackKey? lastTrack = _trackRepository.GetPersistedSnapshot()?.LastTrack;
+		if (lastTrack is null)
+			return;
+
+		Track? track = _tracks.FirstOrDefault(t => t.Key == lastTrack.Value);
+		if (track is not null)
+			_view.SelectTrack(track.Key);
 	}
 
 	private void OnTrackSelected(int index)
@@ -122,7 +133,7 @@ public class TracksPresenter : ITracksPresenter
 			return;
 		}
 
-		_selectedTrackId = _tracks[index].Id;
+		_selectedTrack = _tracks[index].Key;
 		OnTrackChosen?.Invoke(_tracks[index]);
 	}
 

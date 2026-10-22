@@ -79,30 +79,30 @@ public sealed class TracksViewHost : View, ITracksView
 	public void FocusActive()
 		=> ((View)(_useTiles ? _tiles : _table)).SetFocus();
 
-	public void SetTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 		=> Application.MainLoop.Invoke(() => _model.SetTracks(tracks, isCached));
 
-	public void AddTracks(IEnumerable<Track> tracks, Func<string, bool> isCached)
+	public void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 		=> Application.MainLoop.Invoke(() => _model.AddTracks(tracks, isCached));
 
 	public void ClearTracks()
 		=> Application.MainLoop.Invoke(_model.Clear);
 
-	public void SetPlayingTrackId(string? trackId)
-		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrackId(trackId));
+	public void SetPlayingTrack(TrackKey? key)
+		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrack(key));
 
-	public void SelectTrack(string trackId)
+	public void SelectTrack(TrackKey key)
 		=> Application.MainLoop.Invoke(() =>
 		{
 			if (_useTiles)
-				_tiles.SelectTrack(trackId);
+				_tiles.SelectTrack(key);
 			else
-				_table.SelectTrack(trackId);
+				_table.SelectTrack(key);
 		});
 
 	public void SetFilter(string? filter)
 		=> _model.SetFilter(filter);
 
-	public void SetDownloadState(string trackId, TrackDownloadState state)
-		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(trackId, state));
+	public void SetDownloadState(TrackKey key, TrackDownloadState state)
+		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(key, state));
 }

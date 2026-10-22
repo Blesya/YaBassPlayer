@@ -136,6 +136,36 @@ public sealed class SqliteSchemaHelperTests
             SqliteSchemaHelper.EnsureTableIndex(_connection, "idx_test_name", "test_table", "name"));
     }
 
+    // ── HasUniqueIndex ────────────────────────────────────────────────────
+
+    [Test]
+    public void HasUniqueIndex_DetectsCompositeKey()
+    {
+        using var createCmd = _connection.CreateCommand();
+        createCmd.CommandText = "CREATE TABLE Tracks (SourceType TEXT, TrackId TEXT, UNIQUE(SourceType, TrackId));";
+        createCmd.ExecuteNonQuery();
+
+        Assert.That(
+            SqliteSchemaHelper.HasUniqueIndex(_connection, "Tracks", "SourceType", "TrackId"),
+            Is.True);
+    }
+
+    [Test]
+    public void HasUniqueIndex_IgnoresSingleColumnIndex()
+    {
+        using var createCmd = _connection.CreateCommand();
+        createCmd.CommandText = "CREATE TABLE Tracks (SourceType TEXT, TrackId TEXT UNIQUE);";
+        createCmd.ExecuteNonQuery();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                SqliteSchemaHelper.HasUniqueIndex(_connection, "Tracks", "SourceType", "TrackId"),
+                Is.False);
+            Assert.That(SqliteSchemaHelper.HasUniqueIndex(_connection, "Tracks", "TrackId"), Is.True);
+        });
+    }
+
     // ── BackfillTrackCoverMetadataColumns ─────────────────────────────────
 
     [Test]

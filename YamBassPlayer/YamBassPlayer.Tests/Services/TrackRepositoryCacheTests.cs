@@ -1,12 +1,19 @@
 namespace YamBassPlayer.Tests.Services;
 
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 
 [TestFixture]
 public sealed class TrackRepositoryCacheTests
 {
-    private static Track MakeTrack(string id) => new("Title", "Artist", "Album", id);
+    private static readonly SourceId Yandex = YandexMusicSourceId.Value;
+
+    private static Track MakeTrack(string id, SourceId? source = null)
+        => new("Title", "Artist", "Album", id) { SourceId = source ?? Yandex };
+
+    private static TrackKey K(string id, SourceId? source = null)
+        => new(source ?? Yandex, id);
 
     // ──────────────── Initial state ────────────────
 
@@ -17,140 +24,60 @@ public sealed class TrackRepositoryCacheTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(cache.FavoriteTrackIds, Is.Empty);
-            Assert.That(cache.LocalSearchTrackIds, Is.Empty);
-            Assert.That(cache.YandexSearchTrackIds, Is.Empty);
             Assert.That(cache.QueueTrackIds, Is.Empty);
             Assert.That(cache.MyWaveTracks, Is.Empty);
+            Assert.That(cache.TryGetSearchTrackIds(Yandex, out var yandexKeys), Is.False);
+            Assert.That(yandexKeys, Is.Empty);
+            Assert.That(cache.TryGetSearchTrackIds(LocalMusicSource.Id, out var localKeys), Is.False);
+            Assert.That(localKeys, Is.Empty);
         });
     }
 
-    // ──────────────── ReplaceFavoriteTrackIds ────────────────
+    // ──────────────── Search cache ────────────────
 
     [Test]
-    public void ReplaceFavoriteTrackIds_ReplacesContent()
-    {
-        var cache = new TrackRepositoryCache();
-        cache.ReplaceFavoriteTrackIds(new[] { "a", "b", "c" });
-
-        Assert.That(cache.FavoriteTrackIds, Is.EqualTo(new[] { "a", "b", "c" }));
-
-        cache.ReplaceFavoriteTrackIds(new[] { "x", "y" });
-        Assert.That(cache.FavoriteTrackIds, Is.EqualTo(new[] { "x", "y" }));
-    }
-
-    // ──────────────── InsertFavoriteTrackId ────────────────
-
-    [Test]
-    public void InsertFavoriteTrackId_InsertsAtBeginning()
-    {
-        var cache = new TrackRepositoryCache();
-        cache.ReplaceFavoriteTrackIds(new[] { "b", "c" });
-        cache.InsertFavoriteTrackId("a");
-
-        Assert.That(cache.FavoriteTrackIds, Is.EqualTo(new[] { "a", "b", "c" }));
-    }
-
-    [Test]
-    public void InsertFavoriteTrackId_DoesNotInsertDuplicate()
-    {
-        var cache = new TrackRepositoryCache();
-        cache.ReplaceFavoriteTrackIds(new[] { "a", "b" });
-        cache.InsertFavoriteTrackId("a");
-
-        Assert.That(cache.FavoriteTrackIds, Is.EqualTo(new[] { "a", "b" }));
-    }
-
-    // ──────────────── RemoveFavoriteTrackId ────────────────
-
-    [Test]
-    public void RemoveFavoriteTrackId_RemovesExistingItem()
-    {
-        var cache = new TrackRepositoryCache();
-        cache.ReplaceFavoriteTrackIds(new[] { "a", "b", "c" });
-        cache.RemoveFavoriteTrackId("b");
-
-        Assert.That(cache.FavoriteTrackIds, Is.EqualTo(new[] { "a", "c" }));
-    }
-
-    [Test]
-    public void RemoveFavoriteTrackId_NoOp_ForMissingItem()
-    {
-        var cache = new TrackRepositoryCache();
-        cache.ReplaceFavoriteTrackIds(new[] { "a", "b" });
-
-        Assert.DoesNotThrow(() => cache.RemoveFavoriteTrackId("nonexistent"));
-        Assert.That(cache.FavoriteTrackIds, Is.EqualTo(new[] { "a", "b" }));
-    }
-
-    // ──────────────── Custom playlist cache ────────────────
-
-    [Test]
-    public void TryGetCustomPlaylistIds_ReturnsFalse_Initially()
-    {
-        var cache = new TrackRepositoryCache();
-
-        var found = cache.TryGetCustomPlaylistIds("my-list", out var ids);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(found, Is.False);
-            Assert.That(ids, Is.Null);
-        });
-    }
-
-    [Test]
-    public void SetAndTryGetCustomPlaylistIds_ReturnsTrue_AfterSetting()
-    {
-        var cache = new TrackRepositoryCache();
-        var trackIds = new List<string> { "t1", "t2", "t3" };
-
-        cache.SetCustomPlaylistIds("my-list", trackIds);
-        var found = cache.TryGetCustomPlaylistIds("my-list", out var retrieved);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(found, Is.True);
-            Assert.That(retrieved, Is.SameAs(trackIds));
-        });
-    }
-
-    // ──────────────── ReplaceLocalSearchTracks ────────────────
-
-    [Test]
-    public void ReplaceLocalSearchTracks_StoresTrackIds()
-    {
-        var cache = new TrackRepositoryCache();
-        var tracks = new[] { MakeTrack("t1"), MakeTrack("t2") };
-
-        cache.ReplaceLocalSearchTracks(tracks);
-
-        Assert.That(cache.LocalSearchTrackIds, Is.EqualTo(new[] { "t1", "t2" }));
-    }
-
-    // ──────────────── ReplaceYandexSearchTracks ────────────────
-
-    [Test]
-    public void ReplaceYandexSearchTracks_StoresTrackIds()
+    public void ReplaceSearchTracks_StoresKeysPerSource()
     {
         var cache = new TrackRepositoryCache();
         var tracks = new[] { MakeTrack("y1"), MakeTrack("y2") };
 
-        cache.ReplaceYandexSearchTracks(tracks);
+        cache.ReplaceSearchTracks(Yandex, tracks);
 
-        Assert.That(cache.YandexSearchTrackIds, Is.EqualTo(new[] { "y1", "y2" }));
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.TryGetSearchTrackIds(Yandex, out var keys), Is.True);
+            Assert.That(keys, Is.EqualTo(new[] { K("y1"), K("y2") }));
+            Assert.That(cache.TryGetSearchTrackIds(LocalMusicSource.Id, out _), Is.False);
+        });
+    }
+
+    [Test]
+    public void ReplaceSearchTracks_KeepsSourcesIndependent()
+    {
+        var cache = new TrackRepositoryCache();
+
+        cache.ReplaceSearchTracks(Yandex, new[] { MakeTrack("y1") });
+        cache.ReplaceSearchTracks(LocalMusicSource.Id, new[] { MakeTrack("/music/l1", LocalMusicSource.Id) });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.TryGetSearchTrackIds(Yandex, out var yandexKeys), Is.True);
+            Assert.That(yandexKeys, Is.EqualTo(new[] { K("y1") }));
+            Assert.That(cache.TryGetSearchTrackIds(LocalMusicSource.Id, out var localKeys), Is.True);
+            Assert.That(localKeys, Is.EqualTo(new[] { K("/music/l1", LocalMusicSource.Id) }));
+        });
     }
 
     // ──────────────── ReplaceQueueTrackIds ────────────────
 
     [Test]
-    public void ReplaceQueueTrackIds_StoresTrackIds()
+    public void ReplaceQueueTrackIds_StoresTrackKeys()
     {
         var cache = new TrackRepositoryCache();
 
-        cache.ReplaceQueueTrackIds(new[] { "q1", "q2" });
+        cache.ReplaceQueueTrackIds(new[] { K("q1"), K("q2") });
 
-        Assert.That(cache.QueueTrackIds, Is.EqualTo(new[] { "q1", "q2" }));
+        Assert.That(cache.QueueTrackIds, Is.EqualTo(new[] { K("q1"), K("q2") }));
     }
 
     // ──────────────── ReplaceMyWaveTracks ────────────────

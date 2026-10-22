@@ -205,33 +205,36 @@ public sealed class PlaylistTreeComposerTests
     {
         // Arrange
         // Data category with null SourceId → appended
-        var dataRootPlaylist = new Playlist("DataRoot", PlaylistType.Favorite)
+        var dataRootPlaylist = new Playlist("favorite", "DataRoot")
         {
             SourceId = null
         };
 
         // Entity category → not appended (even with null SourceId)
-        var entityPlaylist = new Playlist("EntityRoot", PlaylistType.Artist)
+        var entityPlaylist = new Playlist("artist", "EntityRoot")
         {
-            SourceId = null
+            SourceId = null,
+            Category = PlaylistCategory.Entity
         };
 
         // Computed category → appended (regardless of SourceId)
-        var computedPlaylistWithSource = new Playlist("ComputedWithSource", PlaylistType.Top10)
+        var computedPlaylistWithSource = new Playlist("top10", "ComputedWithSource")
         {
-            SourceId = "someSource"
+            SourceId = new SourceId("somesource"),
+            Category = PlaylistCategory.Computed
         };
 
         // Computed category with null SourceId → also appended
-        var computedPlaylistNullSource = new Playlist("ComputedNullSource", PlaylistType.Cached)
+        var computedPlaylistNullSource = new Playlist("cached", "ComputedNullSource")
         {
-            SourceId = null
+            SourceId = null,
+            Category = PlaylistCategory.Computed
         };
 
         // Data category with non-null SourceId → not appended
-        var dataWithSourcePlaylist = new Playlist("DataWithSource", PlaylistType.Custom)
+        var dataWithSourcePlaylist = new Playlist("personal", "DataWithSource")
         {
-            SourceId = "yandex"
+            SourceId = new SourceId("yandex")
         };
 
         var playlists = new List<Playlist>
@@ -255,12 +258,12 @@ public sealed class PlaylistTreeComposerTests
         var result = await composer.ComposeAsync(playlists);
 
         // Assert - only the "root" playlists should be appended
-        Assert.That(result, Has.Count.EqualTo(3));
+        Assert.That(result, Has.Count.EqualTo(2));
 
-        var rootItems = result.Select(i => i.Playlist!.PlaylistName).ToList();
+        var rootItems = result.Select(i => i.Playlist!.Title).ToList();
         Assert.That(rootItems, Does.Contain("DataRoot"));
-        Assert.That(rootItems, Does.Contain("ComputedWithSource"));
         Assert.That(rootItems, Does.Contain("ComputedNullSource"));
+        Assert.That(rootItems, Does.Not.Contain("ComputedWithSource"));
         Assert.That(rootItems, Does.Not.Contain("EntityRoot"));
         Assert.That(rootItems, Does.Not.Contain("DataWithSource"));
     }

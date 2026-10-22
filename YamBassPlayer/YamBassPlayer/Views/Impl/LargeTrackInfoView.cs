@@ -13,7 +13,7 @@ public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 
 	public Action? OnClose { get; set; }
 
-	public Action<string>? OnTrackActivated
+	public Action<TrackKey>? OnTrackActivated
 	{
 		get => _playlistPanel.OnTrackActivated;
 		set => _playlistPanel.OnTrackActivated = value;
@@ -113,9 +113,9 @@ public sealed class LargeTrackInfoView : Window, ILargeTrackInfoView
 		Application.MainLoop.Invoke(() => _playlistPanel.SetTracks(tracks));
 	}
 
-	public void SetCurrentTrackId(string? trackId)
+	public void SetCurrentTrack(TrackKey? key)
 	{
-		Application.MainLoop.Invoke(() => _playlistPanel.SetCurrentTrackId(trackId));
+		Application.MainLoop.Invoke(() => _playlistPanel.SetCurrentTrack(key));
 	}
 
 	public void Show()

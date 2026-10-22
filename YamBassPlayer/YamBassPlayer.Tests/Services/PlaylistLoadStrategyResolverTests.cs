@@ -1,76 +1,91 @@
 namespace YamBassPlayer.Tests.Services;
 
 using Moq;
-using YamBassPlayer.Enums;
 using YamBassPlayer.Services;
 using YamBassPlayer.Services.Impl;
 
 [TestFixture]
 public sealed class PlaylistLoadStrategyResolverTests
 {
-    private static Mock<IPlaylistLoadStrategy> CreateStrategyMock(
-        string name, params PlaylistType[] handledTypes)
+    private static IPlaylistLoadStrategy CreateStrategy(string kind)
     {
         var mock = new Mock<IPlaylistLoadStrategy>();
-        mock.Setup(s => s.CanHandle(It.IsAny<PlaylistType>()))
-            .Returns<PlaylistType>(t => handledTypes.Contains(t));
-        return mock;
+        mock.SetupGet(s => s.Kind).Returns(kind);
+        return mock.Object;
     }
 
-    // ──────────────── Maps type to correct strategy ────────────────
-
     [Test]
-    public void Resolve_ReturnsCorrectStrategy_ForHandledPlaylistType()
+    public void Resolve_ReturnsCorrectStrategy_ForHandledKind()
     {
-        var favoriteStrategy = CreateStrategyMock("favorite", PlaylistType.Favorite).Object;
-        var searchStrategy = CreateStrategyMock("search", PlaylistType.YandexSearch).Object;
+        var top10 = CreateStrategy("top10");
+        var cached = CreateStrategy("cached");
 
-        var resolver = new PlaylistLoadStrategyResolver(new[] { favoriteStrategy, searchStrategy });
+        var resolver = new PlaylistLoadStrategyResolver(new[] { top10, cached });
 
         Assert.Multiple(() =>
         {
-            Assert.That(resolver.Resolve(PlaylistType.Favorite), Is.SameAs(favoriteStrategy));
-            Assert.That(resolver.Resolve(PlaylistType.YandexSearch), Is.SameAs(searchStrategy));
+            Assert.That(resolver.Resolve("top10"), Is.SameAs(top10));
+            Assert.That(resolver.Resolve("cached"), Is.SameAs(cached));
         });
     }
 
-    // ──────────────── First registered strategy wins ────────────────
-
     [Test]
-    public void Resolve_FirstRegisteredStrategyWins_WhenMultipleMatchSameType()
+    public void Resolve_FirstRegisteredStrategyWins_WhenMultipleMatchSameKind()
     {
-        var first = CreateStrategyMock("first", PlaylistType.Favorite).Object;
-        var second = CreateStrategyMock("second", PlaylistType.Favorite).Object;
+        var first = CreateStrategy("top10");
+        var second = CreateStrategy("top10");
 
         var resolver = new PlaylistLoadStrategyResolver(new IPlaylistLoadStrategy[] { first, second });
 
-        Assert.That(resolver.Resolve(PlaylistType.Favorite), Is.SameAs(first));
+        Assert.That(resolver.Resolve("top10"), Is.SameAs(first));
     }
-
-    // ──────────────── No strategy for type ────────────────
 
     [Test]
-    public void Resolve_ThrowsInvalidOperationException_WhenNoStrategyForType()
+    public void Resolve_ThrowsInvalidOperationException_WhenNoStrategyForKind()
     {
-        var strategy = CreateStrategyMock("only", PlaylistType.Favorite).Object;
+        var strategy = CreateStrategy("top10");
         var resolver = new PlaylistLoadStrategyResolver(new[] { strategy });
 
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => resolver.Resolve(PlaylistType.MyWave));
-        Assert.That(ex!.Message, Does.Contain("PlaylistType.MyWave"));
+        var ex = Assert.Throws<InvalidOperationException>(() => resolver.Resolve("my-wave"));
+        Assert.That(ex!.Message, Does.Contain("my-wave"));
     }
-
-    // ──────────────── Empty strategy collection ────────────────
 
     [Test]
     public void Resolve_ThrowsInvalidOperationException_WhenNoStrategiesRegistered()
     {
         var resolver = new PlaylistLoadStrategyResolver(Enumerable.Empty<IPlaylistLoadStrategy>());
 
-        foreach (PlaylistType type in Enum.GetValues<PlaylistType>())
+        var ex = Assert.Throws<InvalidOperationException>(() => resolver.Resolve("queue"));
+        Assert.That(ex!.Message, Does.Contain("queue"));
+    }
+
+    [Test]
+    public void EveryCoreKindHasStrategy()
+    {
+        var cache = new Mock<ITrackRepositoryCache>();
+        cache.SetupGet(c => c.QueueTrackIds).Returns([]);
+        var history = new Mock<IHistoryService>();
+        var trackInfo = new Mock<ITrackInfoProvider>();
+        string tracksFolder = Path.Combine(Path.GetTempPath(), $"tracks_{Guid.NewGuid():N}");
+
+        var strategies = new IPlaylistLoadStrategy[]
         {
-            var ex = Assert.Throws<InvalidOperationException>(() => resolver.Resolve(type));
-            Assert.That(ex!.Message, Does.Contain(type.ToString()));
-        }
+            new QueueLoadStrategy(cache.Object),
+            new CachedLoadStrategy(tracksFolder),
+            new Top10LoadStrategy(history.Object),
+            new TopEveningsLoadStrategy(history.Object),
+            new TopByDayLoadStrategy(history.Object),
+            new ArtistLoadStrategy(trackInfo.Object)
+        };
+
+        var resolver = new PlaylistLoadStrategyResolver(strategies);
+
+        string[] coreKinds = ["queue", "cached", "top10", "top-evenings", "top-by-day", "artist"];
+        Assert.Multiple(() =>
+        {
+            Assert.That(strategies.Select(s => s.Kind), Is.EquivalentTo(coreKinds));
+            foreach (string kind in coreKinds)
+                Assert.That(resolver.Resolve(kind), Is.SameAs(strategies.Single(s => s.Kind == kind)));
+        });
     }
 }

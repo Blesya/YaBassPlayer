@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -8,13 +9,15 @@ namespace YamBassPlayer.Tests.Views;
 [NonParallelizable]
 public sealed class TracksTileViewTests : ViewTestBase
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private const int Width = 55;   // 2 колонки: 55 / (26 + 1) = 2
     private const int Height = 5;   // 1 ряд плиток: 5 / 5 = 1
 
     private TracksTileView CreateView() => AddToTop(new TracksTileView { Width = Width, Height = Height });
 
     private static Track Track(string title, string artist, string id)
-        => new(title, artist, "Альбом", id);
+        => new(title, artist, "Альбом", id) { SourceId = YandexMusicSourceId.Value };
 
     private static KeyEvent Press(Key key) => new(key, default);
 
@@ -133,14 +136,14 @@ public sealed class TracksTileViewTests : ViewTestBase
     }
 
     [Test]
-    public void SetPlayingTrackId_RendersMarker()
+    public void SetPlayingTrack_RendersMarker()
     {
         var view = CreateView();
         view.SetTracks([Track("T1", "A1", "id1")], _ => false);
         Pump();
         RevealAll(view);
 
-        view.SetPlayingTrackId("id1");
+        view.SetPlayingTrack(K("id1"));
         Pump();
         view.Redraw(new Rect(0, 0, Width, Height));
 

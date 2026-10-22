@@ -1,5 +1,6 @@
 ﻿using Terminal.Gui;
 using Terminal.Gui.Trees;
+using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
 
 namespace YamBassPlayer.Views.Impl;
@@ -63,14 +64,18 @@ public sealed class PlaylistsView : View, IPlaylistsView
 		{
 			var item = PlaylistTreeItem.FromPlaylist(playlist);
 
-			if (playlist.ParentTag is not null)
+			if (playlist.SourceId is { } sourceId)
 			{
-				var parent = FindNodeByTag(_roots, playlist.ParentTag);
+				var parent = FindNodeByTag(_roots, sourceId.Value);
 				if (parent is not null)
 				{
 					var existing = parent.Children
 						.OfType<PlaylistTreeItem>()
-						.FirstOrDefault(c => c.Playlist?.Type == playlist.Type);
+						.FirstOrDefault(c => c.Playlist is { } candidate
+							&& (candidate.HasSameIdentity(playlist)
+								|| (playlist.Category == PlaylistCategory.Transient
+									&& candidate.SourceId == playlist.SourceId
+									&& candidate.Kind == playlist.Kind)));
 					if (existing is not null)
 						parent.Children.Remove(existing);
 					parent.Children.Add(item);
@@ -84,7 +89,11 @@ public sealed class PlaylistsView : View, IPlaylistsView
 				}
 			}
 
-			var existingRoot = _roots.FirstOrDefault(r => r.Playlist?.Type == playlist.Type);
+			var existingRoot = _roots.FirstOrDefault(r => r.Playlist is { } candidate
+				&& (candidate.HasSameIdentity(playlist)
+					|| (playlist.Category == PlaylistCategory.Transient
+						&& candidate.SourceId == playlist.SourceId
+						&& candidate.Kind == playlist.Kind)));
 			if (existingRoot is not null)
 			{
 				existingRoot.Playlist = playlist;
@@ -128,7 +137,7 @@ public sealed class PlaylistsView : View, IPlaylistsView
 	}
 
 	private static bool IsSamePlaylist(Playlist a, Playlist b)
-		=> a.PlaylistName == b.PlaylistName && a.Type == b.Type;
+		=> a.HasSameIdentity(b);
 
 	private static void UpdatePlayingMark(PlaylistTreeItem item, Playlist? playing)
 	{

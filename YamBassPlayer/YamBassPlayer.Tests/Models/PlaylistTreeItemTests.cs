@@ -9,7 +9,7 @@ public class PlaylistTreeItemTests
     [Test]
     public void FromPlaylist_CreatesItemWithCorrectLabelAndText()
     {
-        var playlist = new Playlist("My Playlist", PlaylistType.Custom) { TrackCount = 42 };
+        var playlist = new Playlist("personal", "My Playlist") { TrackCount = 42 };
 
         var item = PlaylistTreeItem.FromPlaylist(playlist);
 
@@ -27,7 +27,7 @@ public class PlaylistTreeItemTests
     [Test]
     public void FromPlaylist_WithTrackCountZero_UsesZeroInText()
     {
-        var playlist = new Playlist("Empty", PlaylistType.Custom) { TrackCount = 0 };
+        var playlist = new Playlist("personal", "Empty") { TrackCount = 0 };
 
         var item = PlaylistTreeItem.FromPlaylist(playlist);
 
@@ -37,8 +37,8 @@ public class PlaylistTreeItemTests
     [Test]
     public void FromGroup_CreatesItemWithCorrectChildrenAndText()
     {
-        var child1 = new Playlist("Child1", PlaylistType.Custom) { TrackCount = 5 };
-        var child2 = new Playlist("Child2", PlaylistType.Custom) { TrackCount = 10 };
+        var child1 = new Playlist("personal", "Child1") { TrackCount = 5 };
+        var child2 = new Playlist("personal", "Child2") { TrackCount = 10 };
         var group = new PlaylistGroup("Group Name", new List<Playlist> { child1, child2 }, isExpanded: true);
 
         var item = PlaylistTreeItem.FromGroup(group);
@@ -90,7 +90,7 @@ public class PlaylistTreeItemTests
     [Test]
     public void UpdateText_WhenPlaylistIsSet_UpdatesTextWithTrackCount()
     {
-        var playlist = new Playlist("Test", PlaylistType.Custom) { TrackCount = 7 };
+        var playlist = new Playlist("personal", "Test") { TrackCount = 7 };
         var item = PlaylistTreeItem.FromPlaylist(playlist);
 
         playlist.TrackCount = 99;
@@ -102,7 +102,7 @@ public class PlaylistTreeItemTests
     [Test]
     public void UpdateText_WhenPlaylistIsPlaying_IncludesPlayingPrefix()
     {
-        var playlist = new Playlist("Now Playing", PlaylistType.Custom) { TrackCount = 3 };
+        var playlist = new Playlist("personal", "Now Playing") { TrackCount = 3 };
         var item = PlaylistTreeItem.FromPlaylist(playlist);
         item.IsPlaying = true;
 
@@ -114,7 +114,7 @@ public class PlaylistTreeItemTests
     [Test]
     public void UpdateText_WhenPlaylistIsPlayingSetFalse_RemovesPlayingPrefix()
     {
-        var playlist = new Playlist("Test", PlaylistType.Custom) { TrackCount = 3 };
+        var playlist = new Playlist("personal", "Test") { TrackCount = 3 };
         var item = PlaylistTreeItem.FromPlaylist(playlist);
         item.IsPlaying = true;
         item.UpdateText();
@@ -128,8 +128,8 @@ public class PlaylistTreeItemTests
     [Test]
     public void UpdateText_WhenPlaylistIsNull_UsesChildCount()
     {
-        var child1 = new Playlist("A", PlaylistType.Custom);
-        var child2 = new Playlist("B", PlaylistType.Custom);
+        var child1 = new Playlist("custom", "A");
+        var child2 = new Playlist("custom", "B");
         var group = new PlaylistGroup("G", new List<Playlist> { child1, child2 });
         var item = PlaylistTreeItem.FromGroup(group);
 
@@ -137,16 +137,16 @@ public class PlaylistTreeItemTests
         Assert.That(item.Text, Is.EqualTo("G [2]"));
     }
 
-    [TestCase(PlaylistType.Favorite)]
-    [TestCase(PlaylistType.PlaylistOfTheDaily)]
-    [TestCase(PlaylistType.Cached)]
-    [TestCase(PlaylistType.Top10)]
-    [TestCase(PlaylistType.Queue)]
-    [TestCase(PlaylistType.MyWave)]
-    [TestCase(PlaylistType.LocalFolder)]
-    public void FromPlaylist_TextIsJustNameAndCount(PlaylistType type)
+    [TestCase("favorite")]
+    [TestCase("playlist-of-the-day")]
+    [TestCase("cached")]
+    [TestCase("top10")]
+    [TestCase("queue")]
+    [TestCase("my-wave")]
+    [TestCase("folder")]
+    public void FromPlaylist_TextIsJustNameAndCount(string kind)
     {
-        var playlist = new Playlist("P", type) { TrackCount = 1 };
+        var playlist = new Playlist(kind, "P") { TrackCount = 1 };
 
         var item = PlaylistTreeItem.FromPlaylist(playlist);
 
@@ -156,9 +156,9 @@ public class PlaylistTreeItemTests
     [Test]
     public void FromGroup_WithSourceTag_TextIsJustNameAndCount()
     {
-        var group = new PlaylistGroup("Локальная музыка", new List<Playlist> { new("P", PlaylistType.Custom) });
+        var group = new PlaylistGroup("Локальная музыка", new List<Playlist> { new("custom", "P") });
         var item = PlaylistTreeItem.FromGroup(group);
-        item.Tag = SourceIds.Local;
+        item.Tag = new SourceId("local");
 
         item.UpdateText();
 
@@ -177,7 +177,7 @@ public class PlaylistTreeItemTests
     [Test]
     public void IsGroup_ReturnsFalse_WhenGroupIsNull()
     {
-        var playlist = new Playlist("P", PlaylistType.Custom);
+        var playlist = new Playlist("personal", "P");
         var item = PlaylistTreeItem.FromPlaylist(playlist);
 
         Assert.That(item.IsGroup, Is.False);

@@ -5,82 +5,53 @@ using YamBassPlayer.Services.Impl;
 [TestFixture]
 public sealed class CoverMetadataResolverTests
 {
-    // ──────────────── IsLocalSourceType ────────────────
-
-    [Test]
-    public void IsLocalSourceType_ReturnsTrue_ForLocalLowerCase()
-    {
-        Assert.That(CoverMetadataResolver.IsLocalSourceType("local"), Is.True);
-    }
-
-    [Test]
-    public void IsLocalSourceType_ReturnsTrue_ForLocalMixedCase()
-    {
-        Assert.That(CoverMetadataResolver.IsLocalSourceType("Local"), Is.True);
-    }
-
-    [Test]
-    public void IsLocalSourceType_ReturnsFalse_ForYandex()
-    {
-        Assert.That(CoverMetadataResolver.IsLocalSourceType("yandex"), Is.False);
-    }
-
-    [Test]
-    public void IsLocalSourceType_ReturnsFalse_ForEmptyString()
-    {
-        Assert.That(CoverMetadataResolver.IsLocalSourceType(""), Is.False);
-    }
-
-    [Test]
-    public void IsLocalSourceType_ReturnsFalse_ForNull()
-    {
-        Assert.That(CoverMetadataResolver.IsLocalSourceType(null!), Is.False);
-    }
+    private const string LocalPath = @"C:\covers\cover.jpg";
+    private const string RemoteUrl = "https://avatars.yandex.net/cover.jpg";
 
     // ──────────────── ResolveRemoteCoverUrl ────────────────
 
     [Test]
-    public void ResolveRemoteCoverUrl_ReturnsNull_ForLocalSource()
-    {
-        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl("local", "cover.jpg", null), Is.Null);
-    }
-
-    [Test]
-    public void ResolveRemoteCoverUrl_ReturnsCoverUrl_ForYandexWhenRemoteCoverUrlIsNull()
-    {
-        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl("yandex", "cover.jpg", null), Is.EqualTo("cover.jpg"));
-    }
-
-    [Test]
     public void ResolveRemoteCoverUrl_ReturnsRemoteCoverUrl_WhenProvided()
     {
-        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl("yandex", "cover.jpg", "remote.jpg"), Is.EqualTo("remote.jpg"));
+        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl(RemoteUrl, "cover.jpg"), Is.EqualTo(RemoteUrl));
     }
 
     [Test]
-    public void ResolveRemoteCoverUrl_ReturnsNull_ForYandexWhenBothAreNull()
+    public void ResolveRemoteCoverUrl_FallsBackToLegacyCoverUrl_WhenItIsNotAPath()
     {
-        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl("yandex", null, null), Is.Null);
+        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl(null, "cover.jpg"), Is.EqualTo("cover.jpg"));
+    }
+
+    [Test]
+    public void ResolveRemoteCoverUrl_DoesNotReturnLocalPath()
+    {
+        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl(null, LocalPath), Is.Null);
+    }
+
+    [Test]
+    public void ResolveRemoteCoverUrl_ReturnsNull_WhenBothAreNull()
+    {
+        Assert.That(CoverMetadataResolver.ResolveRemoteCoverUrl(null, null), Is.Null);
     }
 
     // ──────────────── ResolveLocalCoverPath ────────────────
 
     [Test]
-    public void ResolveLocalCoverPath_ReturnsCoverUrl_ForLocalWhenLocalCoverPathIsNull()
-    {
-        Assert.That(CoverMetadataResolver.ResolveLocalCoverPath("local", "cover.jpg", null), Is.EqualTo("cover.jpg"));
-    }
-
-    [Test]
     public void ResolveLocalCoverPath_ReturnsLocalCoverPath_WhenProvided()
     {
-        Assert.That(CoverMetadataResolver.ResolveLocalCoverPath("local", "cover.jpg", "local.jpg"), Is.EqualTo("local.jpg"));
+        Assert.That(CoverMetadataResolver.ResolveLocalCoverPath(LocalPath, null), Is.EqualTo(LocalPath));
     }
 
     [Test]
-    public void ResolveLocalCoverPath_ReturnsNull_ForYandex()
+    public void ResolveLocalCoverPath_FallsBackToLegacyCoverUrl_WhenItIsAPath()
     {
-        Assert.That(CoverMetadataResolver.ResolveLocalCoverPath("yandex", "cover.jpg", null), Is.Null);
+        Assert.That(CoverMetadataResolver.ResolveLocalCoverPath(null, LocalPath), Is.EqualTo(LocalPath));
+    }
+
+    [Test]
+    public void ResolveLocalCoverPath_DoesNotReturnRemoteUrl()
+    {
+        Assert.That(CoverMetadataResolver.ResolveLocalCoverPath(null, RemoteUrl), Is.Null);
     }
 
     // ──────────────── ResolveLegacyCoverUrl ────────────────
@@ -88,30 +59,28 @@ public sealed class CoverMetadataResolverTests
     [Test]
     public void ResolveLegacyCoverUrl_ReturnsCoverUrl_WhenProvided()
     {
-        Assert.That(CoverMetadataResolver.ResolveLegacyCoverUrl("yandex", "cover.jpg", "remote.jpg", "local.jpg"), Is.EqualTo("cover.jpg"));
+        Assert.That(
+            CoverMetadataResolver.ResolveLegacyCoverUrl("cover.jpg", RemoteUrl, LocalPath),
+            Is.EqualTo("cover.jpg"));
     }
 
     [Test]
-    public void ResolveLegacyCoverUrl_ReturnsRemote_ForYandexWhenNoCoverUrl()
+    public void ResolveLegacyCoverUrl_FallsBackToTypedColumns()
     {
-        Assert.That(CoverMetadataResolver.ResolveLegacyCoverUrl("yandex", null, "remote.jpg", null), Is.EqualTo("remote.jpg"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                CoverMetadataResolver.ResolveLegacyCoverUrl(null, RemoteUrl, null),
+                Is.EqualTo(RemoteUrl));
+            Assert.That(
+                CoverMetadataResolver.ResolveLegacyCoverUrl(null, null, LocalPath),
+                Is.EqualTo(LocalPath));
+        });
     }
 
     [Test]
-    public void ResolveLegacyCoverUrl_ReturnsNull_ForYandexWhenNoCoverUrlNorRemote()
+    public void ResolveLegacyCoverUrl_ReturnsNull_WhenNothingIsSet()
     {
-        Assert.That(CoverMetadataResolver.ResolveLegacyCoverUrl("yandex", null, null, null), Is.Null);
-    }
-
-    [Test]
-    public void ResolveLegacyCoverUrl_ReturnsLocal_ForLocalWhenNoCoverUrl()
-    {
-        Assert.That(CoverMetadataResolver.ResolveLegacyCoverUrl("local", null, null, "local.jpg"), Is.EqualTo("local.jpg"));
-    }
-
-    [Test]
-    public void ResolveLegacyCoverUrl_ReturnsNull_ForLocalWhenNoCoverUrlNorLocal()
-    {
-        Assert.That(CoverMetadataResolver.ResolveLegacyCoverUrl("local", null, null, null), Is.Null);
+        Assert.That(CoverMetadataResolver.ResolveLegacyCoverUrl(null, null, null), Is.Null);
     }
 }

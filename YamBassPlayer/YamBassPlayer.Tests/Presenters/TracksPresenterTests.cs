@@ -12,6 +12,8 @@ namespace YamBassPlayer.Tests.Presenters;
 [TestFixture]
 public sealed class TracksPresenterTests
 {
+    private static TrackKey K(string id) => new(YandexMusicSourceId.Value, id);
+
     private Mock<ITracksView> _view = null!;
     private Mock<ITrackFileProvider> _fileProvider = null!;
     private Mock<ITrackRepository> _repository = null!;
@@ -35,7 +37,7 @@ public sealed class TracksPresenterTests
             _view.Object, _fileProvider.Object, _repository.Object, _queue.Object, _eventBus, _downloadTracker.Object);
     }
 
-    private static Track Track(string id) => new($"Title-{id}", $"Artist-{id}", "Album", id);
+    private static Track Track(string id) => new($"Title-{id}", $"Artist-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
 
     // ── Прогресс загрузки ─────────────────────────────────────────────────
 
@@ -44,24 +46,24 @@ public sealed class TracksPresenterTests
     {
         var state = new TrackDownloadState(TrackDownloadStatus.Downloading, 45, 450, true);
 
-        _downloadTracker.Raise(t => t.Changed += null, "t1", state);
+        _downloadTracker.Raise(t => t.Changed += null, K("t1"), state);
 
-        _view.Verify(v => v.SetDownloadState("t1", state), Times.Once);
+        _view.Verify(v => v.SetDownloadState(K("t1"), state), Times.Once);
     }
 
     [Test]
     public async Task LoadTracksFor_ReplaysActiveDownloadsIntoFreshList()
     {
-        var playlist = new Playlist("P", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "P");
         var tracks = new[] { Track("a") };
         var active = new TrackDownloadState(TrackDownloadStatus.Downloading, 20, 200, true);
         _repository.Setup(r => r.SetPlaylist(playlist, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
-        _downloadTracker.Setup(t => t.GetActive()).Returns([("a", active)]);
+        _downloadTracker.Setup(t => t.GetActive()).Returns([(K("a"), active)]);
 
         await _presenter.LoadTracksFor(playlist);
 
-        _view.Verify(v => v.SetDownloadState("a", active), Times.Once);
+        _view.Verify(v => v.SetDownloadState(K("a"), active), Times.Once);
     }
 
     // ── Загрузка плейлиста ────────────────────────────────────────────────
@@ -69,11 +71,11 @@ public sealed class TracksPresenterTests
     [Test]
     public async Task LoadTracksFor_LoadsCachedBatchAndPushesToView()
     {
-        var playlist = new Playlist("P", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "P");
         var tracks = new[] { Track("a"), Track("b") };
         _repository.Setup(r => r.SetPlaylist(playlist, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
-        _queue.SetupGet(q => q.CurrentTrackId).Returns("a");
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("a"));
 
         await _presenter.LoadTracksFor(playlist);
 
@@ -81,16 +83,16 @@ public sealed class TracksPresenterTests
         {
             _repository.Verify(r => r.SetPlaylist(playlist, It.IsAny<CancellationToken>()), Times.Once);
             _view.Verify(
-                v => v.SetTracks(It.Is<IEnumerable<Track>>(t => t.SequenceEqual(tracks)), It.IsAny<Func<string, bool>>()),
+                v => v.SetTracks(It.Is<IEnumerable<Track>>(t => t.SequenceEqual(tracks)), It.IsAny<Func<Track, bool>>()),
                 Times.Once);
-            _view.Verify(v => v.SetPlayingTrackId("a"), Times.Once);
+            _view.Verify(v => v.SetPlayingTrack(K("a")), Times.Once);
         });
     }
 
     [Test]
     public async Task LoadTracksFor_WhenNoTracks_ClearsView()
     {
-        var playlist = new Playlist("P", PlaylistType.Custom);
+        var playlist = new Playlist("personal", "P");
         _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         await _presenter.LoadTracksFor(playlist);
@@ -98,7 +100,7 @@ public sealed class TracksPresenterTests
         Assert.Multiple(() =>
         {
             _view.Verify(v => v.ClearTracks(), Times.Once);
-            _view.Verify(v => v.SetTracks(It.IsAny<IEnumerable<Track>>(), It.IsAny<Func<string, bool>>()), Times.Never);
+            _view.Verify(v => v.SetTracks(It.IsAny<IEnumerable<Track>>(), It.IsAny<Func<Track, bool>>()), Times.Never);
         });
     }
 
@@ -108,23 +110,23 @@ public sealed class TracksPresenterTests
     public async Task OnCellActivated_SetsQueueAtGivenIndex()
     {
         await LoadThreeTracks();
-        var ids = new[] { "a", "b", "c" };
-        _repository.Setup(r => r.GetAllTrackIds()).Returns(ids);
+        var keys = new[] { K("a"), K("b"), K("c") };
+        _repository.Setup(r => r.GetAllTrackIds()).Returns(keys);
 
         _view.Raise(v => v.OnCellActivated += null, 2);
 
-        _queue.Verify(q => q.SetQueue(It.Is<IEnumerable<string>>(x => x.SequenceEqual(ids)), 2), Times.Once);
+        _queue.Verify(q => q.SetQueue(It.Is<IEnumerable<TrackKey>>(x => x.SequenceEqual(keys)), 2), Times.Once);
     }
 
     [Test]
     public async Task OnCellActivated_OutOfRange_DoesNotSetQueue()
     {
         await LoadThreeTracks();
-        _repository.Setup(r => r.GetAllTrackIds()).Returns(new[] { "a" });
+        _repository.Setup(r => r.GetAllTrackIds()).Returns(new[] { K("a") });
 
         _view.Raise(v => v.OnCellActivated += null, 5);
 
-        _queue.Verify(q => q.SetQueue(It.IsAny<IEnumerable<string>>(), It.IsAny<int>()), Times.Never);
+        _queue.Verify(q => q.SetQueue(It.IsAny<IEnumerable<TrackKey>>(), It.IsAny<int>()), Times.Never);
     }
 
     // ── Выбор трека ───────────────────────────────────────────────────────
@@ -155,7 +157,7 @@ public sealed class TracksPresenterTests
         _view.Raise(v => v.NeedMoreTracks += null);
 
         _view.Verify(
-            v => v.AddTracks(It.Is<IEnumerable<Track>>(t => t.SequenceEqual(more)), It.IsAny<Func<string, bool>>()),
+            v => v.AddTracks(It.Is<IEnumerable<Track>>(t => t.SequenceEqual(more)), It.IsAny<Func<Track, bool>>()),
             Times.Once);
     }
 
@@ -167,7 +169,7 @@ public sealed class TracksPresenterTests
 
         _view.Raise(v => v.NeedMoreTracks += null);
 
-        _view.Verify(v => v.AddTracks(It.IsAny<IEnumerable<Track>>(), It.IsAny<Func<string, bool>>()), Times.Never);
+        _view.Verify(v => v.AddTracks(It.IsAny<IEnumerable<Track>>(), It.IsAny<Func<Track, bool>>()), Times.Never);
     }
 
     // ── Смена играющего трека через шину событий ──────────────────────────
@@ -175,17 +177,17 @@ public sealed class TracksPresenterTests
     [Test]
     public void TrackChangedEvent_UpdatesPlayingTrackInView()
     {
-        _eventBus.Publish(new TrackChangedEvent("z"));
+        _eventBus.Publish(new TrackChangedEvent(K("z")));
 
-        _view.Verify(v => v.SetPlayingTrackId("z"), Times.Once);
+        _view.Verify(v => v.SetPlayingTrack(K("z")), Times.Once);
     }
 
     [Test]
     public void TrackChangedEvent_RemembersLastPlayedTrack()
     {
-        _eventBus.Publish(new TrackChangedEvent("z"));
+        _eventBus.Publish(new TrackChangedEvent(K("z")));
 
-        _repository.Verify(r => r.SetLastPlayedTrack("z"), Times.Once);
+        _repository.Verify(r => r.SetLastPlayedTrack(K("z")), Times.Once);
     }
 
     // ── Восстановление выделения ──────────────────────────────────────────
@@ -193,36 +195,36 @@ public sealed class TracksPresenterTests
     [Test]
     public async Task LoadTracksFor_RestoresLastPlayedSelection()
     {
-        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrack = K("b") });
 
         await LoadThreeTracks();
 
-        _view.Verify(v => v.SelectTrack("b"), Times.Once);
+        _view.Verify(v => v.SelectTrack(K("b")), Times.Once);
     }
 
     [Test]
     public async Task LoadTracksFor_RestoresSelectionAfterBackgroundRefresh()
     {
         // Снимок показали → фон обновил плейлисты и перезагрузил список.
-        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrack = K("b") });
 
         await LoadThreeTracks();
         await LoadThreeTracks();
 
-        _view.Verify(v => v.SelectTrack("b"), Times.Exactly(2), "Выделение не должно сбрасываться обновлением");
+        _view.Verify(v => v.SelectTrack(K("b")), Times.Exactly(2), "Выделение не должно сбрасываться обновлением");
     }
 
     [Test]
     public async Task LoadTracksFor_KeepsUserSelectionAcrossReload()
     {
-        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrackId = "b" });
+        _repository.Setup(r => r.GetPersistedSnapshot()).Returns(new PlaylistState { LastTrack = K("b") });
         await LoadThreeTracks();
 
         // Пользователь выделил другой трек.
         _view.Raise(v => v.OnTrackSelected += null, 2);
         await LoadThreeTracks();
 
-        _view.Verify(v => v.SelectTrack("c"), Times.Once);
+        _view.Verify(v => v.SelectTrack(K("c")), Times.Once);
     }
 
     [Test]
@@ -232,7 +234,7 @@ public sealed class TracksPresenterTests
 
         await LoadThreeTracks();
 
-        _view.Verify(v => v.SelectTrack(It.IsAny<string>()), Times.Never);
+        _view.Verify(v => v.SelectTrack(It.IsAny<TrackKey>()), Times.Never);
     }
 
     [Test]
@@ -243,7 +245,7 @@ public sealed class TracksPresenterTests
 
     private async Task LoadThreeTracks()
     {
-        var playlist = new Playlist("P", PlaylistType.Favorite);
+        var playlist = new Playlist("favorite", "P");
         _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { Track("a"), Track("b"), Track("c") });
         await _presenter.LoadTracksFor(playlist);

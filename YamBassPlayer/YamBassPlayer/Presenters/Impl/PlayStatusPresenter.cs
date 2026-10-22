@@ -1,27 +1,31 @@
 using System.Timers;
-using Microsoft.Data.Sqlite;
 using Terminal.Gui;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
+using YamBassPlayer.Plugins;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Impl;
 using YamBassPlayer.Views;
 using Timer = System.Timers.Timer;
 
 namespace YamBassPlayer.Presenters.Impl;
 
+/// <summary>
+/// Панель управления. Действия над треком (лайк, «не предлагать» и т. п.)
+/// приходят от плагинов как <see cref="ITrackAction"/>: ядро только рисует
+/// кнопки и передаёт нажатие владельцу действия.
+/// </summary>
 public class PlayStatusPresenter : IPlayStatusPresenter
 {
-	private const string LocalSourceId = SourceIds.Local;
-	private const string YandexSourceId = SourceIds.Yandex;
-	private const string LocalFavoriteSourceName = "локальное избранное";
-	private const string YandexFavoriteSourceName = "Яндекс.Музыка";
 	private readonly IPlayStatusView _view;
 	private readonly IAudioPlayer _audioPlayer;
-	private readonly ITrackFavoriteService _trackFavoriteService;
+	private readonly TrackActionRegistry _actions;
+	private readonly ITrackCatalog _trackCatalog;
 	private readonly Timer _timer;
-	private string? _currentTrackId;
-	private string? _currentTrackSourceType;
+	private Track? _currentTrack;
+	private TrackKey? _currentTrackKey;
+	private int _trackVersion;
 
 	public event Action? OnPlayClicked;
 	public event Action? OnStopClicked;
@@ -31,11 +35,16 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 	public event Action? OnPlaybackModeToggled;
 	public event Action? OnRestartClicked;
 
-	public PlayStatusPresenter(IPlayStatusView view, IAudioPlayer audioPlayer, ITrackFavoriteService trackFavoriteService)
+	public PlayStatusPresenter(
+		IPlayStatusView view,
+		IAudioPlayer audioPlayer,
+		TrackActionRegistry actions,
+		ITrackCatalog trackCatalog)
 	{
 		_view = view;
 		_audioPlayer = audioPlayer;
-		_trackFavoriteService = trackFavoriteService;
+		_actions = actions;
+		_trackCatalog = trackCatalog;
 
 		_view.OnPlayClicked += () => OnPlayClicked?.Invoke();
 		_view.OnStopClicked += () => OnStopClicked?.Invoke();
@@ -46,15 +55,15 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnRestartClicked += () => OnRestartClicked?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
 		_view.OnVolumeChangeRequested += OnVolumeChangeRequested;
-		_view.OnLocalFavoriteToggleClicked += () => OnLocalFavoriteToggleClickedHandler().Forget();
-		_view.OnYandexFavoriteToggleClicked += () => OnYandexFavoriteToggleClickedHandler().Forget();
+		_view.OnTrackActionClicked += id => OnTrackActionClickedAsync(id).Forget();
+
+		_actions.Changed += UpdateActionButtons;
 
 		_timer = new Timer(1000);
 		_timer.Elapsed += TimerOnElapsed;
 		_timer.AutoReset = true;
 		_timer.Start();
 
-		UpdateFavoriteStates();
 		_view.SetVolume(_audioPlayer.VolumePercent);
 	}
 
@@ -99,128 +108,67 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.SetPlaybackMode(mode);
 	}
 
-	public void SetCurrentTrack(string? trackId, string? sourceType)
+	public void SetCurrentTrack(TrackKey? key)
 	{
-		_currentTrackId = trackId;
-		_currentTrackSourceType = sourceType;
-		UpdateFavoriteStates();
+		_currentTrackKey = key;
+		int version = ++_trackVersion;
+
+		// Сразу показываем действия по ключу, затем подменяем трек полными
+		// данными из каталога — действиям нужны Title/Artist, а не только id.
+		_currentTrack = key is { } current
+			? new Track(string.Empty, string.Empty, string.Empty, current.TrackId) { SourceId = current.SourceId }
+			: null;
+
+		UpdateActionButtons();
+
+		if (key is { } trackKey)
+			_ = LoadTrackAsync(trackKey, version);
 	}
 
-	private async Task OnLocalFavoriteToggleClickedHandler()
+	private async Task LoadTrackAsync(TrackKey key, int version)
 	{
-		await ToggleFavoriteAsync(LocalSourceId, LocalFavoriteSourceName);
-	}
-
-	private async Task OnYandexFavoriteToggleClickedHandler()
-	{
-		await ToggleFavoriteAsync(
-			YandexSourceId,
-			YandexFavoriteSourceName);
-	}
-
-	private async Task ToggleFavoriteAsync(string sourceId, string sourceName)
-	{
-		if (string.IsNullOrWhiteSpace(_currentTrackId)
-			|| !_trackFavoriteService.SupportsSource(sourceId)
-			|| !IsFavoriteSourceApplicable(sourceId))
+		try
 		{
-			return;
-		}
+			Track? track = await _trackCatalog.GetAsync(key);
+			if (track is null || version != _trackVersion || _currentTrackKey != key)
+				return;
 
-		Logging.LogUserAction($"переключение избранного ({sourceName})");
+			_currentTrack = track;
+			UpdateActionButtons();
+		}
+		catch (Exception ex)
+		{
+			Serilog.Log.Debug(ex, "Не удалось загрузить трек для действий панели {Key}", key);
+		}
+	}
+
+	private void UpdateActionButtons()
+	{
+		IReadOnlyList<TrackActionButton> buttons = _currentTrack is null
+			? []
+			: _actions.Actions
+				.Where(action => action.IsAvailable(_currentTrack))
+				.Select(action => new TrackActionButton(action.Id, action.GetTitle(_currentTrack), true))
+				.ToList();
+
+		_view.SetTrackActions(buttons);
+	}
+
+	private async Task OnTrackActionClickedAsync(string id)
+	{
+		ITrackAction? action = _actions.Actions.FirstOrDefault(candidate => candidate.Id == id);
+		if (action is null || _currentTrack is null || !action.IsAvailable(_currentTrack))
+			return;
 
 		try
 		{
-			if (_trackFavoriteService.IsTrackFavorite(sourceId, _currentTrackId))
-			{
-				await _trackFavoriteService.RemoveFromFavorites(sourceId, _currentTrackId);
-			}
-			else
-			{
-				await _trackFavoriteService.AddToFavorites(sourceId, _currentTrackId);
-			}
+			await action.ExecuteAsync(_currentTrack);
+		}
+		catch (Exception ex)
+		{
+			_view.SetPlayStatus($"Не удалось выполнить действие: {ex.Message}");
+		}
 
-			UpdateFavoriteState(sourceId);
-		}
-		catch (HttpRequestException)
-		{
-			_view.SetPlayStatus(GetFavoriteUpdateErrorStatus(sourceName));
-		}
-		catch (TaskCanceledException)
-		{
-			_view.SetPlayStatus(GetFavoriteUpdateErrorStatus(sourceName));
-		}
-		catch (TimeoutException)
-		{
-			_view.SetPlayStatus(GetFavoriteUpdateErrorStatus(sourceName));
-		}
-		catch (SqliteException)
-		{
-			_view.SetPlayStatus(GetFavoriteUpdateErrorStatus(sourceName));
-		}
-		catch (InvalidOperationException)
-		{
-			_view.SetPlayStatus(GetFavoriteUpdateErrorStatus(sourceName));
-		}
+		UpdateActionButtons();
 	}
-
-	private void UpdateFavoriteStates()
-	{
-		UpdateFavoriteState(LocalSourceId);
-		UpdateFavoriteState(YandexSourceId);
-	}
-
-	private void UpdateFavoriteState(string sourceId)
-	{
-		switch (sourceId)
-		{
-			case LocalSourceId:
-				UpdateFavoriteState(
-					sourceId,
-					_view.SetLocalFavoriteVisibility,
-					_view.SetLocalFavoriteEnabled,
-					_view.SetLocalFavoriteState);
-				break;
-			case YandexSourceId:
-				UpdateFavoriteState(
-					sourceId,
-					_view.SetYandexFavoriteVisibility,
-					_view.SetYandexFavoriteEnabled,
-					_view.SetYandexFavoriteState);
-				break;
-		}
-	}
-
-	private void UpdateFavoriteState(
-		string sourceId,
-		Action<bool> setVisibility,
-		Action<bool> setEnabled,
-		Action<bool> setFavoriteState)
-	{
-		bool isSupported = _trackFavoriteService.SupportsSource(sourceId);
-		bool isApplicable = IsFavoriteSourceApplicable(sourceId);
-		bool hasTrack = !string.IsNullOrWhiteSpace(_currentTrackId);
-		string trackId = _currentTrackId ?? string.Empty;
-		bool isFavorite = isSupported
-			&& isApplicable
-			&& hasTrack
-			&& _trackFavoriteService.IsTrackFavorite(sourceId, trackId);
-
-		setVisibility(isSupported && isApplicable);
-		setEnabled(isSupported && isApplicable && hasTrack);
-		setFavoriteState(isFavorite);
-	}
-
-	private bool IsFavoriteSourceApplicable(string sourceId)
-	{
-		return sourceId switch
-		{
-			LocalSourceId => true,
-			YandexSourceId => string.Equals(_currentTrackSourceType, YandexSourceId, StringComparison.OrdinalIgnoreCase),
-			_ => false
-		};
-	}
-
-	private static string GetFavoriteUpdateErrorStatus(string sourceName)
-		=> $"Не удалось обновить избранное: {sourceName}";
 }

@@ -54,7 +54,7 @@ internal static class Program
 			UpdateArchive.Validate(arguments.ZipPath);
 
 			IReadOnlyList<string> payload = UpdateArchive.ExtractPayload(arguments.ZipPath, stagingDirectory);
-			UpdateApplyResult applied = UpdateApplier.Apply(payload, arguments.TargetDirectory, backupDirectory);
+			UpdateApplyResult applied = UpdateApplier.Apply(payload, arguments.TargetDirectory, backupDirectory, stagingDirectory);
 
 			log.Write($"Обновление применено: заменено {applied.Replaced}, добавлено {applied.Added}. Бэкап: {backupDirectory}");
 
