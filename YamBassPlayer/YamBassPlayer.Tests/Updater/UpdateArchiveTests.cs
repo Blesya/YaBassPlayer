@@ -27,6 +27,8 @@ public sealed class UpdateArchiveTests
     [TestCase("YamBassPlayer.Updater.exe", true)]
     [TestCase("bass.dll", true)]
     [TestCase("e_sqlite3.dll", true)]
+    [TestCase("YamBassPlayer.deps.json", true)]
+    [TestCase("YamBassPlayer.runtimeconfig.json", true)]
     [TestCase("appsettings.example.json", true)]
     [TestCase("appsettings.json", false)]
     [TestCase("tracks_cache.db", false)]
@@ -66,6 +68,50 @@ public sealed class UpdateArchiveTests
         string zip = CreateZip("YamBassPlayer.exe", "../evil.dll");
 
         Assert.Throws<InvalidDataException>(() => UpdateArchive.Validate(zip));
+    }
+
+    [Test]
+    public void Validate_PluginDirectory_Passes()
+    {
+        string zip = CreateZip(
+            "YamBassPlayer.exe",
+            "plugins/yandex-music/YamBassPlayer.Plugins.YandexMusic.dll",
+            "plugins/yandex-music/plugin.json");
+
+        Assert.DoesNotThrow(() => UpdateArchive.Validate(zip));
+    }
+
+    [TestCase("plugins/yandex-music/plugin.dll", true)]
+    [TestCase("plugins/local/", false)]
+    [TestCase("plugins/plugin.dll", false)]
+    [TestCase("plugins/../plugin.dll", false)]
+    [TestCase("/plugins/yandex-music/plugin.dll", false)]
+    [TestCase("other/yandex-music/plugin.dll", false)]
+    [TestCase("bass.dll", false)]
+    public void IsPluginPayloadPath_ChecksLayout(string path, bool expected)
+    {
+        Assert.That(UpdateArchive.IsPluginPayloadPath(path), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Validate_PluginPathTraversal_Throws()
+    {
+        string zip = CreateZip("YamBassPlayer.exe", "plugins/../evil.dll");
+
+        Assert.Throws<InvalidDataException>(() => UpdateArchive.Validate(zip));
+    }
+
+    [Test]
+    public void ExtractPayload_KeepsPluginLayout()
+    {
+        string zip = CreateZip("YamBassPlayer.exe", "plugins/yandex-music/plugin.dll", "plugins/yandex-music/plugin.json");
+        string staging = Path.Combine(_directory, "staging");
+
+        IReadOnlyList<string> extracted = UpdateArchive.ExtractPayload(zip, staging);
+
+        Assert.That(extracted, Has.Count.EqualTo(3));
+        Assert.That(File.Exists(Path.Combine(staging, "plugins", "yandex-music", "plugin.dll")), Is.True);
+        Assert.That(File.Exists(Path.Combine(staging, "plugins", "yandex-music", "plugin.json")), Is.True);
     }
 
     [Test]

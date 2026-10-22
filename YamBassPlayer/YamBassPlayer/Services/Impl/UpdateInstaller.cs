@@ -6,7 +6,7 @@ using YamBassPlayer.Constants;
 namespace YamBassPlayer.Services.Impl;
 
 /// <summary>
-/// Запускает <c>YamBassPlayer.Updater.exe</c> из временного каталога с уже скачанным архивом.
+/// ╨Ч╨░╨┐╤Г╤Б╨║╨░╨╡╤В <c>YamBassPlayer.Updater.exe</c> ╨╕╨╖ ╨▓╤А╨╡╨╝╨╡╨╜╨╜╨╛╨│╨╛ ╨║╨░╤В╨░╨╗╨╛╨│╨░ ╤Б ╤Г╨╢╨╡ ╤Б╨║╨░╤З╨░╨╜╨╜╤Л╨╝ ╨░╤А╤Е╨╕╨▓╨╛╨╝.
 /// </summary>
 public sealed class UpdateInstaller : IUpdateInstaller
 {
@@ -33,12 +33,16 @@ public sealed class UpdateInstaller : IUpdateInstaller
 
 			if (!File.Exists(updaterSource))
 			{
-				Log.Error("Не найден {Updater} рядом с приложением — обновление не будет установлено", AppInfo.UpdaterExeName);
+				Log.Error("╨Э╨╡ ╨╜╨░╨╣╨┤╨╡╨╜ {Updater} ╤А╤П╨┤╨╛╨╝ ╤Б ╨┐╤А╨╕╨╗╨╛╨╢╨╡╨╜╨╕╨╡╨╝ тАФ ╨╛╨▒╨╜╨╛╨▓╨╗╨╡╨╜╨╕╨╡ ╨╜╨╡ ╨▒╤Г╨┤╨╡╤В ╤Г╤Б╤В╨░╨╜╨╛╨▓╨╗╨╡╨╜╨╛", AppInfo.UpdaterExeName);
 				return;
 			}
 
-			// Апдейтер обязан работать из temp: иначе он не сможет заменить собственный exe в каталоге установки.
-			File.Copy(updaterSource, updaterPath, overwrite: true);
+			// ╨Р╨┐╨┤╨╡╨╣╤В╨╡╤А ╨╛╨▒╤П╨╖╨░╨╜ ╤А╨░╨▒╨╛╤В╨░╤В╤М ╨╕╨╖ temp: ╨╕╨╜╨░╤З╨╡ ╨╛╨╜ ╨╜╨╡ ╤Б╨╝╨╛╨╢╨╡╤В ╨╖╨░╨╝╨╡╨╜╨╕╤В╤М ╤Б╨╛╨▒╤Б╤В╨▓╨╡╨╜╨╜╤Л╨╣ exe.
+			// ╨Ъ╨╛╨┐╨╕╤А╤Г╨╡╨╝ ╨▓╨╡╤Б╤М ╨╜╨░╨▒╨╛╤А ╤Д╨░╨╣╨╗╨╛╨▓, ╨░ ╨╜╨╡ ╤В╨╛╨╗╤М╨║╨╛ exe: ╨┐╤Г╨▒╨╗╨╕╨║╨░╤Ж╨╕╤П ╨┐╨░╨┐╨║╨╛╨╣ ╤В╤А╨╡╨▒╤Г╨╡╤В
+			// ╤А╤П╨┤╨╛╨╝ .dll, .deps.json ╨╕ .runtimeconfig.json.
+			string updaterPrefix = Path.GetFileNameWithoutExtension(AppInfo.UpdaterExeName);
+			foreach (string file in Directory.GetFiles(baseDirectory, updaterPrefix + ".*"))
+				File.Copy(file, Path.Combine(workDirectory, Path.GetFileName(file)), overwrite: true);
 
 			ProcessStartInfo startInfo = new(updaterPath)
 			{
@@ -59,11 +63,11 @@ public sealed class UpdateInstaller : IUpdateInstaller
 			startInfo.ArgumentList.Add(Path.Combine(workDirectory, "updater.log"));
 
 			Process.Start(startInfo);
-			Log.Information("Запущен апдейтер для версии {Version}", _pendingVersion);
+			Log.Information("╨Ч╨░╨┐╤Г╤Й╨╡╨╜ ╨░╨┐╨┤╨╡╨╣╤В╨╡╤А ╨┤╨╗╤П ╨▓╨╡╤А╤Б╨╕╨╕ {Version}", _pendingVersion);
 		}
 		catch (Exception exception)
 		{
-			Log.Error(exception, "Не удалось запустить апдейтер");
+			Log.Error(exception, "╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╖╨░╨┐╤Г╤Б╤В╨╕╤В╤М ╨░╨┐╨┤╨╡╨╣╤В╨╡╤А");
 		}
 		finally
 		{
