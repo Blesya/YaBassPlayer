@@ -62,6 +62,30 @@ public static class UpdateArchive
 		return true;
 	}
 
+	/// <summary>
+	/// Спутниковая сборка локализации из корня публикации: <c>fr-FR/Terminal.Gui.resources.dll</c>.
+	/// Разрешаем только один уровень культуры и только <c>*.resources.dll</c>,
+	/// чтобы архив не мог писать в произвольные папки установки.
+	/// </summary>
+	public static bool IsAppResourcePath(string? relativePath)
+	{
+		if (string.IsNullOrEmpty(relativePath) || Path.IsPathRooted(relativePath))
+			return false;
+
+		string[] segments = relativePath.Split(['/', '\\'], StringSplitOptions.None);
+		if (segments.Length != 2)
+			return false;
+
+		string culture = segments[0];
+		if (culture.Length is < 2 or > 16)
+			return false;
+
+		if (culture.Any(character => !char.IsLetterOrDigit(character) && character != '-'))
+			return false;
+
+		return segments[1].EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase);
+	}
+
 	/// <summary>Запись архива, которую апдейтер вправе распаковать.</summary>
 	public static bool IsAllowedEntry(string? entryPath)
 	{
@@ -69,7 +93,7 @@ public static class UpdateArchive
 			return false;
 
 		if (entryPath.Contains('/') || entryPath.Contains('\\'))
-			return IsPluginPayloadPath(entryPath);
+			return IsPluginPayloadPath(entryPath) || IsAppResourcePath(entryPath);
 
 		return IsPayloadFile(entryPath);
 	}
@@ -92,7 +116,7 @@ public static class UpdateArchive
 
 			if (name.Contains('/') || name.Contains('\\'))
 			{
-				if (!IsPluginPayloadPath(name))
+				if (!IsPluginPayloadPath(name) && !IsAppResourcePath(name))
 					throw new InvalidDataException($"Архив содержит недопустимый путь: {name}");
 			}
 
