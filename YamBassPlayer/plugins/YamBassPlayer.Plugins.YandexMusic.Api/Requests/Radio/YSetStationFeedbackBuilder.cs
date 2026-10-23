@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -35,7 +36,9 @@ namespace YamBassPlayer.Api.Requests.Radio
 
         protected override HttpContent GetContent((YStationFeedbackType type, YStation station, YTrack track, string batchId, double totalPlayedSeconds) tuple)
         {
-            long timestamp = ((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds();
+            // Яндекс ждёт время в ISO 8601 (пример из спецификации: "2023-02-26T09:41:23"),
+            // а не unix-секунды числом.
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
             JsonSerializerOptions settings = new() {
                 Converters = {
@@ -49,24 +52,28 @@ namespace YamBassPlayer.Api.Requests.Radio
             YStationFeedback feedBack = new()
             {
                 Type = tuple.type,
-                From = tuple.station.Station.IdForFrom,
                 Timestamp = timestamp
             };
 
-            if (tuple.track != null)
+            if (!string.IsNullOrWhiteSpace(tuple.station.Station.IdForFrom))
+                feedBack.From = tuple.station.Station.IdForFrom;
+
+            // radioStarted относится к запуску станции, трек в нём не указывается.
+            if (tuple.type != YStationFeedbackType.RadioStarted && tuple.track != null)
                 feedBack.TrackId = tuple.track.Id;
 
             if (tuple.totalPlayedSeconds > 0)
                 feedBack.TotalPlayedSeconds = tuple.totalPlayedSeconds;
 
-            return JsonContent.Create(feedBack, new MediaTypeHeaderValue("application/json"), settings); ;
+            return JsonContent.Create(feedBack, new MediaTypeHeaderValue("application/json"), settings);
         }
 
         protected override NameValueCollection GetQueryParams((YStationFeedbackType type, YStation station, YTrack track, string batchId, double totalPlayedSeconds) tuple)
         {
             NameValueCollection query = new();
 
-            if (!string.IsNullOrWhiteSpace(tuple.batchId))
+            // batch-id нужен событиям трека и должен отсутствовать для radioStarted.
+            if (tuple.type != YStationFeedbackType.RadioStarted && !string.IsNullOrWhiteSpace(tuple.batchId))
                 query.Add("batch-id", tuple.batchId);
 
             return query;

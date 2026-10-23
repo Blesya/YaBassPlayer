@@ -4,6 +4,7 @@ using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Api;
 using YamBassPlayer.Api.Common;
+using YamBassPlayer.Api.Models.Common;
 using YamBassPlayer.Api.Models.Radio;
 using YamBassPlayer.Api.Models.Track;
 
@@ -47,8 +48,17 @@ public sealed class YandexRadioService : IYandexRadioService
 		try
 		{
 			// Эндпоинт /rotor/station/{type}:{tag}/info у Яндекса отвечает 451, поэтому
-			// станцию ищем в дашборде рекомендаций, а если её там нет — собираем дескриптор сами.
-			_station = await FindStationInDashboardAsync(type, tag) ?? CreateStation(type, tag);
+			// станцию ищем в дашборде рекомендаций и в списке станций: только там есть
+			// настоящий idForFrom, который Яндекс принимает в поле from у фидбека.
+			_station = await FindStationInDashboardAsync(type, tag)
+				?? await FindStationInListAsync(type, tag);
+
+			if (_station == null)
+			{
+				Log.Warning("Станция {Type}:{Tag} не найдена в дашборде и списке станций, собираем дескриптор локально", type, tag);
+				_station = CreateStation(type, tag);
+			}
+
 			Log.Information("Радиостанция {Type}:{Tag} готова", type, tag);
 			return true;
 		}
@@ -74,12 +84,29 @@ public sealed class YandexRadioService : IYandexRadioService
 		}
 	}
 
+	private async Task<YStation?> FindStationInListAsync(string type, string tag)
+	{
+		try
+		{
+			var response = await _api.Radio.GetStationsAsync(_storage);
+			return response?.Result?
+				.FirstOrDefault(s => s.Station?.Id?.Type == type && s.Station.Id.Tag == tag);
+		}
+		catch (Exception ex)
+		{
+			Log.Warning(ex, "Не удалось получить список станций, станция {Type}:{Tag} будет собрана локально", type, tag);
+			return null;
+		}
+	}
+
 	private static YStation CreateStation(string type, string tag)
 	{
 		return new YStation {
 			Station = new YStationDescription {
 				Id = new YStationId { Type = type, Tag = tag },
-				IdForFrom = $"{type}-{tag}",
+				// Канонический вид идентификатора станции — единственное, что можно
+				// подставить в from, не зная настоящего idForFrom из ответа Яндекса.
+				IdForFrom = $"{type}:{tag}",
 				Name = "Моя волна"
 			}
 		};
@@ -117,8 +144,10 @@ public sealed class YandexRadioService : IYandexRadioService
 
 			_lastTrackId = yTracks.LastOrDefault()?.Id;
 
+			// radioStarted относится к запуску станции, а не к треку, поэтому уходит без трека
+			// и без batch-id. Не ждём ответ: фидбек не должен задерживать старт волны.
 			if (isFirstBatch && yTracks.Count > 0)
-				await SendFeedbackInternalAsync(YStationFeedbackType.RadioStarted, yTracks.First(), 0);
+				_ = SendFeedbackInternalAsync(YStationFeedbackType.RadioStarted, null, 0);
 
 			var trackIds = (IReadOnlyList<string>)yTracks.Select(t => t.Id).ToList();
 			var tracks = (IReadOnlyList<Track>)yTracks.Select(t => t.ToTrack()).ToList();
@@ -155,12 +184,19 @@ public sealed class YandexRadioService : IYandexRadioService
 		return SendFeedbackInternalAsync(YStationFeedbackType.Skip, yTrack, totalPlayedSeconds);
 	}
 
-	private async Task SendFeedbackInternalAsync(YStationFeedbackType type, YTrack track, double totalPlayedSeconds)
+	private async Task SendFeedbackInternalAsync(YStationFeedbackType type, YTrack? track, double totalPlayedSeconds)
 	{
 		try
 		{
 			await _api.Radio.SendStationFeedBackAsync(
 				_storage, _station!, type, track, _currentBatchId ?? "", totalPlayedSeconds);
+		}
+		catch (YErrorResponse error)
+		{
+			// Фидбек не критичен — не роняем плеер, но пишем причину из тела ответа:
+			// у YErrorResponse нет Message, поэтому без Error.Name/Message лог бесполезен.
+			Log.Debug("Фидбек {FeedbackType} станции {Station} отклонён: {ErrorName} — {ErrorMessage}",
+				type, StationId, error.Error?.Name, error.Error?.Message);
 		}
 		catch (Exception ex)
 		{
