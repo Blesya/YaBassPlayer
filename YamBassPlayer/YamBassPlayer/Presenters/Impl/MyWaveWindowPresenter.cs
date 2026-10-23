@@ -42,6 +42,15 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 	}
 
 	public void ShowWindow(Playlist playlist)
+		=> _uiDispatcher.Invoke(() => ShowWindowOnUi(playlist));
+
+	/// <summary>
+	/// Окно волны открывается модально через <c>Application.Run</c>, а вызывается из
+	/// пункта меню плагина, который выполняется в фоновой задаче. Запуск вложенного цикла
+	/// Terminal.Gui не на UI-потоке гасит основной цикл и закрывает плеер, поэтому
+	/// и создание окна, и его показ идут через диспетчер.
+	/// </summary>
+	private void ShowWindowOnUi(Playlist playlist)
 	{
 		var view = _viewFactory.Create<IMyWaveView>();
 		view.SetWaveDescription(playlist.Description ?? "Персональная радиостанция");
