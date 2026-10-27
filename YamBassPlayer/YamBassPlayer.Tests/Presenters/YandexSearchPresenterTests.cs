@@ -21,7 +21,7 @@ public sealed class YandexSearchPresenterTests
         
         _view = new Mock<IYandexSearchView>();
         
-        _presenter = new YandexSearchPresenter(_searchService.Object, () => _view.Object);
+        _presenter = new YandexSearchPresenter(_searchService.Object, () => _view.Object, new FakeUiDispatcher());
     }
 
     private static Track Track(string id) => new($"T-{id}", $"A-{id}", "Album", id) { SourceId = YandexMusicSourceId.Value };
@@ -31,9 +31,9 @@ public sealed class YandexSearchPresenterTests
     // ── Открытие диалога ──────────────────────────────────────────────────
 
     [Test]
-    public void ShowYandexSearchDialog_ShowsCreatedView()
+    public async Task ShowYandexSearchDialog_ShowsCreatedView()
     {
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         Assert.Multiple(() =>
         {
@@ -41,12 +41,72 @@ public sealed class YandexSearchPresenterTests
         });
     }
 
+    /// <summary>
+    /// Пункт меню плагина выполняется в фоновой задаче, а <c>Application.Run</c> из
+    /// фонового потока гоняет драйвер Terminal.Gui одновременно с основным циклом
+    /// (падение IndexOutOfRangeException в отрисовке). Значит и создание окна,
+    /// и его показ обязаны идти через диспетчер UI-потока.
+    /// </summary>
+    [Test]
+    public async Task ShowYandexSearchDialog_CreatesAndShowsViewOnUiDispatcher()
+    {
+        var dispatcher = new RecordingUiDispatcher();
+        bool createdInDispatcher = false;
+        bool shownInDispatcher = false;
+
+        _view.Setup(v => v.Show()).Callback(() => shownInDispatcher = dispatcher.IsInvoking);
+        var presenter = new YandexSearchPresenter(
+            _searchService.Object,
+            () =>
+            {
+                createdInDispatcher = dispatcher.IsInvoking;
+                return _view.Object;
+            },
+            dispatcher);
+
+        await presenter.ShowYandexSearchDialogAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dispatcher.InvokeCount, Is.EqualTo(1));
+            Assert.That(createdInDispatcher, Is.True, "окно должно создаваться в UI-потоке");
+            Assert.That(shownInDispatcher, Is.True, "Application.Run должен запускаться в UI-потоке");
+        });
+    }
+
+    /// <summary>Диспетчер, запоминающий, выполняется ли действие прямо сейчас.</summary>
+    private sealed class RecordingUiDispatcher : IUiDispatcher
+    {
+        public int InvokeCount { get; private set; }
+
+        public bool IsInvoking { get; private set; }
+
+        public void Invoke(Action action)
+        {
+            InvokeCount++;
+            IsInvoking = true;
+
+            try
+            {
+                action();
+            }
+            finally
+            {
+                IsInvoking = false;
+            }
+        }
+
+        public void StartTimer(TimeSpan interval, Func<bool> onTick)
+        {
+        }
+    }
+
     // ── Поиск ─────────────────────────────────────────────────────────────
 
     [Test]
-    public void SearchClicked_WithBlankQuery_ShowsErrorWithoutCallingService()
+    public async Task SearchClicked_WithBlankQuery_ShowsErrorWithoutCallingService()
     {
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnSearchClicked += null, "  ");
 
@@ -58,11 +118,11 @@ public sealed class YandexSearchPresenterTests
     }
 
     [Test]
-    public void SearchClicked_PerformsSearchAndTogglesLoading()
+    public async Task SearchClicked_PerformsSearchAndTogglesLoading()
     {
         var result = new SearchResult { Tracks = [Track("a")] };
         _searchService.Setup(s => s.SearchAllAsync("кино", 20, It.IsAny<CancellationToken>())).ReturnsAsync(result);
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnSearchClicked += null, "кино");
 
@@ -75,11 +135,11 @@ public sealed class YandexSearchPresenterTests
     }
 
     [Test]
-    public void SearchFailure_ShowsErrorAndStopsLoading()
+    public async Task SearchFailure_ShowsErrorAndStopsLoading()
     {
         _searchService.Setup(s => s.SearchAllAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("boom"));
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnSearchClicked += null, "кино");
 
@@ -93,10 +153,10 @@ public sealed class YandexSearchPresenterTests
     // ── OK: разворачивание выбранных элементов ────────────────────────────
 
     [Test]
-    public void OkClicked_WithNoMarkedItems_ShowsErrorAndDoesNotClose()
+    public async Task OkClicked_WithNoMarkedItems_ShowsErrorAndDoesNotClose()
     {
         _view.Setup(v => v.GetMarkedItems()).Returns([]);
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnOkClicked += null);
 
@@ -108,11 +168,11 @@ public sealed class YandexSearchPresenterTests
     }
 
     [Test]
-    public void OkClicked_WithTrackItem_ReturnsTrack()
+    public async Task OkClicked_WithTrackItem_ReturnsTrack()
     {
         var track = Track("t1");
         _view.Setup(v => v.GetMarkedItems()).Returns([new TrackItem(track)]);
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnOkClicked += null);
 
@@ -125,12 +185,12 @@ public sealed class YandexSearchPresenterTests
     }
 
     [Test]
-    public void OkClicked_WithArtistItem_ExpandsArtistTracks()
+    public async Task OkClicked_WithArtistItem_ExpandsArtistTracks()
     {
         var artistTracks = new[] { Track("a1"), Track("a2") };
         _view.Setup(v => v.GetMarkedItems()).Returns([new ArtistItem(Artist("ar"))]);
         _searchService.Setup(s => s.GetArtistTracksAsync("ar", It.IsAny<CancellationToken>())).ReturnsAsync(artistTracks);
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnOkClicked += null);
 
@@ -138,12 +198,12 @@ public sealed class YandexSearchPresenterTests
     }
 
     [Test]
-    public void OkClicked_WithAlbumItem_ExpandsAlbumTracks()
+    public async Task OkClicked_WithAlbumItem_ExpandsAlbumTracks()
     {
         var albumTracks = new[] { Track("al1") };
         _view.Setup(v => v.GetMarkedItems()).Returns([new AlbumItem(Album("al"))]);
         _searchService.Setup(s => s.GetAlbumTracksAsync("al", It.IsAny<CancellationToken>())).ReturnsAsync(albumTracks);
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnOkClicked += null);
 
@@ -151,9 +211,9 @@ public sealed class YandexSearchPresenterTests
     }
 
     [Test]
-    public void CancelClicked_SetsCancelledAndCloses()
+    public async Task CancelClicked_SetsCancelledAndCloses()
     {
-        _presenter.ShowYandexSearchDialog();
+        await _presenter.ShowYandexSearchDialogAsync();
 
         _view.Raise(v => v.OnCancelClicked += null);
 

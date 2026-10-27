@@ -4,7 +4,7 @@ namespace YamBassPlayer.Presenters;
 
 public interface IYandexSearchPresenter
 {
-	void ShowYandexSearchDialog();
+	Task ShowYandexSearchDialogAsync();
 	List<Track> GetSelectedTracks();
 	bool WasCancelled();
 }

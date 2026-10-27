@@ -60,7 +60,9 @@ public sealed class YandexMusicPlugin : IPlugin, IMenuContributor
             favorites,
             radio);
 
-        _searchPresenter = new YandexSearchPresenter(source, () => new YandexSearchView());
+        _searchPresenter = _ui is null
+            ? null
+            : new YandexSearchPresenter(source, () => new YandexSearchView(), _ui.Dispatcher);
 
         registrar.AddMusicSource(source);
         registrar.AddTrackAction(new YandexLikeTrackAction(favorites));
@@ -125,7 +127,7 @@ public sealed class YandexMusicPlugin : IPlugin, IMenuContributor
         if (_searchPresenter is null || _trackInfoProvider is null || _ui is null)
             return;
 
-        _searchPresenter.ShowYandexSearchDialog();
+        await _searchPresenter.ShowYandexSearchDialogAsync();
         if (_searchPresenter.WasCancelled())
             return;
 

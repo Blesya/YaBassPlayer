@@ -9,17 +9,47 @@ public class YandexSearchPresenter : IYandexSearchPresenter
 {
 	private readonly IEntitySearchSource _source;
 	private readonly Func<IYandexSearchView> _createView;
+	private readonly IUiDispatcher _uiDispatcher;
 	
 	private List<Track> _selectedTracks = new();
 	private bool _cancelled = true;
 
-	public YandexSearchPresenter(IEntitySearchSource source, Func<IYandexSearchView> createView)
+	public YandexSearchPresenter(IEntitySearchSource source, Func<IYandexSearchView> createView, IUiDispatcher uiDispatcher)
 	{
 		_source = source;
 		_createView = createView;
+		_uiDispatcher = uiDispatcher;
 	}
 
-	public void ShowYandexSearchDialog()
+	/// <summary>
+	/// Пункт меню плагина выполняется в фоновой задаче (<c>MainWindow.RunPluginEntry</c>),
+	/// а диалог открывается модально через <c>Application.Run</c>. Вложенный цикл
+	/// Terminal.Gui не на UI-потоке начинает крутить драйвер одновременно с основным
+	/// циклом — драйвер не потокобезопасен, и отрисовка падает
+	/// (<c>IndexOutOfRangeException</c> в <c>View.Clear</c>). Поэтому и создание окна,
+	/// и его показ идут через диспетчер, а результат читается после закрытия диалога.
+	/// </summary>
+	public Task ShowYandexSearchDialogAsync()
+	{
+		var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+		_uiDispatcher.Invoke(() =>
+		{
+			try
+			{
+				ShowDialogOnUiThread();
+				completion.TrySetResult();
+			}
+			catch (Exception ex)
+			{
+				completion.TrySetException(ex);
+			}
+		});
+
+		return completion.Task;
+	}
+
+	private void ShowDialogOnUiThread()
 	{
 		var view = _createView();
 
