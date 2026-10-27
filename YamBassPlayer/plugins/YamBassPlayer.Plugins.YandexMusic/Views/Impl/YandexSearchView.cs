@@ -5,7 +5,7 @@ namespace YamBassPlayer.Views.Impl;
 
 public class YandexSearchView : Dialog, IYandexSearchView
 {
-	private const string DefaultResultsLabelText = "Результаты: выполните поиск. Пробел отмечает элементы.";
+	private const string DefaultResultsLabelText = "Результаты: введите запрос и нажмите Enter. Пробел отмечает элементы.";
 	private readonly TextField _searchField;
 	private readonly Button _searchButton;
 	private readonly Label _resultsLabel;
@@ -40,16 +40,24 @@ public class YandexSearchView : Dialog, IYandexSearchView
 			Width = Dim.Fill(15)
 		};
 
+		_searchField.KeyPress += e =>
+		{
+			// Enter из поля ввода — это поиск. Проверка фокуса нужна потому, что
+			// Terminal.Gui пробрасывает KeyPress и в «холодную» фазу, когда фокус
+			// уже на другом элементе: там Enter должен достаться кнопке по умолчанию.
+			if (e.KeyEvent.Key != Key.Enter || !_searchField.HasFocus)
+				return;
+
+			SubmitSearch();
+			e.Handled = true;
+		};
+
 		_searchButton = new Button("Найти")
 		{
 			X = Pos.Right(_searchField) + 1,
 			Y = 2
 		};
-		_searchButton.Clicked += () =>
-		{
-			string query = _searchField.Text?.ToString() ?? string.Empty;
-			OnSearchClicked?.Invoke(query);
-		};
+		_searchButton.Clicked += SubmitSearch;
 
 		_resultsLabel = new Label
 		{
@@ -77,7 +85,8 @@ public class YandexSearchView : Dialog, IYandexSearchView
 		var okButton = new Button("OK")
 		{
 			X = Pos.Center() - 10,
-			Y = Pos.AnchorEnd(2)
+			Y = Pos.AnchorEnd(2),
+			IsDefault = true
 		};
 		okButton.Clicked += () => OnOkClicked?.Invoke();
 
@@ -102,6 +111,15 @@ public class YandexSearchView : Dialog, IYandexSearchView
 			AllowsMarking = true,
 			AllowsMultipleSelection = true
 		};
+	}
+
+	/// <summary>
+	/// Отправляет введённый запрос на поиск — одинаково для кнопки «Найти» и Enter в поле ввода.
+	/// </summary>
+	private void SubmitSearch()
+	{
+		string query = _searchField.Text?.ToString() ?? string.Empty;
+		OnSearchClicked?.Invoke(query);
 	}
 
 	public void SetSearchResults(SearchResult result)
