@@ -381,13 +381,16 @@ public class AppConfiguration
 		return _cachedRoot;
 	}
 
+	private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
+
 	private static void SaveJsonNode(JsonObject root)
 	{
-		var options = new JsonSerializerOptions { WriteIndented = true };
-		File.WriteAllText(ConfigFilePath, root.ToJsonString(options));
+		File.WriteAllText(ConfigFilePath, root.ToJsonString(WriteOptions));
 
-		_cachedRoot = null;
-		_configuration = null;
-		ReloadConfiguration();
+		// root — это и есть _cachedRoot (его возвращает LoadJsonNode), поэтому кеш
+		// остаётся валидным и перечитывать файл не нужно. Раньше здесь обнулялись
+		// _cachedRoot и _configuration и вызывался ReloadConfiguration(): на каждую
+		// запись создавался новый ConfigurationBuilder с reloadOnChange: true,
+		// а вместе с ним — новый FileSystemWatcher и его поток.
 	}
 }

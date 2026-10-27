@@ -14,7 +14,7 @@ public sealed class Tunnel3DRenderer : ISpectrumRenderer
     private int _writeIdx;
     private int _lastDataLen;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int w = bounds.Width, h = bounds.Height;
         if (w < 4 || h < 4 || data.Length == 0) return;
@@ -70,7 +70,7 @@ public sealed class Tunnel3DRenderer : ISpectrumRenderer
                 int pos = x - left;
                 int bin = pos * frame.Length / perimeter;
                 bin = Math.Clamp(bin, 0, frame.Length - 1);
-                DrawAt(driver, host, x, top, frame[bin]);
+                DrawAt(canvas, x, top, frame[bin]);
             }
             // right edge (T→B), excluding corners
             for (int y = top + 1; y < bottom; y++)
@@ -78,7 +78,7 @@ public sealed class Tunnel3DRenderer : ISpectrumRenderer
                 int pos = rw + (y - top);
                 int bin = pos * frame.Length / perimeter;
                 bin = Math.Clamp(bin, 0, frame.Length - 1);
-                DrawAt(driver, host, right, y, frame[bin]);
+                DrawAt(canvas, right, y, frame[bin]);
             }
             // bottom edge (R→L)
             for (int x = right - 1; x >= left; x--)
@@ -86,7 +86,7 @@ public sealed class Tunnel3DRenderer : ISpectrumRenderer
                 int pos = rw + rh + (right - 1 - x);
                 int bin = pos * frame.Length / perimeter;
                 bin = Math.Clamp(bin, 0, frame.Length - 1);
-                DrawAt(driver, host, x, bottom, frame[bin]);
+                DrawAt(canvas, x, bottom, frame[bin]);
             }
             // left edge (B→T), excluding corners
             for (int y = bottom - 1; y > top; y--)
@@ -94,12 +94,12 @@ public sealed class Tunnel3DRenderer : ISpectrumRenderer
                 int pos = rw + rh + rw + (bottom - 1 - y);
                 int bin = pos * frame.Length / perimeter;
                 bin = Math.Clamp(bin, 0, frame.Length - 1);
-                DrawAt(driver, host, left, y, frame[bin]);
+                DrawAt(canvas, left, y, frame[bin]);
             }
         }
     }
 
-    private static void DrawAt(ConsoleDriver driver, View host, int x, int y, float val)
+    private static void DrawAt(ISpectrumCanvas canvas, int x, int y, float val)
     {
         if (val < 0.003f) return;
 
@@ -131,9 +131,9 @@ public sealed class Tunnel3DRenderer : ISpectrumRenderer
                 break;
         }
 
-        driver.SetAttribute(new Attribute(color, Color.Black));
-        host.Move(x, y);
-        driver.AddRune(ch);
+        canvas.SetAttribute(new Attribute(color, Color.Black));
+        canvas.Move(x, y);
+        canvas.AddRune(ch);
     }
 
     public void Reset()

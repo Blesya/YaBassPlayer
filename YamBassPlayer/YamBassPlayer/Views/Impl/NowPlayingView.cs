@@ -133,7 +133,13 @@ public sealed class NowPlayingView : Window, INowPlayingView
 
 	public void SetSpectrumData(float[] data)
 	{
-		_spectrum.SetData(data);
+		// Визуализация рисует себя сама, без инвалидации окна: в Terminal.Gui 1.x
+		// инвалидация дочерней вьюхи перерисовывает весь экран.
+		if (_spectrum.DrawFrame(data))
+		{
+			Application.Current?.PositionCursor();
+			Application.Driver.Refresh();
+		}
 	}
 
 	public void SetListenCount(int count) { }

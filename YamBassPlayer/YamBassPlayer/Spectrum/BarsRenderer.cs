@@ -16,7 +16,7 @@ public sealed class BarsRenderer : ISpectrumRenderer
     private float[] _peaks = [];
     private float[] _peakFallSpeed = [];
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         if (data.Length == 0) return;
 
@@ -74,26 +74,26 @@ public sealed class BarsRenderer : ISpectrumRenderer
                 _ => Color.BrightRed
             };
 
-            driver.SetAttribute(new Attribute(barColor, Color.Black));
+            canvas.SetAttribute(new Attribute(barColor, Color.Black));
 
             int xStart = i * cellWidth;
             for (int y = 0; y < barPixels; y++)
             {
                 for (int dx = 0; dx < BarWidth; dx++)
                 {
-                    host.Move(xStart + dx, height - 1 - y);
-                    driver.AddRune('█');
+                    canvas.Move(xStart + dx, height - 1 - y);
+                    canvas.AddRune('█');
                 }
             }
 
             int peakY = height - 1 - (int)_peaks[i];
             if (peakY >= 0 && peakY < height)
             {
-                driver.SetAttribute(new Attribute(Color.White, Color.Black));
+                canvas.SetAttribute(new Attribute(Color.White, Color.Black));
                 for (int dx = 0; dx < BarWidth; dx++)
                 {
-                    host.Move(xStart + dx, peakY);
-                    driver.AddRune('░');
+                    canvas.Move(xStart + dx, peakY);
+                    canvas.AddRune('░');
                 }
             }
         }

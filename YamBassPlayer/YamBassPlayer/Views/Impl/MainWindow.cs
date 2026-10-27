@@ -32,6 +32,9 @@ public sealed class MainWindow : Window
 	/// <summary>Высота командной строки внизу окна.</summary>
 	private const int CommandInputHeight = 2;
 
+	/// <summary>Период обновления визуализации, мс (≈60 кадров в секунду).</summary>
+	private const int SpectrumRefreshMs = 16;
+
 	/// <summary>
 	/// Сколько строк занимает низ окна: панель управления и командная строка.
 	/// От этой величины отсчитывается и верх панели, и низ дерева плейлистов —
@@ -252,15 +255,25 @@ public sealed class MainWindow : Window
 		// Skips while playback is idle and while a modal (e.g. «Сейчас играет») has its
 		// own spectrum loop — otherwise two concurrent 16ms loops double the BASS polling
 		// and full-view repaints per frame.
-		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(16), _ =>
+		Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(SpectrumRefreshMs), _ =>
 		{
 			if (!_spectrumEnabled || !ReferenceEquals(Application.Current, Application.Top) || !_audioPlayer.IsPlayed)
 				return true;
 
-			_spectrum.SetData(
+			bool drawn = _spectrum.DrawFrame(
 				_spectrum.RequiredDataType == SpectrumDataType.Waveform
 					? _audioPlayer.GetWaveformData(512)
 					: _audioPlayer.ChannelGetData());
+
+			// Спектр рисует себя сам, без инвалидации Terminal.Gui: иначе каждая
+			// инвалидация заставляет Toplevel залить весь экран и перерисовать все
+			// панели (включая обложку) — 60 раз в секунду.
+			if (drawn)
+			{
+				Application.Top.PositionCursor();
+				Application.Driver.Refresh();
+			}
+
 			return true;
 		});
 	}

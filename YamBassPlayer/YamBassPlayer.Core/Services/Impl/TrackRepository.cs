@@ -47,6 +47,10 @@ public class TrackRepository : ITrackRepository
 		_cache.MyWaveAppended += OnMyWaveAppended;
 	}
 
+	private readonly object _saveSync = new();
+	private PlaylistState? _pendingSave;
+	private bool _saveInProgress;
+
 	public PlaylistState? GetPersistedSnapshot()
 	{
 		if (_persistedStateLoaded)
@@ -184,7 +188,55 @@ public class TrackRepository : ITrackRepository
 			LastTrack = key,
 			SavedAt = DateTime.UtcNow
 		};
-		_playlistStateStore.Save(_persistedState);
+		// Запись снимка — это сериализация всего дерева плейлистов и файл: на 200
+		// плейлистах ~18 мс (замер в PerfBenchmarks). Держать это на UI-потоке в момент
+		// старта трека нельзя, поэтому пишем в фоне одним фоновым писателем.
+		SaveInBackground(_persistedState);
+	}
+
+	/// <summary>
+	/// Фоновый писатель снимка: одновременно идёт не больше одной записи, а если
+	/// состояние успело смениться, пишется самое свежее (промежуточные не нужны).
+	/// </summary>
+	private void SaveInBackground(PlaylistState state)
+	{
+		lock (_saveSync)
+		{
+			_pendingSave = state;
+			if (_saveInProgress)
+				return;
+
+			_saveInProgress = true;
+		}
+
+		_ = Task.Run(SavePendingLoop);
+	}
+
+	private void SavePendingLoop()
+	{
+		while (true)
+		{
+			PlaylistState? state;
+			lock (_saveSync)
+			{
+				state = _pendingSave;
+				_pendingSave = null;
+				if (state is null)
+				{
+					_saveInProgress = false;
+					return;
+				}
+			}
+
+			try
+			{
+				_playlistStateStore.Save(state);
+			}
+			catch
+			{
+				// Снимок не критичен для работы: ошибку записи проглатываем.
+			}
+		}
 	}
 
 	public async Task SetPlaylist(Playlist playlist, CancellationToken ct = default)

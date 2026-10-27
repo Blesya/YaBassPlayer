@@ -12,7 +12,7 @@ public sealed class RingsRenderer : ISpectrumRenderer
     private float[,] _grid = null!;
     private int _gw, _gh;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int w = bounds.Width, h = bounds.Height;
         if (w < 4 || h < 4 || data.Length == 0) return;
@@ -33,7 +33,7 @@ public sealed class RingsRenderer : ISpectrumRenderer
         Array.Clear(_grid, 0, _grid.Length);
 
         // reference rings
-        driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+        canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
         for (int ring = 1; ring <= 3; ring++)
         {
             float rr = maxR * ring / 4f;
@@ -44,8 +44,8 @@ public sealed class RingsRenderer : ISpectrumRenderer
                 int py = (int)(cy + Math.Sin(rad) * rr + 0.5);
                 if (px >= 0 && px < w && py >= 0 && py < h)
                 {
-                    host.Move(px, py);
-                    driver.AddRune('·');
+                    canvas.Move(px, py);
+                    canvas.AddRune('·');
                 }
             }
         }
@@ -60,8 +60,8 @@ public sealed class RingsRenderer : ISpectrumRenderer
                 int py = (int)(cy + Math.Sin(rad) * r + 0.5);
                 if (px >= 0 && px < w && py >= 0 && py < h)
                 {
-                    host.Move(px, py);
-                    driver.AddRune('·');
+                    canvas.Move(px, py);
+                    canvas.AddRune('·');
                 }
             }
         }
@@ -98,9 +98,9 @@ public sealed class RingsRenderer : ISpectrumRenderer
                     < 0.96f => Color.BrightYellow,
                     _ => Color.BrightRed
                 };
-                driver.SetAttribute(new Attribute(c, Color.Black));
-                host.Move(x, y);
-                driver.AddRune('▓');
+                canvas.SetAttribute(new Attribute(c, Color.Black));
+                canvas.Move(x, y);
+                canvas.AddRune('▓');
             }
         }
 
@@ -108,9 +108,9 @@ public sealed class RingsRenderer : ISpectrumRenderer
         int cxi = (int)cx, cyi = (int)cy;
         if (cxi >= 0 && cxi < w && cyi >= 0 && cyi < h)
         {
-            driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
-            host.Move(cxi, cyi);
-            driver.AddRune('+');
+            canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+            canvas.Move(cxi, cyi);
+            canvas.AddRune('+');
         }
     }
 

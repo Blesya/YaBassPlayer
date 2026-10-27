@@ -9,7 +9,13 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
     public string DisplayName => "〜 Осц.";
     public SpectrumDataType DataType => SpectrumDataType.Waveform;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    // Буферы кадра: переиспользуются, иначе на 60 кадрах в секунду получалось
+    // несколько килобайт мусора в gen0 каждую секунду.
+    private float[] _resampled = [];
+    private float[] _smoothed = [];
+    private float[] _lowPassed = [];
+
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int width = bounds.Width;
         int height = bounds.Height;
@@ -18,11 +24,11 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
         if (data.Length == 0)
             return;
 
-        driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+        canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
         for (int x = 0; x < width; x++)
         {
-            host.Move(x, midY);
-            driver.AddRune('─');
+            canvas.Move(x, midY);
+            canvas.AddRune('─');
         }
 
         float[] filtered = ApplyLowPass(data, maxFrequencyHz);
@@ -53,7 +59,7 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
 
             int hyTop = Math.Min(prevHY, hy);
             int hyBottom = Math.Max(prevHY, hy);
-            DrawVerticalSegment(driver, host, x, hyTop, hyBottom, halfHeight, pointColor);
+            DrawVerticalSegment(canvas, x, hyTop, hyBottom, halfHeight, pointColor);
 
             prevHY = hy;
         }
@@ -61,9 +67,19 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
 
     public void Reset() { }
 
-    private static float[] SmoothSamples(float[] waveform, int targetWidth, int windowSize)
+    private float[] SmoothSamples(float[] waveform, int targetWidth, int windowSize)
     {
-        float[] resampled = new float[targetWidth];
+        if (_resampled.Length != targetWidth)
+        {
+            _resampled = new float[targetWidth];
+        }
+
+        if (_smoothed.Length != targetWidth)
+        {
+            _smoothed = new float[targetWidth];
+        }
+
+        float[] resampled = _resampled;
         for (int x = 0; x < targetWidth; x++)
         {
             float t = (float)x / Math.Max(1, targetWidth - 1);
@@ -71,7 +87,7 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
             resampled[x] = waveform[idx];
         }
 
-        float[] result = new float[targetWidth];
+        float[] result = _smoothed;
         int half = windowSize / 2;
         for (int x = 0; x < targetWidth; x++)
         {
@@ -91,29 +107,34 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
         return result;
     }
 
-    private static float[] ApplyLowPass(float[] samples, int maxFreqHz)
+    private float[] ApplyLowPass(float[] samples, int maxFreqHz)
     {
         if (maxFreqHz >= 22050)
             return samples;
 
+        if (_lowPassed.Length != samples.Length)
+        {
+            _lowPassed = new float[samples.Length];
+        }
+
         float alpha = Math.Clamp(maxFreqHz / 22050f, 0.01f, 1f);
-        float[] output = new float[samples.Length];
+        float[] output = _lowPassed;
         output[0] = samples[0];
         for (int i = 1; i < samples.Length; i++)
             output[i] = output[i - 1] + alpha * (samples[i] - output[i - 1]);
         return output;
     }
 
-    private static void DrawVerticalSegment(ConsoleDriver driver, View host, int x, int yTop, int yBottom, int height, Color color)
+    private static void DrawVerticalSegment(ISpectrumCanvas canvas, int x, int yTop, int yBottom, int height, Color color)
     {
-        driver.SetAttribute(new Attribute(color, Color.Black));
+        canvas.SetAttribute(new Attribute(color, Color.Black));
 
         if (yTop == yBottom)
         {
             int charRow = yTop / 2;
             bool isTopHalf = (yTop % 2 == 0);
-            host.Move(x, charRow);
-            driver.AddRune(isTopHalf ? '▀' : '▄');
+            canvas.Move(x, charRow);
+            canvas.AddRune(isTopHalf ? '▀' : '▄');
             return;
         }
 
@@ -138,8 +159,8 @@ public sealed class OscilloscopeRenderer : ISpectrumRenderer
 
             if (glyph != ' ')
             {
-                host.Move(x, row);
-                driver.AddRune(glyph);
+                canvas.Move(x, row);
+                canvas.AddRune(glyph);
             }
         }
     }

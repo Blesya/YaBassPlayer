@@ -13,7 +13,7 @@ public sealed class PolarWaveformRenderer : ISpectrumRenderer
     private float _glowIntensity;
     private int _framesSinceLastBeat;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int w = bounds.Width, h = bounds.Height;
         if (w < 4 || h < 4 || data.Length == 0) return;
@@ -95,33 +95,33 @@ public sealed class PolarWaveformRenderer : ISpectrumRenderer
                     // Левая внешняя область
                     if (xLeft > 0)
                     {
-                        driver.SetAttribute(glowAttr);
-                        host.Move(0, y);
-                        for (int x = 0; x < xLeft; x++) driver.AddRune(' ');
+                        canvas.SetAttribute(glowAttr);
+                        canvas.Move(0, y);
+                        for (int x = 0; x < xLeft; x++) canvas.AddRune(' ');
                     }
                     // Внутренняя область (чёрный фон)
-                    driver.SetAttribute(blackAttr);
-                    host.Move(xLeft, y);
-                    for (int x = xLeft; x <= xRight; x++) driver.AddRune(' ');
+                    canvas.SetAttribute(blackAttr);
+                    canvas.Move(xLeft, y);
+                    for (int x = xLeft; x <= xRight; x++) canvas.AddRune(' ');
                     // Правая внешняя область
                     if (xRight < w - 1)
                     {
-                        driver.SetAttribute(glowAttr);
-                        host.Move(xRight + 1, y);
-                        for (int x = xRight + 1; x < w; x++) driver.AddRune(' ');
+                        canvas.SetAttribute(glowAttr);
+                        canvas.Move(xRight + 1, y);
+                        for (int x = xRight + 1; x < w; x++) canvas.AddRune(' ');
                     }
                 }
                 else
                 {
                     // Вся строка за пределами круга
-                    driver.SetAttribute(glowAttr);
-                    host.Move(0, y);
-                    for (int x = 0; x < w; x++) driver.AddRune(' ');
+                    canvas.SetAttribute(glowAttr);
+                    canvas.Move(0, y);
+                    for (int x = 0; x < w; x++) canvas.AddRune(' ');
                 }
             }
         }
 
-        driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+        canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
         for (int a = 0; a < 360; a += 6)
         {
             double rad = a * Math.PI / 180.0;
@@ -129,8 +129,8 @@ public sealed class PolarWaveformRenderer : ISpectrumRenderer
             int py = (int)(cy + Math.Sin(rad) * baseR + 0.5);
             if (px >= 0 && px < w && py >= 0 && py < h)
             {
-                host.Move(px, py);
-                driver.AddRune('·');
+                canvas.Move(px, py);
+                canvas.AddRune('·');
             }
         }
 
@@ -156,17 +156,17 @@ public sealed class PolarWaveformRenderer : ISpectrumRenderer
                 < 0.95f => Color.BrightRed,
                 _ => Color.Red
             };
-            driver.SetAttribute(new Attribute(c, Color.Black));
-            host.Move(px, py);
-            driver.AddRune('█');
+            canvas.SetAttribute(new Attribute(c, Color.Black));
+            canvas.Move(px, py);
+            canvas.AddRune('█');
         }
 
         int cxi = (int)cx, cyi = (int)cy;
         if (cxi >= 0 && cxi < w && cyi >= 0 && cyi < h)
         {
-            driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
-            host.Move(cxi, cyi);
-            driver.AddRune('+');
+            canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+            canvas.Move(cxi, cyi);
+            canvas.AddRune('+');
         }
 
         _phase += 0.02f;

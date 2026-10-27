@@ -109,6 +109,17 @@ namespace Terminal.Gui {
 	}
 
 	internal class NetEvents {
+		/// <summary>
+		/// Период опроса клавиатуры, мс. Раньше здесь было 100 мс: клавиша, нажатая
+		/// сразу после проверки, ждала до 100 мс, то есть интерфейс отзывался на ввод
+		/// с задержкой до десятой доли секунды. 5 мс дают «мгновенный» отклик и стоят
+		/// одного дешёвого системного вызова на итерацию.
+		/// </summary>
+		const int KeyPollIntervalMs = 5;
+
+		/// <summary>Период проверки изменения размера окна, мс.</summary>
+		const int WinChangePollIntervalMs = 500;
+
 		ManualResetEventSlim inputReady = new ManualResetEventSlim (false);
 		ManualResetEventSlim waitForStart = new ManualResetEventSlim (false);
 		ManualResetEventSlim winChange = new ManualResetEventSlim (false);
@@ -133,8 +144,14 @@ namespace Terminal.Gui {
 				throw new ArgumentNullException ("Console driver instance must be provided.");
 			}
 			this.consoleDriver = consoleDriver;
-			Task.Run (ProcessInputResultQueue, TokenSource.Token);
-			Task.Run (CheckWinChange, TokenSource.Token);
+			// LongRunning: оба цикла блокируются на всё время жизни приложения. Обычный
+			// Task.Run держал бы два потока пула заблокированными, а пул добавляет потоки
+			// медленно — фоновые задачи (сеть, БД, декодирование обложек) стартовали бы
+			// с задержкой.
+			Task.Factory.StartNew (ProcessInputResultQueue, TokenSource.Token,
+				TaskCreationOptions.LongRunning, TaskScheduler.Default);
+			Task.Factory.StartNew (CheckWinChange, TokenSource.Token,
+				TaskCreationOptions.LongRunning, TaskScheduler.Default);
 		}
 
 		public InputResult? ReadConsoleInput ()
@@ -185,7 +202,12 @@ namespace Terminal.Gui {
 					if (Console.KeyAvailable) {
 						consoleKeyInfo = Console.ReadKey (true);
 					} else {
-						Task.Delay (100, TokenSource.Token).Wait (TokenSource.Token);
+						// Ждём на хэндле отмены, а не через Task.Delay(...).Wait():
+						// Task.Delay аллоцирует таймер и задачу на каждой итерации,
+						// а .Wait() ещё и блокирует поток пула.
+						if (TokenSource.Token.WaitHandle.WaitOne (KeyPollIntervalMs)) {
+							return;
+						}
 						if (Console.KeyAvailable) {
 							consoleKeyInfo = Console.ReadKey (true);
 						}
@@ -241,12 +263,9 @@ namespace Terminal.Gui {
 		void WaitWinChange ()
 		{
 			while (!TokenSource.IsCancellationRequested) {
-				try {
-					// Wait for a while then check if screen has changed sizes
-					Task.Delay (500, TokenSource.Token).Wait (TokenSource.Token);
-
-				} catch (OperationCanceledException) {
-
+				// WaitOne вместо Task.Delay(...).Wait(): без аллокаций и без
+				// заблокированной задачи в пуле потоков.
+				if (TokenSource.Token.WaitHandle.WaitOne (WinChangePollIntervalMs)) {
 					return;
 				}
 
@@ -341,100 +360,50 @@ namespace Terminal.Gui {
 			GetMouseEvent (MapMouseFlags (mouseFlag), pos);
 		}
 
+		/// <summary>
+		/// Соответствие флагов мыши Terminal.Gui состоянию кнопок. Раньше метод перебирал
+		/// <c>Enum.GetValues</c> и проверял <c>HasFlag</c> на каждое событие мыши — это
+		/// десятки боксов и аллокаций на каждое движение указателя.
+		/// </summary>
+		static readonly (MouseFlags Source, MouseButtonState Target) [] MouseFlagMap = {
+			(MouseFlags.Button1Pressed, MouseButtonState.Button1Pressed),
+			(MouseFlags.Button1Released, MouseButtonState.Button1Released),
+			(MouseFlags.Button1Clicked, MouseButtonState.Button1Clicked),
+			(MouseFlags.Button1DoubleClicked, MouseButtonState.Button1DoubleClicked),
+			(MouseFlags.Button1TripleClicked, MouseButtonState.Button1TripleClicked),
+			(MouseFlags.Button2Pressed, MouseButtonState.Button2Pressed),
+			(MouseFlags.Button2Released, MouseButtonState.Button2Released),
+			(MouseFlags.Button2Clicked, MouseButtonState.Button2Clicked),
+			(MouseFlags.Button2DoubleClicked, MouseButtonState.Button2DoubleClicked),
+			(MouseFlags.Button2TripleClicked, MouseButtonState.Button2TripleClicked),
+			(MouseFlags.Button3Pressed, MouseButtonState.Button3Pressed),
+			(MouseFlags.Button3Released, MouseButtonState.Button3Released),
+			(MouseFlags.Button3Clicked, MouseButtonState.Button3Clicked),
+			(MouseFlags.Button3DoubleClicked, MouseButtonState.Button3DoubleClicked),
+			(MouseFlags.Button3TripleClicked, MouseButtonState.Button3TripleClicked),
+			(MouseFlags.WheeledUp, MouseButtonState.ButtonWheeledUp),
+			(MouseFlags.WheeledDown, MouseButtonState.ButtonWheeledDown),
+			(MouseFlags.WheeledLeft, MouseButtonState.ButtonWheeledLeft),
+			(MouseFlags.WheeledRight, MouseButtonState.ButtonWheeledRight),
+			(MouseFlags.Button4Pressed, MouseButtonState.Button4Pressed),
+			(MouseFlags.Button4Released, MouseButtonState.Button4Released),
+			(MouseFlags.Button4Clicked, MouseButtonState.Button4Clicked),
+			(MouseFlags.Button4DoubleClicked, MouseButtonState.Button4DoubleClicked),
+			(MouseFlags.Button4TripleClicked, MouseButtonState.Button4TripleClicked),
+			(MouseFlags.ButtonShift, MouseButtonState.ButtonShift),
+			(MouseFlags.ButtonCtrl, MouseButtonState.ButtonCtrl),
+			(MouseFlags.ButtonAlt, MouseButtonState.ButtonAlt),
+			(MouseFlags.ReportMousePosition, MouseButtonState.ReportMousePosition),
+			(MouseFlags.AllEvents, MouseButtonState.AllEvents)
+		};
+
 		MouseButtonState MapMouseFlags (MouseFlags mouseFlags)
 		{
 			MouseButtonState mbs = default;
-			foreach (var flag in Enum.GetValues (mouseFlags.GetType ())) {
-				if (mouseFlags.HasFlag ((MouseFlags)flag)) {
-					switch (flag) {
-					case MouseFlags.Button1Pressed:
-						mbs |= MouseButtonState.Button1Pressed;
-						break;
-					case MouseFlags.Button1Released:
-						mbs |= MouseButtonState.Button1Released;
-						break;
-					case MouseFlags.Button1Clicked:
-						mbs |= MouseButtonState.Button1Clicked;
-						break;
-					case MouseFlags.Button1DoubleClicked:
-						mbs |= MouseButtonState.Button1DoubleClicked;
-						break;
-					case MouseFlags.Button1TripleClicked:
-						mbs |= MouseButtonState.Button1TripleClicked;
-						break;
-					case MouseFlags.Button2Pressed:
-						mbs |= MouseButtonState.Button2Pressed;
-						break;
-					case MouseFlags.Button2Released:
-						mbs |= MouseButtonState.Button2Released;
-						break;
-					case MouseFlags.Button2Clicked:
-						mbs |= MouseButtonState.Button2Clicked;
-						break;
-					case MouseFlags.Button2DoubleClicked:
-						mbs |= MouseButtonState.Button2DoubleClicked;
-						break;
-					case MouseFlags.Button2TripleClicked:
-						mbs |= MouseButtonState.Button2TripleClicked;
-						break;
-					case MouseFlags.Button3Pressed:
-						mbs |= MouseButtonState.Button3Pressed;
-						break;
-					case MouseFlags.Button3Released:
-						mbs |= MouseButtonState.Button3Released;
-						break;
-					case MouseFlags.Button3Clicked:
-						mbs |= MouseButtonState.Button3Clicked;
-						break;
-					case MouseFlags.Button3DoubleClicked:
-						mbs |= MouseButtonState.Button3DoubleClicked;
-						break;
-					case MouseFlags.Button3TripleClicked:
-						mbs |= MouseButtonState.Button3TripleClicked;
-						break;
-					case MouseFlags.WheeledUp:
-						mbs |= MouseButtonState.ButtonWheeledUp;
-						break;
-					case MouseFlags.WheeledDown:
-						mbs |= MouseButtonState.ButtonWheeledDown;
-						break;
-					case MouseFlags.WheeledLeft:
-						mbs |= MouseButtonState.ButtonWheeledLeft;
-						break;
-					case MouseFlags.WheeledRight:
-						mbs |= MouseButtonState.ButtonWheeledRight;
-						break;
-					case MouseFlags.Button4Pressed:
-						mbs |= MouseButtonState.Button4Pressed;
-						break;
-					case MouseFlags.Button4Released:
-						mbs |= MouseButtonState.Button4Released;
-						break;
-					case MouseFlags.Button4Clicked:
-						mbs |= MouseButtonState.Button4Clicked;
-						break;
-					case MouseFlags.Button4DoubleClicked:
-						mbs |= MouseButtonState.Button4DoubleClicked;
-						break;
-					case MouseFlags.Button4TripleClicked:
-						mbs |= MouseButtonState.Button4TripleClicked;
-						break;
-					case MouseFlags.ButtonShift:
-						mbs |= MouseButtonState.ButtonShift;
-						break;
-					case MouseFlags.ButtonCtrl:
-						mbs |= MouseButtonState.ButtonCtrl;
-						break;
-					case MouseFlags.ButtonAlt:
-						mbs |= MouseButtonState.ButtonAlt;
-						break;
-					case MouseFlags.ReportMousePosition:
-						mbs |= MouseButtonState.ReportMousePosition;
-						break;
-					case MouseFlags.AllEvents:
-						mbs |= MouseButtonState.AllEvents;
-						break;
-					}
+			foreach ((MouseFlags source, MouseButtonState target) in MouseFlagMap) {
+				// Семантика HasFlag: все биты источника должны быть установлены.
+				if ((mouseFlags & source) == source) {
+					mbs |= target;
 				}
 			}
 			return mbs;
@@ -852,83 +821,171 @@ namespace Terminal.Gui {
 			UpdateCursor ();
 		}
 
+		// ─── Буфер кадра ────────────────────────────────────────────────────
+		// Каждый Console.Write — отдельный сброс в консоль (AutoFlush), поэтому кадр
+		// собирается целиком и отдаётся одним Write. Курсор внутри кадра ставится
+		// escape-последовательностью: Console.SetCursorPosition — это P/Invoke, а на
+		// кадр их приходилось по сотне.
+		const string EscapeCSI = "\x1b[";
+		const string EscapeHideCursor = "\x1b[?25l";
+		const string EscapeShowCursor = "\x1b[?25h";
+
+		/// <summary>Количество значений в <see cref="ConsoleColor"/> (Black..White).</summary>
+		const int ConsoleColorCount = 16;
+
+		char [] frame = new char [16 * 1024];
+		int frameLength;
+
+		/// <summary>Кеш «атрибут → escape-последовательность»: считается один раз на цвет.</summary>
+		readonly Dictionary<int, string> attributeSequences = new ();
+
+		void FrameAppend (char value)
+		{
+			if (frameLength == frame.Length) {
+				Array.Resize (ref frame, frame.Length * 2);
+			}
+			frame [frameLength++] = value;
+		}
+
+		void FrameAppend (string value)
+		{
+			if (frameLength + value.Length > frame.Length) {
+				Array.Resize (ref frame, Math.Max (frame.Length * 2, frameLength + value.Length));
+			}
+			value.CopyTo (0, frame, frameLength, value.Length);
+			frameLength += value.Length;
+		}
+
+		void FrameAppendInt (int value)
+		{
+			if (value < 0) {
+				FrameAppend ('-');
+				value = -value;
+			}
+			if (value >= 10) {
+				FrameAppendInt (value / 10);
+			}
+			FrameAppend ((char)('0' + value % 10));
+		}
+
+		void FrameAppendCursorPosition (int col, int row)
+		{
+			FrameAppend (EscapeCSI);
+			FrameAppendInt (row + 1);
+			FrameAppend (';');
+			FrameAppendInt (col + 1);
+			FrameAppend ('H');
+		}
+
+		/// <summary>Один SGR на клетку: и цвет текста, и цвет фона в одной последовательности.</summary>
+		void FrameAppendRgb (RgbCell rgb)
+		{
+			FrameAppend (EscapeCSI);
+			FrameAppend ("38;2;");
+			FrameAppendInt (rgb.FR); FrameAppend (';');
+			FrameAppendInt (rgb.FG); FrameAppend (';');
+			FrameAppendInt (rgb.FB);
+			FrameAppend (";48;2;");
+			FrameAppendInt (rgb.BR); FrameAppend (';');
+			FrameAppendInt (rgb.BG); FrameAppend (';');
+			FrameAppendInt (rgb.BB);
+			FrameAppend ('m');
+		}
+
+		void FrameFlush ()
+		{
+			if (frameLength == 0) {
+				return;
+			}
+			Console.Out.Write (frame, 0, frameLength);
+			frameLength = 0;
+		}
+
+		static bool SameRgb (RgbCell a, RgbCell b)
+			=> a.FR == b.FR && a.FG == b.FG && a.FB == b.FB
+				&& a.BR == b.BR && a.BG == b.BG && a.BB == b.BB;
+
 		public override void UpdateScreen ()
 		{
 			if (winChanging || Console.WindowHeight < 1 || contents.Length != Rows * Cols * 3 || Rows != Console.WindowHeight) {
 				return;
 			}
 
-			int top = 0;
-			int left = 0;
 			int rows = Rows;
 			int cols = Cols;
-			System.Text.StringBuilder output = new System.Text.StringBuilder ();
 			int redrawAttr = -1;
-			var lastCol = -1;
+			RgbCell redrawRgb = default;
+			bool redrawRgbSet = false;
+			bool wroteCell = false;
 
-			Console.CursorVisible = false;
+			frameLength = 0;
+			lastCursorCol = -1;
+			lastCursorRow = -1;
 
-			for (int row = top; row < rows; row++) {
-				if (Console.WindowHeight < 1) {
-					return;
-				}
+			for (int row = 0; row < rows; row++) {
 				if (!dirtyLine [row]) {
 					continue;
 				}
-				if (!SetCursorPosition (0, row)) {
-					return;
-				}
 				dirtyLine [row] = false;
-				output.Clear ();
-				for (int col = left; col < cols; col++) {
-					lastCol = -1;
-					var outputWidth = 0;
-					for (; col < cols; col++) {
-						if (contents [row, col, 2] == 0) {
-							if (output.Length > 0) {
-								SetCursorPosition (lastCol, row);
-								Console.Write (output);
-								output.Clear ();
-								lastCol += outputWidth;
-								outputWidth = 0;
-							} else if (lastCol == -1) {
-								lastCol = col;
-							}
-							if (lastCol + 1 < cols)
-								lastCol++;
-							continue;
-						}
 
-						if (lastCol == -1)
-							lastCol = col;
-
-						var attr = contents [row, col, 1];
-						var rgb = rgbCells [row, col];
-						if (rgb.HasValue) {
-							redrawAttr = -1;
-							AppendRgb (output, rgb.FR, rgb.FG, rgb.FB, true);
-							AppendRgb (output, rgb.BR, rgb.BG, rgb.BB, false);
-						} else if (attr != redrawAttr) {
-							redrawAttr = attr;
-							output.Append (WriteAttributes (attr));
-						}
-						outputWidth++;
-						var rune = contents [row, col, 0];
-						char [] spair;
-						if (Rune.DecodeSurrogatePair ((uint)rune, out spair)) {
-							output.Append (spair);
-						} else {
-							output.Append ((char)rune);
-						}
-						contents [row, col, 2] = 0;
+				// Курсор ставим только при разрыве: подряд идущие клетки печатаются подряд.
+				int nextCol = -1;
+				for (int col = 0; col < cols; col++) {
+					if (contents [row, col, 2] == 0) {
+						continue;
 					}
-				}
-				if (output.Length > 0) {
-					SetCursorPosition (lastCol, row);
-					Console.Write (output);
+
+					if (!wroteCell) {
+						// Курсор прячем только если что-то пишем: иначе кадр пустой
+						// и в консоль не уходит ни байта.
+						wroteCell = true;
+						FrameAppend (EscapeHideCursor);
+						appliedCursorVisibility = CursorVisibility.Invisible;
+						cursorVisibilityKnown = true;
+					}
+
+					if (nextCol != col) {
+						FrameAppendCursorPosition (col, row);
+					}
+
+					var attr = contents [row, col, 1];
+					var rgb = rgbCells [row, col];
+					if (rgb.HasValue) {
+						if (!redrawRgbSet || !SameRgb (redrawRgb, rgb)) {
+							FrameAppendRgb (rgb);
+							redrawRgb = rgb;
+							redrawRgbSet = true;
+							redrawAttr = -1;
+						}
+					} else if (attr != redrawAttr) {
+						FrameAppend (AttributeSequence (attr));
+						redrawAttr = attr;
+						redrawRgbSet = false;
+					}
+
+					var rune = contents [row, col, 0];
+					int width;
+					if (Rune.DecodeSurrogatePair ((uint)rune, out char [] spair)) {
+						foreach (char half in spair) {
+							FrameAppend (half);
+						}
+						width = 2;
+					} else {
+						FrameAppend ((char)rune);
+						width = 1;
+					}
+					contents [row, col, 2] = 0;
+					nextCol = col + width;
 				}
 			}
-			SetCursorPosition (0, 0);
+
+			if (!wroteCell) {
+				frameLength = 0;
+				return;
+			}
+
+			FrameAppendCursorPosition (0, 0);
+			FrameFlush ();
 		}
 
 		void SetVirtualCursorPosition (int col, int row)
@@ -936,31 +993,32 @@ namespace Terminal.Gui {
 			Console.Out.Write ($"\x1b[{row + 1};{col + 1}H");
 		}
 
-		static void AppendRgb (System.Text.StringBuilder sb, byte r, byte g, byte b, bool foreground)
+		/// <summary>
+		/// Escape-последовательность для 16-цветного атрибута. Раньше на каждую смену
+		/// цвета создавался StringBuilder и вызывались <c>Enum.GetValues</c> с LINQ —
+		/// десятки аллокаций на кадр и постоянные паузы сборщика мусора. Атрибутов
+		/// всего 256 сочетаний (16 цветов текста × 16 цветов фона), поэтому они кешируются.
+		/// </summary>
+		string AttributeSequence (int attr)
 		{
-			sb.Append (foreground ? "\x1b[38;2;" : "\x1b[48;2;")
-				.Append (r).Append (';').Append (g).Append (';').Append (b).Append ('m');
-		}
+			if (attributeSequences.TryGetValue (attr, out string cached)) {
+				return cached;
+			}
 
-		System.Text.StringBuilder WriteAttributes (int attr)
-		{
-			const string CSI = "\x1b[";
 			int bg = 0;
 			int fg = 0;
-			System.Text.StringBuilder sb = new System.Text.StringBuilder ();
-
-			IEnumerable<int> values = Enum.GetValues (typeof (ConsoleColor))
-				  .OfType<ConsoleColor> ()
-				  .Select (s => (int)s);
-			if (values.Contains (attr & 0xffff)) {
-				bg = MapColors ((ConsoleColor)(attr & 0xffff), false);
+			int bgValue = attr & 0xffff;
+			int fgValue = (attr >> 16) & 0xffff;
+			if (bgValue >= 0 && bgValue < ConsoleColorCount) {
+				bg = MapColors ((ConsoleColor)bgValue, false);
 			}
-			if (values.Contains ((attr >> 16) & 0xffff)) {
-				fg = MapColors ((ConsoleColor)((attr >> 16) & 0xffff));
+			if (fgValue >= 0 && fgValue < ConsoleColorCount) {
+				fg = MapColors ((ConsoleColor)fgValue);
 			}
-			sb.Append ($"{CSI}{bg};{fg}m");
 
-			return sb;
+			string sequence = $"{EscapeCSI}{bg};{fg}m";
+			attributeSequences [attr] = sequence;
+			return sequence;
 		}
 
 		int MapColors (ConsoleColor color, bool isForeground = true)
@@ -1018,12 +1076,6 @@ namespace Terminal.Gui {
 			}
 		}
 
-		private void SetWindowPosition (int col, int row)
-		{
-			top = Console.WindowTop;
-			left = Console.WindowLeft;
-		}
-
 		private bool EnsureBufferSize ()
 		{
 #pragma warning disable CA1416
@@ -1040,17 +1092,31 @@ namespace Terminal.Gui {
 
 		private CursorVisibility? savedCursorVisibility;
 
+		// Состояние курсора, уже отправленное в терминал: без этой пары каждое
+		// обновление писало escape-последовательность, даже если ничего не менялось.
+		CursorVisibility appliedCursorVisibility;
+		bool cursorVisibilityKnown;
+
+		// Позиция, в которой курсор уже стоит: UpdateCursor вызывается на каждой
+		// итерации главного цикла, а Console.SetCursorPosition — это P/Invoke.
+		int lastCursorCol = -1;
+		int lastCursorRow = -1;
+
 		public override void UpdateCursor ()
 		{
 			EnsureCursorVisibility ();
-			//Debug.WriteLine ($"Before - CursorTop: {Console.CursorTop};CursorLeft: {Console.CursorLeft}");
+			// SetWindowPosition здесь больше не вызывается: он читал Console.WindowTop
+			// и Console.WindowLeft (два P/Invoke) на каждой итерации, хотя в
+			// альтернативном экране окно всегда в (0,0).
 
 			if (ccol >= 0 && ccol < Cols && crow >= 0 && crow < Rows) {
-				SetCursorPosition (ccol, crow);
-				SetWindowPosition (0, crow);
+				if (ccol != lastCursorCol || crow != lastCursorRow) {
+					if (SetCursorPosition (ccol, crow)) {
+						lastCursorCol = ccol;
+						lastCursorRow = crow;
+					}
+				}
 			}
-			//Debug.WriteLine ($"WindowTop: {Console.WindowTop};WindowLeft: {Console.WindowLeft}");
-			//Debug.WriteLine ($"After - CursorTop: {Console.CursorTop};CursorLeft: {Console.CursorLeft}");
 		}
 
 		public override void StartReportingMouseMoves ()
@@ -1410,11 +1476,27 @@ namespace Terminal.Gui {
 		public override bool SetCursorVisibility (CursorVisibility visibility)
 		{
 			savedCursorVisibility = visibility;
-			Console.Out.Write (visibility == CursorVisibility.Default
-				? "\x1b[?25h"
-				: "\x1b[?25l");
+			ApplyCursorVisibility (visibility);
 
 			return visibility == CursorVisibility.Default;
+		}
+
+		/// <summary>
+		/// Пишет escape-последовательность курсора только если состояние действительно
+		/// меняется: <see cref="EnsureCursorVisibility"/> вызывается на каждой итерации
+		/// главного цикла, и раньше это был лишний сброс в консоль каждый раз.
+		/// </summary>
+		void ApplyCursorVisibility (CursorVisibility visibility)
+		{
+			if (cursorVisibilityKnown && appliedCursorVisibility == visibility) {
+				return;
+			}
+
+			appliedCursorVisibility = visibility;
+			cursorVisibilityKnown = true;
+			Console.Out.Write (visibility == CursorVisibility.Default
+				? EscapeShowCursor
+				: EscapeHideCursor);
 		}
 
 		/// <inheritdoc/>
@@ -1447,16 +1529,15 @@ namespace Terminal.Gui {
 			bool hasColor = false;
 			foreground = default;
 			background = default;
-			IEnumerable<int> values = Enum.GetValues (typeof (ConsoleColor))
-				  .OfType<ConsoleColor> ()
-				  .Select (s => (int)s);
-			if (values.Contains (value & 0xffff)) {
+			int bgValue = value & 0xffff;
+			int fgValue = (value >> 16) & 0xffff;
+			if (bgValue >= 0 && bgValue < ConsoleColorCount) {
 				hasColor = true;
-				background = (Color)(ConsoleColor)(value & 0xffff);
+				background = (Color)(ConsoleColor)bgValue;
 			}
-			if (values.Contains ((value >> 16) & 0xffff)) {
+			if (fgValue >= 0 && fgValue < ConsoleColorCount) {
 				hasColor = true;
-				foreground = (Color)(ConsoleColor)((value >> 16) & 0xffff);
+				foreground = (Color)(ConsoleColor)fgValue;
 			}
 			return hasColor;
 		}
@@ -1543,7 +1624,10 @@ namespace Terminal.Gui {
 		void IMainLoopDriver.Setup (MainLoop mainLoop)
 		{
 			this.mainLoop = mainLoop;
-			Task.Run (NetInputHandler, tokenSource.Token);
+			// LongRunning: поток блокируется на ожидании ввода всё время работы
+			// приложения, поэтому он не должен занимать поток пула.
+			Task.Factory.StartNew (NetInputHandler, tokenSource.Token,
+				TaskCreationOptions.LongRunning, TaskScheduler.Default);
 		}
 
 		void IMainLoopDriver.Wakeup ()

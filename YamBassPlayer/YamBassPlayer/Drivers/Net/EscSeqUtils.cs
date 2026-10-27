@@ -25,6 +25,11 @@ namespace Terminal.Gui {
 		/// </summary>
 		public static readonly string CSI_EnableAnyEventMouse = KeyCSI + "?1003h";
 		/// <summary>
+		/// Represents the CSI for enable button event tracking (движение мыши приходит
+		/// только с нажатой кнопкой).
+		/// </summary>
+		public static readonly string CSI_EnableButtonEventMouse = KeyCSI + "?1002h";
+		/// <summary>
 		/// Represents the CSI for enable SGR (Select Graphic Rendition).
 		/// </summary>
 		public static readonly string CSI_EnableSgrExtModeMouse = KeyCSI + "?1006h";
@@ -37,6 +42,10 @@ namespace Terminal.Gui {
 		/// </summary>
 		public static readonly string CSI_DisableAnyEventMouse = KeyCSI + "?1003l";
 		/// <summary>
+		/// Represents the CSI for disable button event tracking.
+		/// </summary>
+		public static readonly string CSI_DisableButtonEventMouse = KeyCSI + "?1002l";
+		/// <summary>
 		/// Represents the CSI for disable SGR (Select Graphic Rendition).
 		/// </summary>
 		public static readonly string CSI_DisableSgrExtModeMouse = KeyCSI + "?1006l";
@@ -47,14 +56,20 @@ namespace Terminal.Gui {
 
 		/// <summary>
 		/// Control sequence for enable mouse events.
+		/// Включаем режим 1002 (события кнопок + движение с нажатой кнопкой), а не 1003
+		/// (любое движение): в режиме 1003 терминал присылает событие на каждый пиксель
+		/// движения указателя, и каждое такое событие — чтение последовательности
+		/// по символу, декодирование, событие в главном цикле и лишняя отрисовка.
+		/// Приложению движение без нажатой кнопки не нужно: WantMousePositionReports
+		/// нигде не включён.
 		/// </summary>
 		public static string EnableMouseEvents { get; set; } =
-			CSI_EnableAnyEventMouse + CSI_EnableUrxvtExtModeMouse + CSI_EnableSgrExtModeMouse;
+			CSI_EnableButtonEventMouse + CSI_EnableUrxvtExtModeMouse + CSI_EnableSgrExtModeMouse;
 		/// <summary>
 		/// Control sequence for disable mouse events.
 		/// </summary>
 		public static string DisableMouseEvents { get; set; } =
-			CSI_DisableAnyEventMouse + CSI_DisableUrxvtExtModeMouse + CSI_DisableSgrExtModeMouse;
+			CSI_DisableButtonEventMouse + CSI_DisableUrxvtExtModeMouse + CSI_DisableSgrExtModeMouse;
 
 		/// <summary>
 		/// Ensures a console key is mapped to one that works correctly with ANSI escape sequences.

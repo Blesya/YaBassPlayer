@@ -9,7 +9,10 @@ public sealed class LissajousScopeRenderer : ISpectrumRenderer
     public string DisplayName => "⊞ Лиссаж.";
     public SpectrumDataType DataType => SpectrumDataType.Waveform;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    /// <summary>Сетка попаданий кадра: переиспользуется, чтобы не аллоцировать её 60 раз в секунду.</summary>
+    private bool[,] _hits = new bool[0, 0];
+
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int w = bounds.Width, h = bounds.Height;
         if (w < 4 || h < 4 || data.Length < 4) return;
@@ -17,15 +20,21 @@ public sealed class LissajousScopeRenderer : ISpectrumRenderer
         float cx = (w - 1) / 2f, cy = (h - 1) / 2f;
         float scale = Math.Min(cx, cy) * 0.85f;
 
-        driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+        canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
         int cxi = (int)cx, cyi = (int)cy;
         for (int x = cxi - 2; x <= cxi + 2; x += 4)
-            if (x >= 0 && x < w) { host.Move(x, cyi); driver.AddRune('·'); }
+            if (x >= 0 && x < w) { canvas.Move(x, cyi); canvas.AddRune('·'); }
         for (int y = cyi - 1; y <= cyi + 1; y += 2)
-            if (y >= 0 && y < h) { host.Move(cxi, y); driver.AddRune('·'); }
+            if (y >= 0 && y < h) { canvas.Move(cxi, y); canvas.AddRune('·'); }
 
         int pairs = data.Length / 2;
-        bool[,] hits = new bool[w, h];
+        if (_hits.GetLength(0) != w || _hits.GetLength(1) != h)
+        {
+            _hits = new bool[w, h];
+        }
+
+        bool[,] hits = _hits;
+        Array.Clear(hits, 0, hits.Length);
 
         for (int i = 0; i < pairs; i++)
         {
@@ -37,13 +46,13 @@ public sealed class LissajousScopeRenderer : ISpectrumRenderer
                 hits[x, y] = true;
         }
 
-        driver.SetAttribute(new Attribute(Color.BrightCyan, Color.Black));
+        canvas.SetAttribute(new Attribute(Color.BrightCyan, Color.Black));
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
                 if (hits[x, y])
                 {
-                    host.Move(x, y);
-                    driver.AddRune('█');
+                    canvas.Move(x, y);
+                    canvas.AddRune('█');
                 }
     }
 

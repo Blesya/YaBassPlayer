@@ -67,4 +67,50 @@ public sealed class TrackListModelTests
 
         Assert.That(changes, Is.EqualTo(1));
     }
+
+    [Test]
+    public void SetFilter_NarrowsItems()
+    {
+        var model = CreateModel("a", "b", "c");
+
+        model.SetFilter("Title-b");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(model.Items, Has.Count.EqualTo(1));
+            Assert.That(model.Items[0].Track.Title, Is.EqualTo("Title-b"));
+            Assert.That(model.SelectedIndex, Is.EqualTo(0));
+        });
+    }
+
+    [Test]
+    public void SetDownloadState_WithoutFilter_UpdatesVisibleItems()
+    {
+        var model = CreateModel("a", "b");
+
+        model.SetDownloadState(K("b"), TrackDownloadState.Cached);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(model.Items[0].Download, Is.EqualTo(TrackDownloadState.Idle));
+            Assert.That(model.Items[1].Download, Is.EqualTo(TrackDownloadState.Cached));
+        });
+    }
+
+    [Test]
+    public void SetDownloadState_WithFilter_KeepsFilterApplied()
+    {
+        var model = CreateModel("a", "b");
+        model.SetFilter("Title-b");
+
+        model.SetDownloadState(K("a"), TrackDownloadState.Cached);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(model.Items, Has.Count.EqualTo(1), "фильтр не должен сбрасываться");
+            Assert.That(model.Items[0].Track.Title, Is.EqualTo("Title-b"));
+            Assert.That(model.Items[0].Download, Is.EqualTo(TrackDownloadState.Idle),
+                "состояние трека вне фильтра видимый список не меняет");
+        });
+    }
 }

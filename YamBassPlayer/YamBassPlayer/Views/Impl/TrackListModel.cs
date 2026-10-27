@@ -80,8 +80,13 @@ public sealed class TrackListModel : ITrackListModel
 		if (!ApplyDownloadState(_allItems, key, state))
 			return;
 
-		// Фильтр и порядок не меняются — список пересобирается из тех же элементов.
-		ApplyFilter();
+		// Фильтр и порядок не меняются — пересобирать список не нужно: без фильтра
+		// _items повторяет _allItems один в один, поэтому правим те же позиции.
+		if (_filterText is null)
+			ApplyDownloadState(_items, key, state);
+		else
+			ApplyFilter();
+
 		Changed?.Invoke();
 	}
 
@@ -236,15 +241,20 @@ public sealed class TrackListModel : ITrackListModel
 	private void ApplyFilter()
 	{
 		_items.Clear();
-		if (_filterText == null)
+		if (_filterText is null)
 		{
 			_items.AddRange(_allItems);
 			return;
 		}
 
-		string f = _filterText;
-		_items.AddRange(_allItems.Where(i =>
-			(i.Track.Artist ?? "").Contains(f, StringComparison.OrdinalIgnoreCase) ||
-			(i.Track.Title ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)));
+		string filter = _filterText;
+		foreach (TrackListItem item in _allItems)
+		{
+			if ((item.Track.Artist ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase)
+				|| (item.Track.Title ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase))
+			{
+				_items.Add(item);
+			}
+		}
 	}
 }

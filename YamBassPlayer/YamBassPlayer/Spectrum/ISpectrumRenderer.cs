@@ -7,6 +7,6 @@ public interface ISpectrumRenderer
 {
     string DisplayName { get; }
     SpectrumDataType DataType { get; }
-    void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz);
+    void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz);
     void Reset();
 }

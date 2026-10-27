@@ -139,18 +139,37 @@ public sealed class TracksView : View, ITracksView
 		public int NamesWidth => Artist + (Title > 0 ? Title + ColumnGap : 0);
 	}
 
+	/// <summary>
+	/// Ширина колонки времени: длина «m:ss» / «h:mm:ss» без форматирования строки.
+	/// Раньше здесь на каждый элемент вызывался <c>ToShortDuration()</c>, то есть
+	/// на каждую перерисовку списка создавались тысячи строк — даже когда нужна
+	/// была одна цифра.
+	/// </summary>
 	private static int DurationWidth(IReadOnlyList<TrackListItem> items)
 	{
 		int max = 0;
 		foreach (TrackListItem item in items)
 		{
-			int length = item.Track.DurationMs.ToShortDuration().Length;
+			int length = ShortDurationLength(item.Track.DurationMs);
 			if (length > max)
 				max = length;
 		}
 
 		// +1 — разделитель между названием и временем.
 		return max == 0 ? 0 : max + 1;
+	}
+
+	/// <summary>Длина строки «m:ss» (для треков длиннее часа — «h:mm:ss»), без аллокаций.</summary>
+	private static int ShortDurationLength(long? milliseconds)
+	{
+		if (milliseconds is not { } ms || ms <= 0)
+			return 0;
+
+		double minutes = ms / 60000.0;
+		if (minutes >= 60)
+			return minutes >= 600 ? 8 : 7; // hh:mm:ss / h:mm:ss
+
+		return minutes >= 10 ? 5 : 4;      // mm:ss / m:ss
 	}
 
 	private static string ArtistTitle(TrackListItem item)
@@ -497,20 +516,39 @@ public sealed class TracksView : View, ITracksView
 		if (_model.Items.Count == 0 || _model.SelectedIndex < 0 || _model.SelectedIndex >= _model.Items.Count)
 			return;
 
+		// Бегущая строка нужна только если выделенная строка не помещается по ширине:
+		// иначе таймер четыре раза в секунду дёргал бы полную перерисовку списка зря.
+		if (!SelectedNeedsMarquee())
+			return;
+
 		_marqueeOffset = 0;
 		_marqueePause = 0;
 		_marqueeToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(MarqueeIntervalMs), _ =>
 		{
+			// Скрытая вьюха (включены плитки) анимацию не крутит.
+			if (!Visible)
+				return true;
+
 			TrackListItem item = _model.Items[_model.SelectedIndex];
 			int namesWidth = ColumnsFor(Math.Max(1, Bounds.Width), _model.Items).NamesWidth;
 			string combined = ArtistTitle(item);
 
-			if (namesWidth > 0 && combined.Length > namesWidth)
-				AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, combined.Length, namesWidth);
+			if (namesWidth > 0 && combined.Length > namesWidth
+				&& AdvanceMarquee(ref _marqueeOffset, ref _marqueePause, combined.Length, namesWidth))
+			{
+				SetNeedsDisplay();
+			}
 
-			SetNeedsDisplay();
 			return true;
 		});
+	}
+
+	/// <summary>Помещается ли выделенная строка в колонку имён целиком.</summary>
+	private bool SelectedNeedsMarquee()
+	{
+		TrackListItem item = _model.Items[_model.SelectedIndex];
+		int namesWidth = ColumnsFor(Math.Max(1, Bounds.Width), _model.Items).NamesWidth;
+		return namesWidth > 0 && ArtistTitle(item).Length > namesWidth;
 	}
 
 	private void StopMarquee()
@@ -528,21 +566,29 @@ public sealed class TracksView : View, ITracksView
 		StartMarquee();
 	}
 
-	private static void AdvanceMarquee(ref int offset, ref int pause, int length, int width)
+	/// <summary>
+	/// Сдвигает окно бегущей строки. Возвращает <c>true</c>, если картинка изменилась
+	/// (в паузе между проходами и на краю сдвига перерисовывать нечего).
+	/// </summary>
+	private static bool AdvanceMarquee(ref int offset, ref int pause, int length, int width)
 	{
 		int maxOffset = length - width;
 		if (pause > 0)
 		{
 			pause--;
-			if (pause == 0)
+			if (pause == 0 && offset != 0)
+			{
 				offset = 0;
-			return;
+				return true;
+			}
+			return false;
 		}
 		if (offset >= maxOffset)
 		{
 			pause = MarqueePauseTicks;
-			return;
+			return false;
 		}
 		offset++;
+		return true;
 	}
 }

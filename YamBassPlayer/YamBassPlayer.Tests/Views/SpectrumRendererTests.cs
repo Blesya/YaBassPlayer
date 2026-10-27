@@ -11,6 +11,8 @@ public sealed class SpectrumRendererTests : ViewTestBase
     private const int Width = 40;
     private const int Height = 10;
 
+    private static readonly Terminal.Gui.Attribute Blank = new(Color.White, Color.Black);
+
     private View CreateHost() => AddToTop(new View { Width = Width, Height = Height });
 
     private static float[] SampleData(int n)
@@ -28,6 +30,21 @@ public sealed class SpectrumRendererTests : ViewTestBase
         new StereoPanScopeRenderer(),
     ];
 
+    /// <summary>Полотно кадра: рендерер рисует в него, а драйвер получает разницу.</summary>
+    private static SpectrumCanvas NewCanvas()
+    {
+        var canvas = new SpectrumCanvas();
+        canvas.BeginFrame(Width, Height, Blank);
+        return canvas;
+    }
+
+    /// <summary>Рисует кадр и отдаёт его драйверу целиком (как при полной перерисовке).</summary>
+    private void RenderInto(ISpectrumRenderer renderer, View host, SpectrumCanvas canvas, float[] data)
+    {
+        renderer.Render(new Rect(0, 0, Width, Height), canvas, data, 22050);
+        canvas.Flush(host, Driver, full: true);
+    }
+
     // ── Все рендереры рисуют без исключений ───────────────────────────────
 
     [Test]
@@ -41,7 +58,7 @@ public sealed class SpectrumRendererTests : ViewTestBase
             foreach (var renderer in AllRenderers())
             {
                 Assert.That(
-                    () => renderer.Render(new Rect(0, 0, Width, Height), Driver, host, data, 22050),
+                    () => RenderInto(renderer, host, NewCanvas(), data),
                     Throws.Nothing,
                     renderer.DisplayName);
             }
@@ -58,7 +75,7 @@ public sealed class SpectrumRendererTests : ViewTestBase
             foreach (var renderer in AllRenderers())
             {
                 Assert.That(
-                    () => renderer.Render(new Rect(0, 0, Width, Height), Driver, host, [], 22050),
+                    () => RenderInto(renderer, host, NewCanvas(), []),
                     Throws.Nothing,
                     renderer.DisplayName);
             }
@@ -84,10 +101,10 @@ public sealed class SpectrumRendererTests : ViewTestBase
         var renderer = new BarsRenderer();
         var host = CreateHost();
 
-        renderer.Render(new Rect(0, 0, Width, Height), Driver, host, SampleData(128), 22050);
+        RenderInto(renderer, host, NewCanvas(), SampleData(128));
         renderer.Reset();
 
-        Assert.DoesNotThrow(() => renderer.Render(new Rect(0, 0, Width, Height), Driver, host, SampleData(128), 22050));
+        Assert.DoesNotThrow(() => RenderInto(renderer, host, NewCanvas(), SampleData(128)));
     }
 
     [Test]
@@ -97,13 +114,66 @@ public sealed class SpectrumRendererTests : ViewTestBase
         var host = CreateHost();
         var data = Enumerable.Repeat(1f, 128).ToArray();
 
-        renderer.Render(new Rect(0, 0, Width, Height), Driver, host, data, 22050);
+        RenderInto(renderer, host, NewCanvas(), data);
 
         string bottomRow = RenderText(Height, Width).Split(Environment.NewLine)[Height - 1];
         Assert.Multiple(() =>
         {
             Assert.That(bottomRow[0], Is.EqualTo('█'));
             Assert.That(bottomRow[Width - 1], Is.EqualTo('█'), "полосы должны доходить до правого края");
+        });
+    }
+
+    // ── Полотно: в драйвер уходят только изменившиеся клетки ──────────────
+
+    [Test]
+    public void SpectrumCanvas_FlushSendsOnlyChangedCells()
+    {
+        var host = CreateHost();
+        var canvas = NewCanvas();
+
+        // Первый кадр всегда полный: теневой сетки ещё нет.
+        Assert.That(canvas.Flush(host, Driver, full: true), Is.EqualTo(Width * Height));
+
+        canvas.BeginFrame(Width, Height, Blank);
+        canvas.Move(0, 0);
+        canvas.AddRune('A');
+        int added = canvas.Flush(host, Driver, full: false);
+
+        canvas.BeginFrame(Width, Height, Blank);
+        canvas.Move(0, 0);
+        canvas.AddRune('A');
+        int same = canvas.Flush(host, Driver, full: false);
+
+        canvas.BeginFrame(Width, Height, Blank);
+        canvas.Move(1, 1);
+        canvas.AddRune('B');
+        int moved = canvas.Flush(host, Driver, full: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(added, Is.EqualTo(1), "новая клетка рисуется одна");
+            Assert.That(same, Is.EqualTo(0), "повтор того же кадра ничего не отправляет");
+            Assert.That(moved, Is.EqualTo(2), "старая клетка стирается, новая рисуется");
+        });
+    }
+
+    [Test]
+    public void SpectrumCanvas_FullFlushSendsEveryCell()
+    {
+        var host = CreateHost();
+        var canvas = NewCanvas();
+
+        int first = canvas.Flush(host, Driver, full: true);
+
+        canvas.BeginFrame(Width, Height, Blank);
+        int samePicture = canvas.Flush(host, Driver, full: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first, Is.EqualTo(Width * Height));
+            Assert.That(samePicture, Is.EqualTo(Width * Height),
+                "полная отрисовка отправляет все клетки, даже если картинка не изменилась");
         });
     }
 
@@ -146,5 +216,22 @@ public sealed class SpectrumRendererTests : ViewTestBase
         view.SetData(SampleData(128));
 
         Assert.DoesNotThrow(() => view.Redraw(new Rect(0, 0, Width, Height)));
+    }
+
+    [Test]
+    public void SpectrumView_DrawFrame_SkipsSilenceAfterFirstFrame()
+    {
+        var view = AddToTop(new SpectrumView() { Width = Width, Height = Height });
+        view.AddRenderer(new BarsRenderer());
+        var silence = new float[128];
+
+        bool first = view.DrawFrame(silence);
+        bool second = view.DrawFrame(silence);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first, Is.True, "первый тихий кадр гасит оставшиеся полосы");
+            Assert.That(second, Is.False, "дальше в тишине перерисовывать нечего");
+        });
     }
 }

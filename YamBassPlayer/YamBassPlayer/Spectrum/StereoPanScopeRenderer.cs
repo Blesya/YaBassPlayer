@@ -12,7 +12,7 @@ public sealed class StereoPanScopeRenderer : ISpectrumRenderer
     private float[,] _persistence = null!;
     private int _pw, _ph;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int w = bounds.Width, h = bounds.Height;
         if (w < 4 || h < 4 || data.Length < 4) return;
@@ -86,19 +86,19 @@ public sealed class StereoPanScopeRenderer : ISpectrumRenderer
                     < 0.80f => Color.Green,
                     _ => Color.BrightGreen
                 };
-                driver.SetAttribute(new Attribute(c, Color.Black));
-                host.Move(x, y);
-                driver.AddRune('█');
+                canvas.SetAttribute(new Attribute(c, Color.Black));
+                canvas.Move(x, y);
+                canvas.AddRune('█');
             }
         }
 
         // center line
         int cyi = (int)halfH;
-        driver.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
+        canvas.SetAttribute(new Attribute(Color.DarkGray, Color.Black));
         for (int x = 0; x < w; x += 3)
         {
-            host.Move(x, cyi);
-            driver.AddRune('·');
+            canvas.Move(x, cyi);
+            canvas.AddRune('·');
         }
     }
 

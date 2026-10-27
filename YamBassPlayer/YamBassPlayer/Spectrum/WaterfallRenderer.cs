@@ -14,7 +14,10 @@ public sealed class WaterfallRenderer : ISpectrumRenderer
     private int _cols;
     private int _writeIdx;
 
-    public void Render(Rect bounds, ConsoleDriver driver, View host, float[] data, int maxFrequencyHz)
+    /// <summary>Строка кадра: переиспользуется, чтобы не аллоцировать массив 60 раз в секунду.</summary>
+    private float[] _row = [];
+
+    public void Render(Rect bounds, ISpectrumCanvas canvas, float[] data, int maxFrequencyHz)
     {
         int w = bounds.Width, h = bounds.Height;
         if (w < 2 || h < 2 || data.Length == 0) return;
@@ -32,7 +35,12 @@ public sealed class WaterfallRenderer : ISpectrumRenderer
         float ratio = Math.Clamp(maxFrequencyHz / 22050f, 0.05f, 1f);
         int usableBins = Math.Max(1, (int)(data.Length * ratio));
 
-        float[] row = new float[w];
+        float[] row = _row;
+        if (row.Length != w)
+        {
+            row = _row = new float[w];
+        }
+
         for (int x = 0; x < w; x++)
         {
             int binIdx = Math.Clamp((int)(x / (float)w * usableBins), 0, data.Length - 1);
@@ -64,9 +72,9 @@ public sealed class WaterfallRenderer : ISpectrumRenderer
                 else if (val < 0.80f) { ch = '▓'; color = Color.BrightYellow; }
                 else { ch = '█'; color = Color.BrightRed; }
 
-                driver.SetAttribute(new Attribute(color, Color.Black));
-                host.Move(x, r);
-                driver.AddRune(ch);
+                canvas.SetAttribute(new Attribute(color, Color.Black));
+                canvas.Move(x, r);
+                canvas.AddRune(ch);
             }
         }
     }
