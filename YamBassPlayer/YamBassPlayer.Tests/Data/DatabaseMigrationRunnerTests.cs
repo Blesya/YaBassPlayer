@@ -30,14 +30,14 @@ public sealed class DatabaseMigrationRunnerTests
 	}
 
 	[Test]
-	public void Initialize_SetsVersion7()
+	public void Initialize_SetsCurrentVersion()
 	{
 		CreateInitializer().Initialize();
 
 		using var connection = _factory.Create();
 		Assert.Multiple(() =>
 		{
-			Assert.That(DatabaseMigrationRunner.GetUserVersion(connection), Is.EqualTo(8));
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(connection), Is.EqualTo(9));
 			Assert.That(SqliteSchemaHelper.HasTable(connection, "Tracks"), Is.True);
 			Assert.That(SqliteSchemaHelper.HasTable(connection, "Artists"), Is.True);
 			Assert.That(
@@ -56,6 +56,8 @@ public sealed class DatabaseMigrationRunnerTests
 			Assert.That(SqliteSchemaHelper.HasColumn(connection, "listensHistory", "context"), Is.True);
 			Assert.That(SqliteSchemaHelper.HasColumn(connection, "listensHistory", "source"), Is.False);
 			Assert.That(SqliteSchemaHelper.HasTable(connection, "favoriteLocalTracks"), Is.True);
+			Assert.That(SqliteSchemaHelper.HasTable(connection, "playlistCompositions"), Is.True);
+			Assert.That(SqliteSchemaHelper.HasTable(connection, "playlistCompositionTracks"), Is.True);
 		});
 	}
 
@@ -70,7 +72,7 @@ public sealed class DatabaseMigrationRunnerTests
 		using var connection = _factory.Create();
 		Assert.Multiple(() =>
 		{
-			Assert.That(DatabaseMigrationRunner.GetUserVersion(connection), Is.EqualTo(8));
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(connection), Is.EqualTo(9));
 			Assert.That(
 				SqliteSchemaHelper.HasUniqueIndex(connection, "Tracks", "SourceType", "TrackId"),
 				Is.True);
@@ -106,7 +108,7 @@ public sealed class DatabaseMigrationRunnerTests
 
 		Assert.Multiple(() =>
 		{
-			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(8));
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(9));
 			Assert.That(
 				SqliteSchemaHelper.HasUniqueIndex(check, "Tracks", "SourceType", "TrackId"),
 				Is.True);
@@ -162,7 +164,7 @@ public sealed class DatabaseMigrationRunnerTests
 		using var check = _factory.Create();
 		Assert.Multiple(() =>
 		{
-			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(8));
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(9));
 			Assert.That(Scalar(check, "SELECT COUNT(*) FROM Tracks"), Is.EqualTo(1L));
 			Assert.That(Scalar(check, "SELECT SourceType FROM Tracks WHERE TrackId = '987654'"), Is.EqualTo("yandex"));
 		});
@@ -178,7 +180,7 @@ public sealed class DatabaseMigrationRunnerTests
 		using var check = _factory.Create();
 		Assert.Multiple(() =>
 		{
-			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(8));
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(9));
 
 			// listensHistory: source → context + sourceId.
 			Assert.That(SqliteSchemaHelper.HasColumn(check, "listensHistory", "source"), Is.False);
@@ -231,6 +233,29 @@ public sealed class DatabaseMigrationRunnerTests
 	}
 
 	[Test]
+	public void MigratesFromVersionEightToNine_CreatesPlaylistCompositionTables()
+	{
+		CreateInitializer().Initialize();
+
+		using (var connection = _factory.Create())
+		{
+			Execute(connection, null, "DROP TABLE playlistCompositionTracks;");
+			Execute(connection, null, "DROP TABLE playlistCompositions;");
+			DatabaseMigrationRunner.SetUserVersion(connection, null, 8);
+		}
+
+		CreateInitializer().Initialize();
+
+		using var check = _factory.Create();
+		Assert.Multiple(() =>
+		{
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(9));
+			Assert.That(SqliteSchemaHelper.HasTable(check, "playlistCompositions"), Is.True);
+			Assert.That(SqliteSchemaHelper.HasTable(check, "playlistCompositionTracks"), Is.True);
+		});
+	}
+
+	[Test]
 	public void Migration_006_To_007_MovesLocalFavoritesBeforeDrop()
 	{
 		PrepareVersionSix();
@@ -277,7 +302,7 @@ public sealed class DatabaseMigrationRunnerTests
 		using var check = _factory.Create();
 		Assert.Multiple(() =>
 		{
-			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(8));
+			Assert.That(DatabaseMigrationRunner.GetUserVersion(check), Is.EqualTo(9));
 			Assert.That(SqliteSchemaHelper.HasTable(check, "favoriteLocalTracks"), Is.True);
 		});
 	}

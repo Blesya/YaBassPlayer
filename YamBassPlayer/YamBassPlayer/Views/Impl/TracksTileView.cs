@@ -125,6 +125,9 @@ public sealed class TracksTileView : View, ITracksView
 		SetNeedsDisplay();
 	}
 
+	public void SetState(TrackListState state)
+		=> Application.MainLoop.Invoke(() => _model.SetState(state));
+
 	public void SetPlayingTrack(TrackKey? key)
 		=> Application.MainLoop.Invoke(() => _model.SetPlayingTrack(key));
 
@@ -167,7 +170,13 @@ public sealed class TracksTileView : View, ITracksView
 		var items = _model.Items;
 		if (items.Count == 0)
 		{
-			const string message = "Выберите плейлист";
+			string message = _model.State switch
+			{
+				TrackListState.Loading => "Загрузка плейлиста…",
+				TrackListState.Ready => "Плейлист пуст",
+				_ => "Выберите плейлист"
+			};
+
 			Driver.SetAttribute(Themes.DimFor(ColorScheme));
 			Move(Math.Max(0, (bounds.Width - message.Length) / 2), Math.Max(0, bounds.Height / 2));
 			Driver.AddStr(message);

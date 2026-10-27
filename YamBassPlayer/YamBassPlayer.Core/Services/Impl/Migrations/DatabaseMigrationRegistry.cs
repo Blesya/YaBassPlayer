@@ -17,5 +17,6 @@ internal static class DatabaseMigrationRegistry
 		new Migration_005_To_006_CompositeTrackIdentity(),
 		new Migration_006_To_007_HistoryAndCatalogs(pluginState),
 		new Migration_007_To_008_LocalFavorites(pluginState),
+		new Migration_008_To_009_PlaylistCompositions(),
 	];
 }

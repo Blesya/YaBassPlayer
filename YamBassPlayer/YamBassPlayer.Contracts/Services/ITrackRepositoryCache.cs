@@ -15,11 +15,14 @@ public interface ITrackRepositoryCache
 	/// Ключ — <see cref="Playlist.CacheKey"/>: у Яндекса это «владелец:kind», поэтому
 	/// одноимённые плейлисты разных владельцев не перетирают друг друга.
 	/// </summary>
-	bool TryGetPlaylistTrackIds(string cacheKey, out IReadOnlyList<TrackKey> trackKeys);
-	void SetPlaylistTrackIds(string cacheKey, IEnumerable<TrackKey> trackKeys);
+	bool TryGetPlaylistTrackIds(SourceId source, string cacheKey, out IReadOnlyList<TrackKey> trackKeys);
+	void SetPlaylistTrackIds(SourceId source, string cacheKey, IEnumerable<TrackKey> trackKeys);
 
-	/// <summary>Сбрасывает состав всех плейлистов: вызывается при обновлении дерева из источников.</summary>
-	void ClearPlaylistTrackIds();
+	/// <summary>
+	/// Сбрасывает составы плейлистов указанного источника: вызывается, когда его
+	/// плейлисты успешно перечитаны. Сбой одного источника не трогает кеш остальных.
+	/// </summary>
+	void ClearPlaylistTrackIds(SourceId source);
 
 	void ReplaceQueueTrackIds(IEnumerable<TrackKey> trackKeys);
 	void ReplaceMyWaveTracks(IEnumerable<Track> tracks);

@@ -33,7 +33,7 @@ public sealed class SearchAndLoadPlaylistUseCaseTests
 
         _trackInfoProvider.Setup(p => p.SaveAsync(It.IsAny<Track>())).Returns(Task.CompletedTask);
         _repository.Setup(r => r.SetPlaylist(It.IsAny<Playlist>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        _tracksPresenter.Setup(t => t.LoadTracksFor(It.IsAny<Playlist>())).Returns(Task.CompletedTask);
+        _tracksPresenter.Setup(t => t.LoadTracksFor(It.IsAny<Playlist>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         _useCase = new SearchAndLoadPlaylistUseCase(
             _trackInfoProvider.Object,
@@ -109,7 +109,7 @@ public sealed class SearchAndLoadPlaylistUseCaseTests
             _trackInfoProvider.Verify(p => p.SaveAsync(It.IsAny<Track>()), Times.Never);
             _cache.Verify(c => c.ReplaceSearchTracks(YandexMusicSourceId.Value, It.IsAny<IEnumerable<Track>>()), Times.Once);
             _tracksPresenter.Verify(
-                t => t.LoadTracksFor(It.Is<Playlist>(p => p.Description == "Результаты поиска")),
+                t => t.LoadTracksFor(It.Is<Playlist>(p => p.Description == "Результаты поиска"), It.IsAny<CancellationToken>()),
                 Times.Once);
             Assert.That(title, Does.Contain("Поиск"));
         });

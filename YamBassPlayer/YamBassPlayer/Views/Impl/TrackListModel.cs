@@ -19,6 +19,7 @@ public sealed class TrackListModel : ITrackListModel
 	public int SelectedIndex { get; private set; }
 	public int ScrollOffset { get; private set; }
 	public bool IsLoadingMore { get; private set; }
+	public TrackListState State { get; private set; } = TrackListState.NoPlaylist;
 
 	public void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached)
 	{
@@ -34,6 +35,16 @@ public sealed class TrackListModel : ITrackListModel
 		SelectedIndex = 0;
 		ScrollOffset = 0;
 		IsLoadingMore = false;
+		State = TrackListState.Ready;
+		Changed?.Invoke();
+	}
+
+	public void SetState(TrackListState state)
+	{
+		if (State == state)
+			return;
+
+		State = state;
 		Changed?.Invoke();
 	}
 

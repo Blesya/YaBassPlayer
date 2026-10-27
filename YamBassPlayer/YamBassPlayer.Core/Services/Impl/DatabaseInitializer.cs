@@ -10,7 +10,7 @@ namespace YamBassPlayer.Services.Impl;
 /// </summary>
 public sealed class DatabaseInitializer : IDatabaseInitializer
 {
-	private const int CurrentSchemaVersion = 8;
+	private const int CurrentSchemaVersion = 9;
 
 	private readonly IDbConnectionFactory _connectionFactory;
 	private readonly DatabaseMigrationRunner _migrationRunner;
@@ -30,6 +30,7 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 		CreateTracksTable(connection);
 		EnsureTrackColumns(connection);
 		CreateHistoryTables(connection);
+		CreatePlaylistCompositionTables(connection);
 		CreateIndexes(connection);
 
 		// Backfills must run after every column they depend on exists.
@@ -134,11 +135,41 @@ public sealed class DatabaseInitializer : IDatabaseInitializer
 		cmd.ExecuteNonQuery();
 	}
 
+	/// <summary>
+	/// Постоянный состав плейлистов (миграция 8→9): нужен, чтобы список треков
+	/// открывался из БД, не дожидаясь ответа источника.
+	/// </summary>
+	private static void CreatePlaylistCompositionTables(SqliteConnection connection)
+	{
+		using var cmd = connection.CreateCommand();
+		cmd.CommandText =
+			"""
+			CREATE TABLE IF NOT EXISTS playlistCompositions (
+				playlistKey TEXT PRIMARY KEY,
+				savedAt     TEXT NOT NULL
+			);
+
+			CREATE TABLE IF NOT EXISTS playlistCompositionTracks (
+				playlistKey TEXT NOT NULL,
+				position    INTEGER NOT NULL,
+				sourceId    TEXT NOT NULL,
+				trackId     TEXT NOT NULL,
+				PRIMARY KEY (playlistKey, position)
+			);
+			""";
+		cmd.ExecuteNonQuery();
+	}
+
 	private static void CreateIndexes(SqliteConnection connection)
 	{
 		SqliteSchemaHelper.EnsureTableIndex(connection, "idx_history_trackId", "listensHistory", "trackId");
 		SqliteSchemaHelper.EnsureTableIndex(connection, "idx_tracks_source_folder", "Tracks", "SourceType, FolderId");
 		SqliteSchemaHelper.EnsureTableIndex(connection, "idx_tracks_artist", "Tracks", "Artist");
+		SqliteSchemaHelper.EnsureTableIndex(
+			connection,
+			"idx_playlist_composition_tracks",
+			"playlistCompositionTracks",
+			"playlistKey");
 	}
 
 	/// <summary>

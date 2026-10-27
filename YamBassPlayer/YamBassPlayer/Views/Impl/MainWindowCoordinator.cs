@@ -46,6 +46,7 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly ScanLibraryUseCase _scanLibraryUseCase;
 	private readonly ShowMyWaveUseCase _showMyWaveUseCase;
 	private CancellationTokenSource? _startupCts;
+	private CancellationTokenSource? _playlistLoadCts;
 	private Window _window = null!; // Set later via SetWindow()
 	private TrackKey? _currentTrack;
 	private TrackKey? _previousTrack;
@@ -221,10 +222,29 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	private async Task LoadPlaylistAsync(Playlist playlist)
 	{
+		// Быстрые клики по дереву: последний выбор побеждает, предыдущая загрузка
+		// отменяется и не может перезаписать список своим поздним ответом.
+		_playlistLoadCts?.Cancel();
+		_playlistLoadCts?.Dispose();
+		var cts = new CancellationTokenSource();
+		_playlistLoadCts = cts;
+
 		Log.Information("Загрузка плейлиста: «{Title}» ({Kind})", playlist.Title, playlist.Kind);
 		_playbackPresenter.SetPlaylistContext(playlist.Context);
-		await _tracksPresenter.LoadTracksFor(playlist);
-		SetWindowTitle($"{playlist.Title} : {playlist.Description}");
+
+		try
+		{
+			await _tracksPresenter.LoadTracksFor(playlist, cts.Token);
+			SetWindowTitle($"{playlist.Title} : {playlist.Description}");
+		}
+		catch (OperationCanceledException)
+		{
+			// Пользователь уже выбрал другой плейлист.
+		}
+		catch (Exception ex)
+		{
+			ex.Handle();
+		}
 	}
 
 	private void OnPreloadNextTrack(object? sender, EventArgs e)
@@ -578,6 +598,8 @@ public sealed class MainWindowCoordinator : IDisposable
 	{
 		_startupCts?.Cancel();
 		_startupCts?.Dispose();
+		_playlistLoadCts?.Cancel();
+		_playlistLoadCts?.Dispose();
 		if (_onTrackChangedHandler is not null)
 		{
 			_eventBus.Unsubscribe(_onTrackChangedHandler);

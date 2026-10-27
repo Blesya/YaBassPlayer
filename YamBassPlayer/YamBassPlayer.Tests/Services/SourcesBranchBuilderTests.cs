@@ -15,6 +15,7 @@ public sealed class SourcesBranchBuilderTests
     private Mock<IMusicSource> _yandexSource = null!;
     private Mock<IMusicSource> _localSource = null!;
     private Mock<ILocalLibraryService> _localLibrary = null!;
+    private Mock<IPlaylistRefreshStatus> _refreshStatus = null!;
 
     [SetUp]
     public void SetUp()
@@ -24,6 +25,7 @@ public sealed class SourcesBranchBuilderTests
             .Setup(l => l.GetLocalArtistsAsync(It.IsAny<int?>()))
             .ReturnsAsync(Array.Empty<(string artistName, int trackCount)>());
 
+        _refreshStatus = new Mock<IPlaylistRefreshStatus>();
         _yandexSource = CreateSource(Yandex, "Яндекс.Музыка");
         _localSource = CreateSource(LocalMusicSource.Id, "Локальная музыка");
     }
@@ -40,7 +42,7 @@ public sealed class SourcesBranchBuilderTests
     }
 
     private SourcesBranchBuilder CreateBuilder(params IMusicSource[] sources)
-        => new(Registry(sources), _localLibrary.Object);
+        => new(Registry(sources), _localLibrary.Object, _refreshStatus.Object);
 
     private static IMusicSourceRegistry Registry(params IMusicSource[] sources)
     {
@@ -76,16 +78,14 @@ public sealed class SourcesBranchBuilderTests
     [Test]
     public async Task GroupsChildrenByGroupInOrder()
     {
-        _yandexSource
-            .Setup(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[]
-            {
-                YandexPlaylist("favorite", "Мои треки"),
-                YandexPlaylist("own", "Мой микс", "Мои плейлисты"),
-                YandexPlaylist("liked", "Чужой микс", "Мои плейлисты")
-            });
+        Playlist[] playlists =
+        [
+            YandexPlaylist("favorite", "Мои треки"),
+            YandexPlaylist("own", "Мой микс", "Мои плейлисты"),
+            YandexPlaylist("liked", "Чужой микс", "Мои плейлисты")
+        ];
 
-        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync();
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync(playlists);
         var yandexNode = Node(root!, "yandex");
 
         Assert.Multiple(() =>
@@ -95,6 +95,7 @@ public sealed class SourcesBranchBuilderTests
             Assert.That(group.Children.OfType<PlaylistTreeItem>().Select(node => node.Playlist!.Title),
                 Is.EqualTo(new[] { "Мой микс", "Чужой микс" }));
         });
+        _yandexSource.Verify(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Test]
@@ -145,6 +146,26 @@ public sealed class SourcesBranchBuilderTests
             Assert.That(
                 yandexNode.Children.OfType<PlaylistTreeItem>().Single().Label,
                 Is.EqualTo("Настройте источник"));
+            _yandexSource.Verify(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()), Times.Never);
+        });
+    }
+
+    [Test]
+    public async Task RequiresSetup_WithSnapshot_ShowsCachedPlaylists()
+    {
+        _yandexSource.SetupGet(s => s.State).Returns(SourceState.RequiresSetup);
+        Playlist[] snapshot = [YandexPlaylist("favorite", "Мои треки")];
+
+        var root = await CreateBuilder(_yandexSource.Object, _localSource.Object).BuildBranchAsync(snapshot);
+        var yandexNode = Node(root!, "yandex");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                yandexNode.Children.OfType<PlaylistTreeItem>().Single().Playlist!.Title,
+                Is.EqualTo("Мои треки"));
+            Assert.That(yandexNode.IsStale, Is.True);
+            Assert.That(yandexNode.Text, Does.Contain("кеш"));
             _yandexSource.Verify(s => s.GetPlaylistsAsync(It.IsAny<CancellationToken>()), Times.Never);
         });
     }

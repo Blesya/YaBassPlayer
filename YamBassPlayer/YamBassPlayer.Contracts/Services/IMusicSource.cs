@@ -11,6 +11,11 @@ public interface IMusicSource
     SourceState State { get; }
     bool SupportsSearch { get; }
 
+    /// <summary>
+    /// Возвращает плейлисты источника. При ошибке источник должен бросить исключение:
+    /// хост оставит показанную ветку из снимка и пометит её как кеш, а частичный
+    /// список не будет принят за свежий.
+    /// </summary>
     Task<IEnumerable<Playlist>> GetPlaylistsAsync(CancellationToken ct = default);
     Task<IEnumerable<Track>> GetPlaylistTracksAsync(Playlist playlist, int offset, int limit, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetPlaylistTrackIdsAsync(Playlist playlist, CancellationToken ct = default);

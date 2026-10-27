@@ -1,3 +1,5 @@
+using System.Threading;
+using Serilog;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
@@ -16,7 +18,9 @@ public class TracksPresenter : ITracksPresenter
 	private readonly ITrackDownloadTracker _downloadTracker;
 	private readonly Action<TrackChangedEvent> _onTrackChangedHandler;
 
+	private readonly object _tracksSync = new();
 	private List<Track> _tracks = new();
+	private Playlist? _currentPlaylist;
 
 	/// <summary>Трек, выделенный пользователем: переживает перезагрузку списка.</summary>
 	private TrackKey? _selectedTrack;
@@ -41,32 +45,163 @@ public class TracksPresenter : ITracksPresenter
 		_view.OnCellActivated += ViewOnTrackSelected;
 		_onTrackChangedHandler = e => OnPlayingTrackChanged(e.Key);
 		_eventBus.Subscribe(_onTrackChangedHandler);
+		_eventBus.Subscribe((PlaylistCompositionUpdatedEvent e) => OnCompositionUpdated(e));
 
 		_downloadTracker.Changed += OnDownloadChanged;
 	}
 
-	public async Task LoadTracksFor(Playlist playlist)
+	/// <inheritdoc />
+	public async Task LoadTracksFor(Playlist playlist, CancellationToken ct = default)
 	{
 		Logging.LogBeforeCall();
 
-		await _trackRepository.SetPlaylist(playlist);
-
-		IEnumerable<Track> trackBatch = await _trackRepository.GetCachedTracksOrMinimum(TracksPerBatch);
-		_tracks = trackBatch.ToList();
-
-		if (_tracks.Count == 0)
+		lock (_tracksSync)
 		{
-			_view.ClearTracks();
-		}
-		else
-		{
-			_view.SetTracks(_tracks, _trackFileProvider.IsTrackDownloaded);
-			RestoreSelection();
+			_currentPlaylist = playlist;
 		}
 
+		_view.SetState(TrackListState.Loading);
+
+		// Состав берётся из памяти/БД, в источник идём только для невиданного плейлиста.
+		await _trackRepository.SetPlaylist(playlist, ct);
+		ct.ThrowIfCancellationRequested();
+
+		List<Track> cached = (await _trackRepository.GetCachedTracks(TracksPerBatch, ct)).ToList();
+		int expected = Math.Min(TracksPerBatch, _trackRepository.GetAllTrackIds().Count);
+		ApplyTracks(cached, moreExpected: expected > cached.Count);
 		_view.SetPlayingTrack(_playbackQueue.CurrentTrack);
 		ReplayActiveDownloads();
+
 		Logging.LogAfterCall();
+
+		// Метаданные, которых нет в БД, догружаем в фоне: список уже на экране.
+		_ = EnrichAsync(playlist, ct);
+	}
+
+	/// <summary>
+	/// Догружает недостающие метаданные первых треков плейлиста. Ошибка не ломает
+	/// список: показываем то, что уже есть в БД.
+	/// </summary>
+	private async Task EnrichAsync(Playlist playlist, CancellationToken ct)
+	{
+		try
+		{
+			int expected = Math.Min(TracksPerBatch, _trackRepository.GetAllTrackIds().Count);
+			int shown;
+			lock (_tracksSync)
+			{
+				shown = _tracks.Count;
+			}
+
+			if (shown >= expected)
+				return;
+
+			IReadOnlyList<Track> loaded = await _trackRepository.LoadTracksInfo(TracksPerBatch, ct);
+			ct.ThrowIfCancellationRequested();
+
+			if (!IsCurrent(playlist))
+				return;
+
+			int currentCount;
+			lock (_tracksSync)
+			{
+				currentCount = _tracks.Count;
+			}
+
+			// Пока метаданные догружались, список могли расширить пагинацией:
+			// не откатываем его к первой порции.
+			if (currentCount != shown)
+				return;
+
+			if (loaded.Count > shown)
+			{
+				ApplyTracks(loaded.ToList());
+				ReplayActiveDownloads();
+			}
+			else if (shown == 0)
+			{
+				// Догрузить нечего — плейлист действительно пуст (или источник не ответил).
+				_view.SetState(TrackListState.Ready);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			// Пользователь выбрал другой плейлист — догрузка больше не нужна.
+		}
+		catch (Exception ex)
+		{
+			Log.Debug(ex, "Не удалось догрузить метаданные треков плейлиста «{Title}»", playlist.Title);
+		}
+	}
+
+	/// <summary>
+	/// Состав текущего плейлиста изменился в источнике: перечитываем список из БД,
+	/// сохраняя выделение пользователя.
+	/// </summary>
+	private void OnCompositionUpdated(PlaylistCompositionUpdatedEvent e)
+	{
+		Playlist? current;
+		lock (_tracksSync)
+		{
+			current = _currentPlaylist;
+		}
+
+		if (current is null
+			|| current.SourceId != e.Source
+			|| !string.Equals(current.CacheKey, e.PlaylistKey, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		_ = ReloadCompositionAsync(current);
+	}
+
+	private async Task ReloadCompositionAsync(Playlist playlist)
+	{
+		try
+		{
+			List<Track> cached = (await _trackRepository.GetCachedTracks(TracksPerBatch)).ToList();
+			if (!IsCurrent(playlist))
+				return;
+
+			int expected = Math.Min(TracksPerBatch, _trackRepository.GetAllTrackIds().Count);
+			ApplyTracks(cached, moreExpected: expected > cached.Count);
+			ReplayActiveDownloads();
+
+			if (expected > cached.Count)
+				_ = EnrichAsync(playlist, CancellationToken.None);
+		}
+		catch (Exception ex)
+		{
+			Log.Debug(ex, "Не удалось перечитать состав плейлиста «{Title}»", playlist.Title);
+		}
+	}
+
+	private bool IsCurrent(Playlist playlist)
+	{
+		lock (_tracksSync)
+		{
+			return _currentPlaylist is not null && _currentPlaylist.HasSameIdentity(playlist);
+		}
+	}
+
+	private void ApplyTracks(List<Track> tracks, bool moreExpected = false)
+	{
+		lock (_tracksSync)
+		{
+			_tracks = tracks;
+		}
+
+		if (tracks.Count == 0)
+		{
+			_view.ClearTracks();
+			// Если метаданные ещё догружаются, «пусто» показывать рано.
+			_view.SetState(moreExpected ? TrackListState.Loading : TrackListState.Ready);
+			return;
+		}
+
+		_view.SetTracks(tracks, _trackFileProvider.IsTrackDownloaded);
+		RestoreSelection();
 	}
 
 	/// <summary>
@@ -92,7 +227,11 @@ public class TracksPresenter : ITracksPresenter
 		if (trackNumber < 0 || trackNumber >= allTrackIds.Count)
 			return;
 
-		_selectedTrack = allTrackIds[trackNumber];
+		lock (_tracksSync)
+		{
+			_selectedTrack = allTrackIds[trackNumber];
+		}
+
 		Logging.LogUserAction($"воспроизведение трека №{trackNumber + 1} из списка");
 		_playbackQueue.SetQueue(allTrackIds, trackNumber);
 	}
@@ -105,14 +244,22 @@ public class TracksPresenter : ITracksPresenter
 
 	/// <summary>
 	/// После перезагрузки списка возвращаем выделение: сначала на трек, который выбрал
-	/// пользователь, иначе — на последний игравший. Фоновое обновление плейлистов
+	/// пользователь, иначе — на последний игравший. Фоновое обновление состава
 	/// перезагружает список, и без этого выделение сбрасывалось на первую строку.
 	/// </summary>
 	private void RestoreSelection()
 	{
-		if (_selectedTrack is { } selected)
+		List<Track> tracks;
+		TrackKey? selected;
+		lock (_tracksSync)
 		{
-			_view.SelectTrack(selected);
+			tracks = _tracks.ToList();
+			selected = _selectedTrack;
+		}
+
+		if (selected is { } selectedKey)
+		{
+			_view.SelectTrack(selectedKey);
 			return;
 		}
 
@@ -121,20 +268,25 @@ public class TracksPresenter : ITracksPresenter
 		if (lastTrack is null)
 			return;
 
-		Track? track = _tracks.FirstOrDefault(t => t.Key == lastTrack.Value);
+		Track? track = tracks.FirstOrDefault(t => t.Key == lastTrack.Value);
 		if (track is not null)
 			_view.SelectTrack(track.Key);
 	}
 
 	private void OnTrackSelected(int index)
 	{
-		if (index < 0 || index >= _tracks.Count)
+		Track? track = null;
+		lock (_tracksSync)
 		{
-			return;
+			if (index >= 0 && index < _tracks.Count)
+			{
+				track = _tracks[index];
+				_selectedTrack = track.Key;
+			}
 		}
 
-		_selectedTrack = _tracks[index].Key;
-		OnTrackChosen?.Invoke(_tracks[index]);
+		if (track is not null)
+			OnTrackChosen?.Invoke(track);
 	}
 
 	private async Task OnNeedMoreTracks()
@@ -146,7 +298,11 @@ public class TracksPresenter : ITracksPresenter
 			return;
 		}
 
-		_tracks.AddRange(more);
+		lock (_tracksSync)
+		{
+			_tracks.AddRange(more);
+		}
+
 		_view.AddTracks(more, _trackFileProvider.IsTrackDownloaded);
 		ReplayActiveDownloads();
 	}

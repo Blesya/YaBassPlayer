@@ -113,6 +113,9 @@ public sealed class TracksView : View, ITracksView
 	public void SetDownloadState(TrackKey key, TrackDownloadState state)
 		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(key, state));
 
+	public void SetState(TrackListState state)
+		=> Application.MainLoop.Invoke(() => _model.SetState(state));
+
 	// ── Раскладка колонок ─────────────────────────────────────────────────
 
 	/// <summary>
@@ -350,7 +353,13 @@ public sealed class TracksView : View, ITracksView
 
 	private void DrawEmptyState(Rect bounds)
 	{
-		const string message = "Выберите плейлист";
+		string message = _model.State switch
+		{
+			TrackListState.Loading => "Загрузка плейлиста…",
+			TrackListState.Ready => "Плейлист пуст",
+			_ => "Выберите плейлист"
+		};
+
 		Driver.SetAttribute(Themes.DimFor(ColorScheme));
 		Move(Math.Max(0, (bounds.Width - message.Length) / 2), Math.Max(0, bounds.Height / 2));
 		Driver.AddStr(message);

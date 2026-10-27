@@ -105,4 +105,7 @@ public sealed class TracksViewHost : View, ITracksView
 
 	public void SetDownloadState(TrackKey key, TrackDownloadState state)
 		=> Application.MainLoop.Invoke(() => _model.SetDownloadState(key, state));
+
+	public void SetState(TrackListState state)
+		=> Application.MainLoop.Invoke(() => _model.SetState(state));
 }

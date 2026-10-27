@@ -58,7 +58,8 @@ public sealed class TracksPresenterTests
         var tracks = new[] { Track("a") };
         var active = new TrackDownloadState(TrackDownloadStatus.Downloading, 20, 200, true);
         _repository.Setup(r => r.SetPlaylist(playlist, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
+        _repository.Setup(r => r.GetAllTrackIds()).Returns(new[] { K("a") });
+        _repository.Setup(r => r.GetCachedTracks(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
         _downloadTracker.Setup(t => t.GetActive()).Returns([(K("a"), active)]);
 
         await _presenter.LoadTracksFor(playlist);
@@ -74,7 +75,8 @@ public sealed class TracksPresenterTests
         var playlist = new Playlist("favorite", "P");
         var tracks = new[] { Track("a"), Track("b") };
         _repository.Setup(r => r.SetPlaylist(playlist, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
+        _repository.Setup(r => r.GetAllTrackIds()).Returns(new[] { K("a"), K("b") });
+        _repository.Setup(r => r.GetCachedTracks(100, It.IsAny<CancellationToken>())).ReturnsAsync(tracks);
         _queue.SetupGet(q => q.CurrentTrack).Returns(K("a"));
 
         await _presenter.LoadTracksFor(playlist);
@@ -93,7 +95,8 @@ public sealed class TracksPresenterTests
     public async Task LoadTracksFor_WhenNoTracks_ClearsView()
     {
         var playlist = new Playlist("personal", "P");
-        _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _repository.Setup(r => r.GetAllTrackIds()).Returns(Array.Empty<TrackKey>());
+        _repository.Setup(r => r.GetCachedTracks(100, It.IsAny<CancellationToken>())).ReturnsAsync([]);
 
         await _presenter.LoadTracksFor(playlist);
 
@@ -190,6 +193,53 @@ public sealed class TracksPresenterTests
         _repository.Verify(r => r.SetLastPlayedTrack(K("z")), Times.Once);
     }
 
+    // ── Обновление состава в фоне ─────────────────────────────────────────
+
+    [Test]
+    public async Task CompositionUpdated_ForCurrentPlaylist_ReloadsList()
+    {
+        await LoadThreeTracks();
+        var reloaded = 0;
+        _repository.Setup(r => r.GetCachedTracks(100, It.IsAny<CancellationToken>()))
+            .Callback(() => reloaded++)
+            .ReturnsAsync(new[] { Track("a"), Track("b"), Track("c") });
+
+        _eventBus.Publish(new PlaylistCompositionUpdatedEvent(null, ":favorite:P", 3));
+
+        await WaitForAsync(() => reloaded > 0);
+        _view.Verify(
+            v => v.SetTracks(It.IsAny<IEnumerable<Track>>(), It.IsAny<Func<Track, bool>>()),
+            Times.AtLeast(2));
+    }
+
+    [Test]
+    public async Task CompositionUpdated_ForAnotherPlaylist_DoesNotReload()
+    {
+        await LoadThreeTracks();
+        var reloaded = 0;
+        _repository.Setup(r => r.GetCachedTracks(100, It.IsAny<CancellationToken>()))
+            .Callback(() => reloaded++)
+            .ReturnsAsync(new[] { Track("a") });
+
+        _eventBus.Publish(new PlaylistCompositionUpdatedEvent(null, "42:7", 3));
+        await Task.Delay(100);
+
+        Assert.That(reloaded, Is.Zero);
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            if (condition())
+                return;
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail("Условие не выполнилось за 2 секунды");
+    }
+
     // ── Восстановление выделения ──────────────────────────────────────────
 
     [Test]
@@ -246,7 +296,9 @@ public sealed class TracksPresenterTests
     private async Task LoadThreeTracks()
     {
         var playlist = new Playlist("favorite", "P");
-        _repository.Setup(r => r.GetCachedTracksOrMinimum(100, It.IsAny<CancellationToken>()))
+        _repository.Setup(r => r.GetAllTrackIds())
+            .Returns(new[] { K("a"), K("b"), K("c") });
+        _repository.Setup(r => r.GetCachedTracks(100, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new[] { Track("a"), Track("b"), Track("c") });
         await _presenter.LoadTracksFor(playlist);
     }

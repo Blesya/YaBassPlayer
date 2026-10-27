@@ -18,4 +18,7 @@ public interface ITracksView
 
 	/// <summary>Обновить состояние загрузки для трека с указанным ключом.</summary>
 	void SetDownloadState(TrackKey key, TrackDownloadState state);
+
+	/// <summary>Состояние списка: нет плейлиста, идёт загрузка или список готов.</summary>
+	void SetState(TrackListState state);
 }

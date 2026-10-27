@@ -13,4 +13,10 @@ public interface IPlaylistsPresenter
 
 	/// <summary>Reloads the playlist tree from all registered music sources.</summary>
 	void LoadPlaylistTree();
+
+	/// <summary>
+	/// Перечитывает только локальные плейлисты приложения (избранное, «Загруженные»,
+	/// топы). Сеть не трогает — нужно после лайка или смены локального избранного.
+	/// </summary>
+	void RefreshAppPlaylists();
 }

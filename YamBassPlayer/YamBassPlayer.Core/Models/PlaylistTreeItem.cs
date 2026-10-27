@@ -24,6 +24,12 @@ public class PlaylistTreeItem : ITreeNode
 
 	public bool IsExpandedByDefault { get; init; }
 
+	/// <summary>
+	/// Ветка источника показана из снимка: источник ещё не готов или последнее
+	/// обновление не удалось. В дереве это помечается, чтобы «кеш» не выглядел свежим.
+	/// </summary>
+	public bool IsStale { get; init; }
+
 	public void UpdateText()
 	{
 		if (Playlist is not null)
@@ -34,9 +40,8 @@ public class PlaylistTreeItem : ITreeNode
 		}
 
 		var childCount = Children.OfType<PlaylistTreeItem>().Count();
-		Text = childCount > 0
-			? $"{Label} [{childCount}]"
-			: Label;
+		string label = childCount > 0 ? $"{Label} [{childCount}]" : Label;
+		Text = IsStale ? $"{label} · кеш" : label;
 	}
 
 	public static PlaylistTreeItem FromPlaylist(Playlist playlist)

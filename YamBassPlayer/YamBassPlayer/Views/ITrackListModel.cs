@@ -9,6 +9,19 @@ namespace YamBassPlayer.Views;
 /// </summary>
 public readonly record struct TrackListItem(Track Track, string Number, TrackDownloadState Download);
 
+/// <summary>Что показывать, когда список пуст.</summary>
+public enum TrackListState
+{
+	/// <summary>Плейлист ещё не выбран.</summary>
+	NoPlaylist,
+
+	/// <summary>Плейлист выбран, данные загружаются.</summary>
+	Loading,
+
+	/// <summary>Плейлист загружен (возможно, пустой).</summary>
+	Ready
+}
+
 /// <summary>
 /// Общая модель списка треков: данные хранятся один раз для таблицы и плиток.
 /// Вьюхи подписываются на <see cref="Changed"/> и перерисовываются при изменении.
@@ -24,10 +37,12 @@ public interface ITrackListModel
 	int SelectedIndex { get; }
 	int ScrollOffset { get; }
 	bool IsLoadingMore { get; }
+	TrackListState State { get; }
 
 	void SetTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached);
 	void AddTracks(IEnumerable<Track> tracks, Func<Track, bool> isCached);
 	void Clear();
+	void SetState(TrackListState state);
 	void SetFilter(string? filter);
 	void SetPlayingTrack(TrackKey? key);
 	void SetLoadingMore(bool value);

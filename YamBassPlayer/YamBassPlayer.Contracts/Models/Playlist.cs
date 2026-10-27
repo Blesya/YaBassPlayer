@@ -43,11 +43,15 @@ public class Playlist(string kind, string title)
 		init => _cacheKey = value;
 	}
 
-	/// <summary>Один и тот же плейлист: совпадают источник, вид и ключ кэша.</summary>
+	/// <summary>
+	/// Один и тот же плейлист: совпадают источник и ключ кэша. <see cref="Kind"/> в
+	/// сравнение не входит: это подсказка загрузчику, а не идентичность. Источник вправе
+	/// вернуть тот же плейлист с другим видом — например, сохранённый чужой стал
+	/// собственным (<c>liked</c> → <c>own</c>), и прошлый выбор должен найтись.
+	/// </summary>
 	public bool HasSameIdentity(Playlist other)
 		=> other is not null
 		   && SourceId == other.SourceId
-		   && string.Equals(Kind, other.Kind, StringComparison.Ordinal)
 		   && string.Equals(CacheKey, other.CacheKey, StringComparison.Ordinal);
 
 	public override string ToString()

@@ -11,6 +11,9 @@ public sealed class PlaylistsView : View, IPlaylistsView
 	private readonly TreeView _tree;
 	private List<PlaylistTreeItem> _roots = new();
 
+	/// <summary>Идёт программная перестройка дерева: выбор в ней — не действие пользователя.</summary>
+	private bool _updatingTree;
+
 	public event Action<Playlist>? PlaylistSelected;
 
 	public PlaylistsView()
@@ -27,6 +30,9 @@ public sealed class PlaylistsView : View, IPlaylistsView
 
 		_tree.SelectionChanged += (_, args) =>
 		{
+			if (_updatingTree)
+				return;
+
 			if (args.NewValue is PlaylistTreeItem { Playlist: not null } item)
 			{
 				PlaylistSelected?.Invoke(item.Playlist);
@@ -47,15 +53,103 @@ public sealed class PlaylistsView : View, IPlaylistsView
 
 	public void SetPlaylistTree(IEnumerable<PlaylistTreeItem> roots)
 	{
-		_roots = roots.ToList();
+		var newRoots = roots.ToList();
+
 		Application.MainLoop.Invoke(() =>
 		{
-			_tree.ClearObjects();
-			_tree.AddObjects(_roots.Cast<ITreeNode>().ToList());
-			ExpandDefaultNodes(_roots);
-			ExpandPathToFirstPlaylist(_roots);
+			// Сохраняем раскрытие и выбор: фоновое обновление не должно схлопывать
+			// ветки и сбрасывать выделение на первую строку.
+			var known = new HashSet<string>(StringComparer.Ordinal);
+			var expanded = new HashSet<string>(StringComparer.Ordinal);
+			CollectState(_roots, known, expanded);
+
+			string? selectedKey = _tree.SelectedObject is PlaylistTreeItem selectedItem
+				? NodeKey(selectedItem)
+				: null;
+			int scroll = _tree.ScrollOffsetVertical;
+
+			_updatingTree = true;
+			try
+			{
+				_roots = newRoots;
+				_tree.ClearObjects();
+				_tree.AddObjects(_roots.Cast<ITreeNode>().ToList());
+				ExpandDefaultNodes(_roots);
+				RestoreState(_roots, known, expanded);
+				ExpandPathToFirstPlaylist(_roots);
+
+				if (selectedKey is not null && FindNode(_roots, selectedKey) is { } node)
+					_tree.SelectedObject = node;
+
+				_tree.ScrollOffsetVertical = scroll;
+			}
+			finally
+			{
+				_updatingTree = false;
+			}
+
 			_tree.SetNeedsDisplay();
 		});
+	}
+
+	/// <summary>Ключ узла, переживающий пересборку дерева.</summary>
+	private static string? NodeKey(PlaylistTreeItem item)
+		=> item.Playlist is { } playlist
+			? $"playlist:{playlist.SourceId?.Value ?? string.Empty}|{playlist.CacheKey}"
+			: item.Tag as string;
+
+	private void CollectState(
+		IEnumerable<PlaylistTreeItem> items,
+		HashSet<string> known,
+		HashSet<string> expanded)
+	{
+		foreach (PlaylistTreeItem item in items)
+		{
+			if (NodeKey(item) is { } key)
+			{
+				known.Add(key);
+				if (_tree.IsExpanded(item))
+					expanded.Add(key);
+			}
+
+			CollectState(item.Children.OfType<PlaylistTreeItem>(), known, expanded);
+		}
+	}
+
+	private void RestoreState(
+		IEnumerable<PlaylistTreeItem> items,
+		HashSet<string> known,
+		HashSet<string> expanded)
+	{
+		foreach (PlaylistTreeItem item in items)
+		{
+			if (NodeKey(item) is { } key
+				&& known.Contains(key)
+				&& item.Children.Count > 0)
+			{
+				if (expanded.Contains(key))
+					_tree.Expand(item);
+				else
+					_tree.Collapse(item);
+			}
+
+			RestoreState(item.Children.OfType<PlaylistTreeItem>(), known, expanded);
+		}
+	}
+
+	private static PlaylistTreeItem? FindNode(IEnumerable<PlaylistTreeItem> items, string key)
+	{
+		foreach (PlaylistTreeItem item in items)
+		{
+			if (NodeKey(item) == key)
+				return item;
+
+			PlaylistTreeItem? nested = FindNode(item.Children.OfType<PlaylistTreeItem>(), key);
+			if (nested is not null)
+				return nested;
+		}
+
+		return null;
 	}
 
 	public void AddOrUpdateTransientPlaylist(Playlist playlist)

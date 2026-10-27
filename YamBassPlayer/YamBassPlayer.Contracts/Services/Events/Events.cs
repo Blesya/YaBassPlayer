@@ -6,6 +6,12 @@ namespace YamBassPlayer.Services.Events;
 /// <summary>Published when the currently playing track changes.</summary>
 public sealed record TrackChangedEvent(TrackKey Key);
 
+/// <summary>
+/// Состав текущего плейлиста обновился в фоне: в источнике он изменился, и
+/// показанный список нужно перечитать. <paramref name="PlaylistKey"/> — <c>Playlist.CacheKey</c>.
+/// </summary>
+public sealed record PlaylistCompositionUpdatedEvent(SourceId? Source, string PlaylistKey, int TrackCount);
+
 /// <summary>Воспроизведение трека началось.</summary>
 public sealed record TrackStartedEvent(TrackKey Key);
 

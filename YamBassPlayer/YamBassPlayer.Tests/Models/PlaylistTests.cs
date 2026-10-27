@@ -45,7 +45,7 @@ public sealed class PlaylistTests
     }
 
     [Test]
-    public void HasSameIdentity_ComparesSourceKindAndCacheKey()
+    public void HasSameIdentity_ComparesSourceAndCacheKey()
     {
         var first = new Playlist("own", "Мой микс")
         {
@@ -68,6 +68,25 @@ public sealed class PlaylistTests
             Assert.That(first.HasSameIdentity(same), Is.True);
             Assert.That(first.HasSameIdentity(other), Is.False);
         });
+    }
+
+    [Test]
+    public void HasSameIdentity_IgnoresKindChangeForSamePlaylist()
+    {
+        // Один и тот же плейлист: вчера он был сохранённым чужим (liked), сегодня
+        // стал собственным (own). Прошлый выбор должен найтись по owner:kind.
+        var saved = new Playlist("liked", "Спокойный плейлист")
+        {
+            SourceId = Yandex,
+            Payload = new Dictionary<string, string> { ["owner"] = "405705740", ["kind"] = "1049" }
+        };
+        var fresh = new Playlist("own", "Спокойный плейлист")
+        {
+            SourceId = Yandex,
+            Payload = new Dictionary<string, string> { ["owner"] = "405705740", ["kind"] = "1049" }
+        };
+
+        Assert.That(saved.HasSameIdentity(fresh), Is.True);
     }
 
     [Test]

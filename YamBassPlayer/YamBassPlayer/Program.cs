@@ -58,8 +58,9 @@ internal class Program
 				plugin.Changed += () => playlistsPresenter.LoadPlaylistTree();
 
 			// Локальное избранное живёт в дереве: после сердечка его состав меняется.
+			// Сеть для этого не нужна — перечитываем только локальные плейлисты.
 			ILocalFavoriteService favorites = ServicesProvider.Ioc.Resolve<ILocalFavoriteService>();
-			favorites.Changed += () => playlistsPresenter.LoadPlaylistTree();
+			favorites.Changed += () => playlistsPresenter.RefreshAppPlaylists();
 
 			foreach (IPlugin plugin in pluginLoader.LoadedPlugins)
 				_ = Task.Run(() => plugin.InitializeAsync(CancellationToken.None));

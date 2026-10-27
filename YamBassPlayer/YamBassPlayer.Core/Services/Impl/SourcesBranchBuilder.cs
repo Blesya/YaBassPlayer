@@ -8,7 +8,8 @@ namespace YamBassPlayer.Services.Impl;
 
 public sealed class SourcesBranchBuilder(
     IMusicSourceRegistry musicSourceRegistry,
-    ILocalLibraryService localLibraryService) : ITreeBranchBuilder
+    ILocalLibraryService localLibraryService,
+    IPlaylistRefreshStatus refreshStatus) : ITreeBranchBuilder
 {
     public int Order => TreeBranchOrder.Sources;
     public bool IsStatic => false;
@@ -26,19 +27,23 @@ public sealed class SourcesBranchBuilder(
 
         foreach (IMusicSource source in musicSourceRegistry.Sources)
         {
-            // Неготовый источник не дёргаем: без токена его API вернёт ошибку,
-            // а пользователю нужен понятный узел с подсказкой.
-            if (source.State != SourceState.Ready)
+            // Дерево собирается только из уже известного: сеть здесь не трогаем.
+            // Для неготового источника показываем его плейлисты из снимка, а не
+            // подсказку — иначе всё, что пользователь видел при закрытии, исчезает
+            // на время входа, и прошлый плейлист не восстанавливается.
+            IReadOnlyList<Playlist> playlists = existingPlaylists is null
+                ? []
+                : existingPlaylists
+                    .Where(p => p.SourceId == source.Id && !IsLegacyLocalFavorite(source, p))
+                    .ToList();
+
+            if (source.State != SourceState.Ready && playlists.Count == 0)
             {
                 sourcesRoot.Children.Add(BuildStateNode(source));
                 continue;
             }
 
-            IReadOnlyList<Playlist> playlists = existingPlaylists is not null
-                ? existingPlaylists
-                    .Where(p => p.SourceId == source.Id && !IsLegacyLocalFavorite(source, p))
-                    .ToList()
-                : (await source.GetPlaylistsAsync(ct)).ToList();
+            bool stale = source.State != SourceState.Ready || refreshStatus.IsStale(source.Id);
 
             var children = BuildGroupedChildren(playlists);
 
@@ -51,7 +56,8 @@ public sealed class SourcesBranchBuilder(
                 Group = new PlaylistGroup(source.DisplayName, playlists.ToList(), isExpanded: false),
                 Children = children.Cast<ITreeNode>().ToList(),
                 Tag = source.Id.Value,
-                IsExpandedByDefault = false
+                IsExpandedByDefault = false,
+                IsStale = stale
             };
 
             node.UpdateText();

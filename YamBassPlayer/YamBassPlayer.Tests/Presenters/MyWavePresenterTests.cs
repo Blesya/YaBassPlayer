@@ -40,7 +40,7 @@ public sealed class MyWavePresenterTests
         _playStatus = new Mock<IPlayStatusPresenter>();
         _errorHandler = new Mock<IErrorHandler>();
 
-        _tracksPresenter.Setup(t => t.LoadTracksFor(It.IsAny<Playlist>())).Returns(Task.CompletedTask);
+        _tracksPresenter.Setup(t => t.LoadTracksFor(It.IsAny<Playlist>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         _presenter = new MyWavePresenter(
             _registry.Object, _trackInfoProvider.Object, _cache.Object,
@@ -99,7 +99,7 @@ public sealed class MyWavePresenterTests
         {
             _trackInfoProvider.Verify(p => p.SaveAsync(It.IsAny<Track>()), Times.Exactly(2));
             _cache.Verify(c => c.ReplaceMyWaveTracks(It.IsAny<IEnumerable<Track>>()), Times.Once);
-            _tracksPresenter.Verify(t => t.LoadTracksFor(result!), Times.Once);
+            _tracksPresenter.Verify(t => t.LoadTracksFor(result!, It.IsAny<CancellationToken>()), Times.Once);
             _queue.Verify(q => q.SetQueue(It.Is<IEnumerable<TrackKey>>(x => x.SequenceEqual(new[] { K("a"), K("b") })), 0), Times.Once);
         });
         Assert.That(result!.Kind, Is.EqualTo("my-wave"));

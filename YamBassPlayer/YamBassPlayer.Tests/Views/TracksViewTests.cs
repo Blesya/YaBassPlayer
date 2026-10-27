@@ -1,6 +1,7 @@
 using Terminal.Gui;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
+using YamBassPlayer.Views;
 using YamBassPlayer.Views.Impl;
 
 namespace YamBassPlayer.Tests.Views;
@@ -373,5 +374,39 @@ public sealed class TracksViewTests : ViewTestBase
         view.Redraw(new Rect(0, 0, Width, Height));
 
         Assert.That(RenderText(Height, Width), Does.Not.Contain("УникальноеИмя"));
+    }
+
+    // ── Пустое состояние ──────────────────────────────────────────────────
+
+    [Test]
+    public void EmptyState_WithoutPlaylist_SaysChoosePlaylist()
+    {
+        var view = CreateView();
+        Pump();
+        view.Redraw(new Rect(0, 0, Width, Height));
+
+        Assert.That(RenderText(Height, Width), Does.Contain("Выберите плейлист"));
+    }
+
+    [Test]
+    public void EmptyState_WhileLoading_SaysLoading()
+    {
+        var view = CreateView();
+        view.SetState(TrackListState.Loading);
+        Pump();
+        view.Redraw(new Rect(0, 0, Width, Height));
+
+        Assert.That(RenderText(Height, Width), Does.Contain("Загрузка плейлиста"));
+    }
+
+    [Test]
+    public void EmptyState_WhenPlaylistEmpty_SaysEmpty()
+    {
+        var view = CreateView();
+        view.SetState(TrackListState.Ready);
+        Pump();
+        view.Redraw(new Rect(0, 0, Width, Height));
+
+        Assert.That(RenderText(Height, Width), Does.Contain("Плейлист пуст"));
     }
 }

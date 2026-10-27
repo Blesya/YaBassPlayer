@@ -5,7 +5,7 @@ namespace YamBassPlayer.Services.Impl;
 public sealed class TrackRepositoryCache : ITrackRepositoryCache
 {
 	private readonly Dictionary<SourceId, List<TrackKey>> _searchTrackKeys = new();
-	private readonly Dictionary<string, List<TrackKey>> _playlistTrackKeys = new(StringComparer.Ordinal);
+	private readonly Dictionary<(SourceId Source, string CacheKey), List<TrackKey>> _playlistTrackKeys = new();
 	private readonly object _playlistLock = new();
 	private readonly List<TrackKey> _queueTrackKeys = [];
 	private readonly List<Track> _myWaveTracks = [];
@@ -41,11 +41,11 @@ public sealed class TrackRepositoryCache : ITrackRepositoryCache
 	/// Отдаёт копию: список могли пересобрать в другом потоке, пока вызывающая сторона
 	/// его перечисляет (пользователь листает дерево, а фоновое обновление пишет состав).
 	/// </summary>
-	public bool TryGetPlaylistTrackIds(string cacheKey, out IReadOnlyList<TrackKey> trackKeys)
+	public bool TryGetPlaylistTrackIds(SourceId source, string cacheKey, out IReadOnlyList<TrackKey> trackKeys)
 	{
 		lock (_playlistLock)
 		{
-			if (_playlistTrackKeys.TryGetValue(cacheKey, out List<TrackKey>? keys))
+			if (_playlistTrackKeys.TryGetValue((source, cacheKey), out List<TrackKey>? keys))
 			{
 				trackKeys = keys.ToList();
 				return true;
@@ -56,14 +56,14 @@ public sealed class TrackRepositoryCache : ITrackRepositoryCache
 		return false;
 	}
 
-	public void SetPlaylistTrackIds(string cacheKey, IEnumerable<TrackKey> trackKeys)
+	public void SetPlaylistTrackIds(SourceId source, string cacheKey, IEnumerable<TrackKey> trackKeys)
 	{
 		lock (_playlistLock)
 		{
-			if (!_playlistTrackKeys.TryGetValue(cacheKey, out List<TrackKey>? keys))
+			if (!_playlistTrackKeys.TryGetValue((source, cacheKey), out List<TrackKey>? keys))
 			{
 				keys = [];
-				_playlistTrackKeys[cacheKey] = keys;
+				_playlistTrackKeys[(source, cacheKey)] = keys;
 			}
 
 			keys.Clear();
@@ -71,11 +71,16 @@ public sealed class TrackRepositoryCache : ITrackRepositoryCache
 		}
 	}
 
-	public void ClearPlaylistTrackIds()
+	public void ClearPlaylistTrackIds(SourceId source)
 	{
 		lock (_playlistLock)
 		{
-			_playlistTrackKeys.Clear();
+			List<(SourceId Source, string CacheKey)> keys = _playlistTrackKeys.Keys
+				.Where(key => key.Source == source)
+				.ToList();
+
+			foreach ((SourceId Source, string CacheKey) key in keys)
+				_playlistTrackKeys.Remove(key);
 		}
 	}
 

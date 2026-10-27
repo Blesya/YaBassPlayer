@@ -75,7 +75,7 @@ public sealed class TrackRepositoryCacheTests
     {
         var cache = new TrackRepositoryCache();
 
-        var found = cache.TryGetPlaylistTrackIds("42:7", out var keys);
+        var found = cache.TryGetPlaylistTrackIds(Yandex, "42:7", out var keys);
 
         Assert.Multiple(() =>
         {
@@ -89,14 +89,14 @@ public sealed class TrackRepositoryCacheTests
     {
         var cache = new TrackRepositoryCache();
 
-        cache.SetPlaylistTrackIds("42:7", new[] { K("1"), K("2") });
-        cache.SetPlaylistTrackIds("42:8", new[] { K("3") });
+        cache.SetPlaylistTrackIds(Yandex, "42:7", new[] { K("1"), K("2") });
+        cache.SetPlaylistTrackIds(Yandex, "42:8", new[] { K("3") });
 
         Assert.Multiple(() =>
         {
-            Assert.That(cache.TryGetPlaylistTrackIds("42:7", out var own), Is.True);
+            Assert.That(cache.TryGetPlaylistTrackIds(Yandex, "42:7", out var own), Is.True);
             Assert.That(own, Is.EqualTo(new[] { K("1"), K("2") }));
-            Assert.That(cache.TryGetPlaylistTrackIds("42:8", out var liked), Is.True);
+            Assert.That(cache.TryGetPlaylistTrackIds(Yandex, "42:8", out var liked), Is.True);
             Assert.That(liked, Is.EqualTo(new[] { K("3") }));
         });
     }
@@ -105,11 +105,11 @@ public sealed class TrackRepositoryCacheTests
     public void SetPlaylistTrackIds_ReplacesContentOfSameKey()
     {
         var cache = new TrackRepositoryCache();
-        cache.SetPlaylistTrackIds("42:7", new[] { K("1"), K("2") });
+        cache.SetPlaylistTrackIds(Yandex, "42:7", new[] { K("1"), K("2") });
 
-        cache.SetPlaylistTrackIds("42:7", new[] { K("3") });
+        cache.SetPlaylistTrackIds(Yandex, "42:7", new[] { K("3") });
 
-        Assert.That(cache.TryGetPlaylistTrackIds("42:7", out var keys), Is.True);
+        Assert.That(cache.TryGetPlaylistTrackIds(Yandex, "42:7", out var keys), Is.True);
         Assert.That(keys, Is.EqualTo(new[] { K("3") }));
     }
 
@@ -117,27 +117,27 @@ public sealed class TrackRepositoryCacheTests
     public void TryGetPlaylistTrackIds_ReturnsSnapshot()
     {
         var cache = new TrackRepositoryCache();
-        cache.SetPlaylistTrackIds("42:7", new[] { K("1") });
+        cache.SetPlaylistTrackIds(Yandex, "42:7", new[] { K("1") });
 
-        cache.TryGetPlaylistTrackIds("42:7", out var keys);
-        cache.SetPlaylistTrackIds("42:7", new[] { K("2") });
+        cache.TryGetPlaylistTrackIds(Yandex, "42:7", out var keys);
+        cache.SetPlaylistTrackIds(Yandex, "42:7", new[] { K("2") });
 
         Assert.That(keys, Is.EqualTo(new[] { K("1") }));
     }
 
     [Test]
-    public void ClearPlaylistTrackIds_DropsEveryPlaylist()
+    public void ClearPlaylistTrackIds_DropsOnlyRequestedSource()
     {
         var cache = new TrackRepositoryCache();
-        cache.SetPlaylistTrackIds("42:7", new[] { K("1") });
-        cache.SetPlaylistTrackIds("42:8", new[] { K("2") });
+        cache.SetPlaylistTrackIds(Yandex, "42:7", new[] { K("1") });
+        cache.SetPlaylistTrackIds(LocalMusicSource.Id, "42:7", new[] { K("/music/1", LocalMusicSource.Id) });
 
-        cache.ClearPlaylistTrackIds();
+        cache.ClearPlaylistTrackIds(Yandex);
 
         Assert.Multiple(() =>
         {
-            Assert.That(cache.TryGetPlaylistTrackIds("42:7", out _), Is.False);
-            Assert.That(cache.TryGetPlaylistTrackIds("42:8", out _), Is.False);
+            Assert.That(cache.TryGetPlaylistTrackIds(Yandex, "42:7", out _), Is.False);
+            Assert.That(cache.TryGetPlaylistTrackIds(LocalMusicSource.Id, "42:7", out _), Is.True);
         });
     }
 

@@ -28,36 +28,7 @@ public class TrackInfoProvider : ITrackInfoProvider
 		if (keysList.Count == 0)
 			return [];
 
-		var cachedRows = new Dictionary<TrackKey, TrackRow>();
-
-		// Batch query — one round-trip for all keys.
-		var valueRows = new List<string>();
-		var parameters = new List<(string Name, object Value)>();
-		for (int i = 0; i < keysList.Count; i++)
-		{
-			string sourceName = $"@source{i}";
-			string trackName = $"@track{i}";
-			valueRows.Add($"({sourceName}, {trackName})");
-			parameters.Add((sourceName, keysList[i].SourceId.Value));
-			parameters.Add((trackName, keysList[i].TrackId));
-		}
-
-		using (var connection = _connectionFactory.Create())
-		using (var cmd = connection.CreateCommand())
-		{
-			cmd.CommandText = $@"
-				SELECT {TrackRowMapper.TrackProjection}
-				FROM Tracks WHERE (SourceType, TrackId) IN (VALUES {string.Join(", ", valueRows)})";
-			foreach (var (name, value) in parameters)
-				cmd.Parameters.AddWithValue(name, value);
-
-			using var reader = await cmd.ExecuteReaderAsync();
-			while (await reader.ReadAsync())
-			{
-				TrackRow row = TrackRowMapper.ReadTrackRow(reader);
-				cachedRows[new TrackKey(row.SourceId, row.TrackId)] = row;
-			}
-		}
+		Dictionary<TrackKey, TrackRow> cachedRows = await ReadCachedRowsAsync(keysList);
 
 		var missingKeys = keysList.Where(key => !cachedRows.ContainsKey(key)).ToList();
 		foreach (var group in missingKeys.GroupBy(key => key.SourceId))
@@ -76,7 +47,62 @@ public class TrackInfoProvider : ITrackInfoProvider
 				cachedRows[track.Key] = TrackRowMapper.ToTrackRow(track);
 		}
 
-		// Batch-enrich all rows with Artists and AlbumInfo, then restore original order.
+		return await EnrichOrderedAsync(keysList, cachedRows);
+	}
+
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<Track>> GetCachedTracksByIds(IEnumerable<TrackKey> keys)
+	{
+		var keysList = keys.Distinct().ToList();
+		if (keysList.Count == 0)
+			return [];
+
+		Dictionary<TrackKey, TrackRow> cachedRows = await ReadCachedRowsAsync(keysList);
+		return await EnrichOrderedAsync(keysList, cachedRows);
+	}
+
+	/// <summary>Один пакетный запрос к БД: строки треков по ключам, без обращения к источнику.</summary>
+	private async Task<Dictionary<TrackKey, TrackRow>> ReadCachedRowsAsync(IReadOnlyList<TrackKey> keysList)
+	{
+		var cachedRows = new Dictionary<TrackKey, TrackRow>();
+
+		var valueRows = new List<string>();
+		var parameters = new List<(string Name, object Value)>();
+		for (int i = 0; i < keysList.Count; i++)
+		{
+			string sourceName = $"@source{i}";
+			string trackName = $"@track{i}";
+			valueRows.Add($"({sourceName}, {trackName})");
+			parameters.Add((sourceName, keysList[i].SourceId.Value));
+			parameters.Add((trackName, keysList[i].TrackId));
+		}
+
+		using var connection = _connectionFactory.Create();
+		using var cmd = connection.CreateCommand();
+		cmd.CommandText = $@"
+			SELECT {TrackRowMapper.TrackProjection}
+			FROM Tracks WHERE (SourceType, TrackId) IN (VALUES {string.Join(", ", valueRows)})";
+		foreach (var (name, value) in parameters)
+			cmd.Parameters.AddWithValue(name, value);
+
+		using var reader = await cmd.ExecuteReaderAsync();
+		while (await reader.ReadAsync())
+		{
+			TrackRow row = TrackRowMapper.ReadTrackRow(reader);
+			cachedRows[new TrackKey(row.SourceId, row.TrackId)] = row;
+		}
+
+		return cachedRows;
+	}
+
+	/// <summary>Обогащает строки исполнителями и альбомами и восстанавливает исходный порядок.</summary>
+	private async Task<IReadOnlyList<Track>> EnrichOrderedAsync(
+		IReadOnlyList<TrackKey> keysList,
+		Dictionary<TrackKey, TrackRow> cachedRows)
+	{
+		if (cachedRows.Count == 0)
+			return [];
+
 		var enrichedByKey = (await _enricher.EnrichAsync(cachedRows.Values.ToList()))
 			.ToDictionary(t => t.Key);
 

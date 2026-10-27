@@ -64,6 +64,8 @@ public static class ServicesProvider
 			Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "playlist_state.json"),
 			c.Resolve<IPluginStateFile>()
 		)).As<IPlaylistStateStore>().SingleInstance();
+		builder.RegisterType<SqlitePlaylistCompositionStore>().As<IPlaylistCompositionStore>().SingleInstance();
+		builder.RegisterType<PlaylistRefreshStatus>().As<IPlaylistRefreshStatus>().SingleInstance();
 		builder.RegisterType<PlaybackPresenter>().As<IPlaybackPresenter>().SingleInstance();
 		builder.RegisterType<LocalFavoriteService>()
 			.As<ILocalFavoriteService>()
@@ -129,7 +131,10 @@ public static class ServicesProvider
 			c.Resolve<ILocalLibraryService>(),
 			c.Resolve<PlaylistLoadStrategyResolver>(),
 			c.Resolve<IAppPlaylistProvider>(),
-			c.Resolve<IPlaylistStateStore>()
+			c.Resolve<IPlaylistStateStore>(),
+			c.Resolve<IPlaylistCompositionStore>(),
+			c.Resolve<IEventBus>(),
+			c.Resolve<IPlaylistRefreshStatus>()
 		)).As<ITrackRepository>().SingleInstance();
 
 		// Регистрация источников музыки

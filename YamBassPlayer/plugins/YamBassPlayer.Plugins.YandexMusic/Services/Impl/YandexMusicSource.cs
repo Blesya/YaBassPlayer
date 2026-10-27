@@ -108,69 +108,73 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource, ITrac
 	/// Returns a Favorite playlist, the landing "personal" mixes, the user's own playlists
 	/// and the playlists the user has saved from other people.
 	/// </summary>
+	/// <remarks>
+	/// Четыре запроса идут параллельно: последовательно они складывались в секунды
+	/// ожидания. Ошибка любого из них — это ошибка обновления источника: хост оставит
+	/// ветку из снимка, а не покажет частичный список как свежий.
+	/// </remarks>
 	public async Task<IEnumerable<Playlist>> GetPlaylistsAsync(CancellationToken ct = default)
-    {
+	{
+		ct.ThrowIfCancellationRequested();
+		if (_playlistsCache is not null)
+			return _playlistsCache;
 
-        ct.ThrowIfCancellationRequested();
-        if (_playlistsCache is not null)
-            return _playlistsCache;
+		var likedTracksTask = _api.Library.GetLikedTracksAsync(_storage);
+		var personalTask = _api.Playlist.GetPersonalPlaylistsAsync(_storage);
+		Task<IEnumerable<Playlist>> ownTask = GetOwnPlaylistsAsync();
+		Task<IEnumerable<Playlist>> likedPlaylistsTask = GetLikedPlaylistsAsync();
 
-        try
-        {
-            var liked = await _api.Library.GetLikedTracksAsync(_storage);
-            int likedCount = liked.Result.Library.Tracks.Count;
-            _likedTrackIdsCache = liked.Result.Library.Tracks.Select(t => t.Id).ToList();
+		await Task.WhenAll(likedTracksTask, personalTask, ownTask, likedPlaylistsTask);
 
-            // Избранное инициализирует сам источник — отдельного инициализатора больше нет.
-            _favoriteService.Initialize(_likedTrackIdsCache);
+		var liked = await likedTracksTask;
+		int likedCount = liked.Result.Library.Tracks.Count;
+		_likedTrackIdsCache = liked.Result.Library.Tracks.Select(t => t.Id).ToList();
 
-            var playlists = new List<Playlist>
-            {
-                new("favorite", "Мои треки")
-                {
-                    SourceId = YandexMusicSourceId.Value,
-                    Category = PlaylistCategory.Data,
-                    Description = "Треки, которые вам понравились",
-                    TrackCount = likedCount
-                },
-                new("playlist-of-the-day", "Плейлист дня")
-                {
-                    SourceId = YandexMusicSourceId.Value,
-                    Category = PlaylistCategory.Data,
-                    Description = "Подборка дня",
-                    TrackCount = 0
-                }
-            };
+		// Избранное инициализирует сам источник — отдельного инициализатора больше нет.
+		_favoriteService.Initialize(_likedTrackIdsCache);
 
-            // Лендинг «Персональные плейлисты»: плейлист дня, дежавю, премьера и т.п.
-            var personalPlaylists = await _api.Playlist.GetPersonalPlaylistsAsync(_storage);
-            _personalPlaylistsCache = personalPlaylists.ToList();
-            foreach (var yResponse in personalPlaylists)
-            {
-                playlists.Add(new Playlist("personal", yResponse.Result.Title)
-                {
-                    SourceId = YandexMusicSourceId.Value,
-                    Category = PlaylistCategory.Data,
-                    Description = yResponse.Result.Description,
-                    TrackCount = yResponse.Result.TrackCount,
-                    Payload = BuildPayload(yResponse.Result.Owner?.Uid, yResponse.Result.Kind)
-                });
-            }
+		var playlists = new List<Playlist>
+		{
+			new("favorite", "Мои треки")
+			{
+				SourceId = YandexMusicSourceId.Value,
+				Category = PlaylistCategory.Data,
+				Description = "Треки, которые вам понравились",
+				TrackCount = likedCount
+			},
+			new("playlist-of-the-day", "Плейлист дня")
+			{
+				SourceId = YandexMusicSourceId.Value,
+				Category = PlaylistCategory.Data,
+				Description = "Подборка дня",
+				TrackCount = 0
+			}
+		};
 
-            // Собственные плейлисты и сохранённые чужие: в библиотеке методов нет,
-            // собственные берём напрямую из API, сохранённые — из секции библиотеки.
-            playlists.AddRange(await GetOwnPlaylistsSafeAsync());
-            playlists.AddRange(await GetLikedPlaylistsSafeAsync());
+		// Лендинг «Персональные плейлисты»: плейлист дня, дежавю, премьера и т.п.
+		List<YResponse<YamBassPlayer.Api.Models.Playlist.YPlaylist>> personalPlaylists =
+			await personalTask;
+		_personalPlaylistsCache = personalPlaylists;
+		foreach (var yResponse in personalPlaylists)
+		{
+			playlists.Add(new Playlist("personal", yResponse.Result.Title)
+			{
+				SourceId = YandexMusicSourceId.Value,
+				Category = PlaylistCategory.Data,
+				Description = yResponse.Result.Description,
+				TrackCount = yResponse.Result.TrackCount,
+				Payload = BuildPayload(yResponse.Result.Owner?.Uid, yResponse.Result.Kind)
+			});
+		}
 
-            _playlistsCache = PlaylistDeduplicator.ByCacheKey(playlists);
-            return _playlistsCache;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Ошибка источника Яндекс.Музыки");
-            return [];
-        }
-    }
+		// Собственные плейлисты и сохранённые чужие: в библиотеке методов нет,
+		// собственные берём напрямую из API, сохранённые — из секции библиотеки.
+		playlists.AddRange(await ownTask);
+		playlists.AddRange(await likedPlaylistsTask);
+
+		_playlistsCache = PlaylistDeduplicator.ByCacheKey(playlists);
+		return _playlistsCache;
+	}
 
 	/// <summary>
 	/// Собственные плейлисты пользователя (<c>/users/{uid}/playlists/list</c>).
@@ -208,10 +212,11 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource, ITrac
 
 	private async Task<IEnumerable<Playlist>> GetLikedPlaylistsAsync()
 	{
-		var response = await _api.Library.GetLikedPlaylistsAsync(_storage);
+		var response = await _api.Library.GetLikedPlaylistsAsync(_storage)
+			?? throw new InvalidOperationException("Библиотека плейлистов Яндекс.Музыки вернула пустой ответ");
 		string? ownUid = _storage.User?.Uid;
 
-		return (response?.Result ?? [])
+		return (response.Result ?? [])
 			.Select(item => item.Playlist)
 			.Where(playlist => playlist is not null)
 			// Свои плейлисты уже пришли отдельным запросом — не дублируем.
@@ -219,33 +224,6 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource, ITrac
 			.GroupBy(playlist => $"{playlist.Owner?.Uid}:{playlist.Kind}")
 			.Select(group => group.First())
 			.Select(playlist => ToPlaylist(playlist, "liked"));
-	}
-
-	private async Task<IEnumerable<Playlist>> GetOwnPlaylistsSafeAsync()
-	{
-		try
-		{
-			return await GetOwnPlaylistsAsync();
-		}
-		catch (Exception ex)
-		{
-			// Список плейлистов не должен пропадать целиком из-за одного запроса.
-			Log.Warning(ex, "Не удалось получить собственные плейлисты Яндекс.Музыки");
-			return [];
-		}
-	}
-
-	private async Task<IEnumerable<Playlist>> GetLikedPlaylistsSafeAsync()
-	{
-		try
-		{
-			return await GetLikedPlaylistsAsync();
-		}
-		catch (Exception ex)
-		{
-			Log.Warning(ex, "Не удалось получить сохранённые плейлисты Яндекс.Музыки");
-			return [];
-		}
 	}
 
 	private static Dictionary<string, string>? BuildPayload(string? owner, string? kind)
@@ -288,6 +266,10 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource, ITrac
 				_ => []
 			};
 		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
+		}
 		catch (Exception ex)
 		{
 			Log.Error(ex, "Ошибка источника Яндекс.Музыки");
@@ -311,6 +293,10 @@ public sealed class YandexMusicSource : IMusicSource, IEntitySearchSource, ITrac
 				"own" or "liked" => await GetYandexPlaylistTrackIdsAsync(playlist),
 				_ => []
 			};
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
 		}
 		catch (Exception ex)
 		{
