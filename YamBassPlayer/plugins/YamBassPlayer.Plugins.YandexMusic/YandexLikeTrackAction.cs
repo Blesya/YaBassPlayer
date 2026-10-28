@@ -10,6 +10,9 @@ namespace YamBassPlayer.Plugins;
 /// </summary>
 public sealed class YandexLikeTrackAction(IYandexFavoriteService favorites) : ITrackAction
 {
+    private const string LikedMark = "♥";
+    private const string NotLikedMark = "♡";
+
     public string Id => "yandex-like";
 
     public event Action? Changed;
@@ -17,7 +20,7 @@ public sealed class YandexLikeTrackAction(IYandexFavoriteService favorites) : IT
     public bool IsAvailable(Track track) => track.SourceId == YandexMusicSourceId.Value;
 
     public string GetTitle(Track track)
-        => favorites.IsTrackFavorite(track.Id) ? "Яндекс −" : "Яндекс +";
+        => favorites.IsTrackFavorite(track.Id) ? $"Яндекс {LikedMark}" : $"Яндекс {NotLikedMark}";
 
     public async Task ExecuteAsync(Track track)
     {

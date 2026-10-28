@@ -9,7 +9,7 @@ public interface ITrackAction
 {
     string Id { get; }
 
-    /// <summary>Текст кнопки для конкретного трека, например «Яндекс +».</summary>
+    /// <summary>Текст кнопки для конкретного трека, например «Яндекс ♡».</summary>
     string GetTitle(Track track);
 
     bool IsAvailable(Track track);

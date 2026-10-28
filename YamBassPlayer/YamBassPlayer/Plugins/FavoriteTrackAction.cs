@@ -10,6 +10,9 @@ namespace YamBassPlayer.Plugins;
 /// </summary>
 public sealed class FavoriteTrackAction(ILocalFavoriteService favorites) : ITrackAction
 {
+    private const string LikedMark = "♥";
+    private const string NotLikedMark = "♡";
+
     public string Id => "favorite";
 
     public event Action? Changed;
@@ -17,7 +20,7 @@ public sealed class FavoriteTrackAction(ILocalFavoriteService favorites) : ITrac
     public bool IsAvailable(Track track) => !string.IsNullOrWhiteSpace(track.Id);
 
     public string GetTitle(Track track)
-        => favorites.IsTrackFavorite(track.Key) ? "Локально −" : "Локально +";
+        => favorites.IsTrackFavorite(track.Key) ? $"Локально {LikedMark}" : $"Локально {NotLikedMark}";
 
     public async Task ExecuteAsync(Track track)
     {
