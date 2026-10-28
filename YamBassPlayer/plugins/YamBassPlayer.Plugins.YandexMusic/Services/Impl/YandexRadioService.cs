@@ -33,6 +33,34 @@ public sealed class YandexRadioService : IYandexRadioService
 
 	public Task<bool> StartMyWaveAsync() => StartStationAsync(MyWaveType, MyWaveTag);
 
+	/// <summary>
+	/// Отправляет settings2 для персональной станции. Дескриптор станции
+	/// собирается локально: эндпоинту нужны только type и tag, а дашборд
+	/// рекомендаций может быть недоступен. Настройки применяются к следующему
+	/// запросу треков этой станции.
+	/// </summary>
+	public async Task<bool> ApplyMyWaveSettingsAsync(MyWaveSettings settings)
+	{
+		try
+		{
+			await _api.Radio.SetStationSettings2Async(_storage, CreateStation(MyWaveType, MyWaveTag), new YStationSettings2 {
+				Diversity = settings.Diversity,
+				Language = settings.Language,
+				MoodEnergy = settings.MoodEnergy
+			});
+
+			Log.Information("Настройки «Моей волны» применены: треки {Diversity}, настроение {MoodEnergy}, язык {Language}",
+				settings.Diversity, settings.MoodEnergy, settings.Language);
+			return true;
+		}
+		catch (Exception ex)
+		{
+			// Настройки — не повод не запускать волну: станция стартует с прежними.
+			Log.Warning(ex, "Не удалось применить настройки «Моей волны»");
+			return false;
+		}
+	}
+
 	public async Task<bool> StartTrackWaveAsync(string seedTrackId)
 	{
 		bool started = await StartStationAsync("track", seedTrackId);

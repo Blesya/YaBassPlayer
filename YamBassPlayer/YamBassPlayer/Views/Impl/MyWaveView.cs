@@ -7,19 +7,27 @@ namespace YamBassPlayer.Views.Impl;
 
 public sealed class MyWaveView : Window, IMyWaveView
 {
-	private const int CoverWidth = 100;
-	private const int CoverHeight = 55;
-
 	private readonly CoverAsciiView _asciiView;
 	private readonly Label _artistTitleLabel;
 	private readonly Label _albumLabel;
+	private readonly Label _separatorLabel;
 	private readonly Label _waveDescriptionLabel;
 	private readonly Label _nextTrackLabel;
+
+	private (int Width, int Height) _appliedCoverSize;
+	private bool _applyingLayout;
+
+	public event Action? CoverSizeChanged;
 
 	public Toplevel ModalWindow => this;
 
 	public MyWaveView() : base("Моя волна")
 	{
+		// Окно занимает весь экран и запускается через Application.Run. Без Modal
+		// Terminal.Gui делает его Application.Top, и таймер спектра главного окна
+		// продолжает рисовать полосу поверх него.
+		Modal = true;
+
 		X = 0;
 		Y = 0;
 		Width = Dim.Fill();
@@ -28,38 +36,30 @@ public sealed class MyWaveView : Window, IMyWaveView
 		_asciiView = new CoverAsciiView
 		{
 			X = 1,
-			Y = 1,
-			Width = CoverWidth,
-			Height = CoverHeight
+			Y = 1
 		};
 
 		_artistTitleLabel = new Label
 		{
-			X = Pos.Right(_asciiView) + 2,
-			Y = 2,
-			Width = Dim.Fill() - 2,
-			Height = 2,
+			Width = Dim.Fill(2),
+			Height = 1,
 			TextAlignment = TextAlignment.Left,
 			AutoSize = false,
-			Text = "— — —"
+			Text = "- - -"
 		};
 
 		_albumLabel = new Label
 		{
-			X = Pos.Right(_asciiView) + 2,
-			Y = 5,
-			Width = Dim.Fill() - 2,
+			Width = Dim.Fill(2),
 			Height = 1,
 			TextAlignment = TextAlignment.Left,
 			AutoSize = false,
 			Text = string.Empty
 		};
 
-		var separatorLabel = new Label
+		_separatorLabel = new Label
 		{
-			X = Pos.Right(_asciiView) + 2,
-			Y = 8,
-			Width = Dim.Fill() - 2,
+			Width = Dim.Fill(2),
 			Height = 1,
 			AutoSize = false,
 			Text = new string('─', 200)
@@ -67,9 +67,7 @@ public sealed class MyWaveView : Window, IMyWaveView
 
 		_waveDescriptionLabel = new Label
 		{
-			X = Pos.Right(_asciiView) + 2,
-			Y = 10,
-			Width = Dim.Fill() - 2,
+			Width = Dim.Fill(2),
 			Height = 2,
 			TextAlignment = TextAlignment.Left,
 			AutoSize = false,
@@ -78,9 +76,7 @@ public sealed class MyWaveView : Window, IMyWaveView
 
 		_nextTrackLabel = new Label
 		{
-			X = Pos.Right(_asciiView) + 2,
-			Y = 13,
-			Width = Dim.Fill() - 2,
+			Width = Dim.Fill(2),
 			Height = 1,
 			TextAlignment = TextAlignment.Left,
 			AutoSize = false,
@@ -99,10 +95,13 @@ public sealed class MyWaveView : Window, IMyWaveView
 		Add(_asciiView,
 			_artistTitleLabel,
 			_albumLabel,
-			separatorLabel,
+			_separatorLabel,
 			_waveDescriptionLabel,
 			_nextTrackLabel,
 			closeButton);
+
+		_appliedCoverSize = ComputeCoverSize();
+		ApplyCoverLayout(_appliedCoverSize);
 
 		KeyPress += e =>
 		{
@@ -114,11 +113,81 @@ public sealed class MyWaveView : Window, IMyWaveView
 		};
 	}
 
+	/// <summary>
+	/// Размер обложки по текущему размеру окна. До первой раскладки берётся
+	/// размер драйвера: окно полноэкранное, поэтому значения совпадают.
+	/// </summary>
+	public (int Width, int Height) CoverSize => ComputeCoverSize();
+
+	private (int Width, int Height) ComputeCoverSize()
+	{
+		int frameWidth = Bounds.Width > 0 ? Bounds.Width : Application.Driver?.Cols ?? 0;
+		int frameHeight = Bounds.Height > 0 ? Bounds.Height : Application.Driver?.Rows ?? 0;
+
+		if (frameWidth <= 0 || frameHeight <= 0)
+			return (20, 11);
+
+		// Рамка окна, поля и общая панель управления внизу: ModalWindowHost
+		// добавляет её в окно и занимает 6 строк.
+		return CoverLayout.Compute(
+			Math.Max(1, frameWidth - 4),
+			Math.Max(1, frameHeight - 9));
+	}
+
+	public override void LayoutSubviews()
+	{
+		base.LayoutSubviews();
+
+		if (_applyingLayout)
+			return;
+
+		_applyingLayout = true;
+		try
+		{
+			(int Width, int Height) size = ComputeCoverSize();
+			if (size == _appliedCoverSize)
+				return;
+
+			_appliedCoverSize = size;
+			ApplyCoverLayout(size);
+			CoverSizeChanged?.Invoke();
+		}
+		finally
+		{
+			_applyingLayout = false;
+		}
+	}
+
+	private void ApplyCoverLayout((int Width, int Height) size)
+	{
+		_asciiView.Width = size.Width;
+		_asciiView.Height = size.Height;
+
+		int textX = size.Width + 4;
+		int frameHeight = Bounds.Height > 0 ? Bounds.Height : Application.Driver?.Rows ?? 0;
+		int bottomLimit = Math.Max(0, frameHeight - 3);
+
+		_artistTitleLabel.X = textX;
+		_artistTitleLabel.Y = 2;
+
+		_albumLabel.X = textX;
+		_albumLabel.Y = Math.Min(5, bottomLimit);
+
+		_separatorLabel.X = textX;
+		_separatorLabel.Y = Math.Min(8, bottomLimit);
+
+		_waveDescriptionLabel.X = textX;
+		_waveDescriptionLabel.Y = Math.Min(10, bottomLimit);
+
+		_nextTrackLabel.X = textX;
+		_nextTrackLabel.Y = Math.Min(13, bottomLimit);
+	}
+
 	public void SetTrack(Track track)
 	{
 		Application.MainLoop.Invoke(() =>
 		{
-			_artistTitleLabel.Text = $"{track.Artist}   —   {track.Title}";
+			_artistTitleLabel.Text = $"{track.Artist}   -   {track.Title}";
 			_albumLabel.Text = string.IsNullOrWhiteSpace(track.Album)
 				? string.Empty
 				: $"[ {track.Album} ]";
@@ -127,8 +196,6 @@ public sealed class MyWaveView : Window, IMyWaveView
 	}
 
 	public void SetListenCount(int count) { }
-
-	public (int Width, int Height) CoverSize => (CoverWidth, CoverHeight);
 
 	public void SetCover(CoverArt? art)
 	{

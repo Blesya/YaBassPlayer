@@ -82,4 +82,40 @@ public sealed class CoverProviderTests
 		Assert.That(result, Is.EqualTo(cover));
 		Assert.That(Directory.Exists(Path.Combine(_root, "local")), Is.False);
 	}
+
+	/// <summary>
+	/// Панель «Инфо» и окно «Моя волна» просят одну обложку одновременно.
+	/// URL должен резолвиться один раз, а не два: иначе оба потока пишут файл.
+	/// </summary>
+	[Test]
+	public async Task DownloadCoverAsync_ConcurrentCallsForSameTrack_ResolveUrlOnce()
+	{
+		int urlCalls = 0;
+
+		async Task<string?> SlowUrlAsync()
+		{
+			Interlocked.Increment(ref urlCalls);
+			await Task.Delay(50);
+			return string.Empty;
+		}
+
+		var source = new Mock<IMusicSource>();
+		source.Setup(s => s.GetCoverUrlAsync("123", It.IsAny<CancellationToken>()))
+			.Returns(() => SlowUrlAsync());
+
+		var registry = new Mock<IMusicSourceRegistry>();
+		registry.Setup(r => r.Get(It.IsAny<SourceId>())).Returns(source.Object);
+
+		var connectionFactory = new Mock<IDbConnectionFactory>();
+		connectionFactory.Setup(f => f.Create()).Throws(new InvalidOperationException("no database"));
+
+		var provider = new CoverProvider(_root, connectionFactory.Object, registry.Object);
+		var track = new Track("t", "a", "al", "123") { SourceId = new SourceId("yandex") };
+
+		await Task.WhenAll(
+			provider.DownloadCoverAsync(track),
+			provider.DownloadCoverAsync(track));
+
+		Assert.That(urlCalls, Is.EqualTo(1));
+	}
 }

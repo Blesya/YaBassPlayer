@@ -151,6 +151,44 @@ public sealed class MyWaveWindowPresenterTests
         _view.Verify(v => v.SetNextTrackLabel(null), Times.Once);
     }
 
+    // ── Размер окна ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// После изменения размера окна обложка перерисовывается в новом размере:
+    /// старый ASCII-буфер не растягивается и не обрезается.
+    /// </summary>
+    [Test]
+    public void ShowWindow_WhenCoverAreaChanges_RendersCoverAtNewSize()
+    {
+        var size = (Width: 100, Height: 55);
+        _view.SetupGet(v => v.CoverSize).Returns(() => size);
+
+        var art = new CoverArt(1, 1, []);
+        var track = Track("t1");
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("t1"));
+        _trackCatalog.Setup(p => p.GetAsync(K("t1"))).ReturnsAsync(track);
+        _coverProvider.Setup(c => c.DownloadCoverAsync(track)).ReturnsAsync("covers/t1.png");
+        _coverArtService
+            .Setup(c => c.RenderAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(art);
+
+        _host.Setup(h => h.Show(_view.Object)).Callback(() =>
+        {
+            size = (Width: 80, Height: 44);
+            _view.Raise(v => v.CoverSizeChanged += null);
+
+            // В тесте окно закрывается сразу, а в жизни — по Esc. Даём отложенной
+            // перерисовке завершиться, пока презентер ещё подписан на событие.
+            Thread.Sleep(400);
+        });
+
+        _presenter.ShowWindow(Wave());
+
+        _coverArtService.Verify(
+            c => c.RenderAsync("covers/t1.png", 80, 44, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     // ── События шины ──────────────────────────────────────────────────────
 
     [Test]

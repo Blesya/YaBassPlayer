@@ -19,6 +19,12 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 	private readonly IErrorHandler _errorHandler;
 	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
+	private const int CoverReloadDelayMs = 150;
+
+	private TrackKey? _currentTrackKey;
+	private CancellationTokenSource? _coverReloadCts;
+	private int _coverVersion;
+
 	public MyWaveWindowPresenter(
 		IPlaybackQueue playbackQueue,
 		ITrackCatalog trackCatalog,
@@ -55,6 +61,11 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		var view = _viewFactory.Create<IMyWaveView>();
 		view.SetWaveDescription(playlist.Description ?? "Персональная радиостанция");
 
+		_currentTrackKey = null;
+
+		Action onCoverSizeChanged = () => ReloadCoverAfterResize(view);
+		view.CoverSizeChanged += onCoverSizeChanged;
+
 		TrackKey? currentTrack = _playbackQueue.CurrentTrack;
 		if (currentTrack is not null)
 		{
@@ -75,6 +86,8 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 		}
 		finally
 		{
+			view.CoverSizeChanged -= onCoverSizeChanged;
+			CancelCoverReload();
 			UnsubscribeTrackChanged();
 		}
 	}
@@ -90,20 +103,79 @@ public sealed class MyWaveWindowPresenter : IMyWaveWindowPresenter
 
 	private async Task LoadTrackInfo(IMyWaveView view, TrackKey key)
 	{
+		_currentTrackKey = key;
+		int version = ++_coverVersion;
+
 		try
 		{
 			Track track = await _trackCatalog.GetAsync(key);
 			view.SetTrack(track);
 			view.SetCover(null);
 
-			string coverPath = await _coverProvider.DownloadCoverAsync(track);
-			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, view.CoverSize.Width, view.CoverSize.Height);
-			view.SetCover(coverArt);
+			CoverArt? coverArt = await RenderCoverAsync(track, view.CoverSize);
+			if (version == _coverVersion)
+				view.SetCover(coverArt);
 		}
 		catch (Exception ex)
 		{
 			_errorHandler.Handle(ex);
 		}
+	}
+
+	private async Task<CoverArt?> RenderCoverAsync(Track track, (int Width, int Height) size)
+	{
+		string coverPath = await _coverProvider.DownloadCoverAsync(track);
+		return await _coverArtService.RenderAsync(coverPath, size.Width, size.Height);
+	}
+
+	/// <summary>
+	/// Окно изменило доступный размер обложки. Рендер тяжёлый, а при перетаскивании
+	/// окна событие приходит десятки раз, поэтому берём паузу и оставляем только
+	/// последний запрос.
+	/// </summary>
+	private void ReloadCoverAfterResize(IMyWaveView view)
+	{
+		if (_currentTrackKey is not { } key)
+			return;
+
+		CancelCoverReload();
+		var cts = new CancellationTokenSource();
+		_coverReloadCts = cts;
+		ReloadCoverAsync(view, key, cts.Token).Forget();
+	}
+
+	private async Task ReloadCoverAsync(IMyWaveView view, TrackKey key, CancellationToken ct)
+	{
+		try
+		{
+			await Task.Delay(CoverReloadDelayMs, ct);
+
+			Track track = await _trackCatalog.GetAsync(key);
+			int version = ++_coverVersion;
+			CoverArt? coverArt = await RenderCoverAsync(track, view.CoverSize);
+			ct.ThrowIfCancellationRequested();
+
+			if (version == _coverVersion)
+				view.SetCover(coverArt);
+		}
+		catch (OperationCanceledException)
+		{
+			// Окно закрыли или размер сменился ещё раз — этот рендер не нужен.
+		}
+		catch (Exception ex)
+		{
+			_errorHandler.Handle(ex);
+		}
+	}
+
+	private void CancelCoverReload()
+	{
+		// Поздний рендер прошлого окна не должен перезаписать обложку нового.
+		_coverVersion++;
+
+		_coverReloadCts?.Cancel();
+		_coverReloadCts?.Dispose();
+		_coverReloadCts = null;
 	}
 
 	private async Task UpdateNextTrackLabel(IMyWaveView view)

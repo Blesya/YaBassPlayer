@@ -22,6 +22,10 @@ public sealed class NowPlayingView : Window, INowPlayingView
 
 	public NowPlayingView() : base("Сейчас играет")
 	{
+		// Полноэкранное окно поверх главного: без Modal таймер спектра главного
+		// окна продолжает рисовать вторую полосу поверх этой.
+		Modal = true;
+
 		X = 0;
 		Y = 0;
 		Width = Dim.Fill();

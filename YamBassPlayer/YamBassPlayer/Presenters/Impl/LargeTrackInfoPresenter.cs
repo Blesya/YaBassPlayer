@@ -18,6 +18,12 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 	private readonly IErrorHandler _errorHandler;
 	private Action<TrackChangedEvent>? _onTrackChangedHandler;
 
+	private const int CoverReloadDelayMs = 150;
+
+	private TrackKey? _currentTrackKey;
+	private CancellationTokenSource? _coverReloadCts;
+	private int _coverVersion;
+
 	public LargeTrackInfoPresenter(
 		IPlaybackQueue playbackQueue,
 		ITrackCatalog trackCatalog,
@@ -39,6 +45,11 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 	public void ShowLargeTrackInfo()
 	{
 		var view = _viewFactory.Create<ILargeTrackInfoView>();
+
+		_currentTrackKey = null;
+
+		Action onCoverSizeChanged = () => ReloadCoverAfterResize(view);
+		view.CoverSizeChanged += onCoverSizeChanged;
 
 		LoadPlaylistAsync(view).Forget();
 
@@ -75,6 +86,9 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 
 		view.OnClose = () =>
 		{
+			view.CoverSizeChanged -= onCoverSizeChanged;
+			CancelCoverReload();
+
 			if (_onTrackChangedHandler is not null)
 			{
 				_eventBus.Unsubscribe(_onTrackChangedHandler);
@@ -104,18 +118,77 @@ public sealed class LargeTrackInfoPresenter : ILargeTrackInfoPresenter
 
 	private async Task LoadTrackInfo(ILargeTrackInfoView view, TrackKey key)
 	{
+		_currentTrackKey = key;
+		int version = ++_coverVersion;
+
 		try
 		{
 			Track track = await _trackCatalog.GetAsync(key);
 			view.SetTrack(track);
 
-			string coverPath = await _coverProvider.DownloadCoverAsync(track);
-			CoverArt? coverArt = await _coverArtService.RenderAsync(coverPath, view.CoverSize.Width, view.CoverSize.Height);
-			view.SetCover(coverArt);
+			CoverArt? coverArt = await RenderCoverAsync(track, view.CoverSize);
+			if (version == _coverVersion)
+				view.SetCover(coverArt);
 		}
 		catch (Exception ex)
 		{
 			_errorHandler.Handle(ex);
 		}
+	}
+
+	private async Task<CoverArt?> RenderCoverAsync(Track track, (int Width, int Height) size)
+	{
+		string coverPath = await _coverProvider.DownloadCoverAsync(track);
+		return await _coverArtService.RenderAsync(coverPath, size.Width, size.Height);
+	}
+
+	/// <summary>
+	/// Окно изменило доступный размер обложки. Рендер тяжёлый, а при перетаскивании
+	/// окна событие приходит десятки раз, поэтому берём паузу и оставляем только
+	/// последний запрос.
+	/// </summary>
+	private void ReloadCoverAfterResize(ILargeTrackInfoView view)
+	{
+		if (_currentTrackKey is not { } key)
+			return;
+
+		CancelCoverReload();
+		var cts = new CancellationTokenSource();
+		_coverReloadCts = cts;
+		ReloadCoverAsync(view, key, cts.Token).Forget();
+	}
+
+	private async Task ReloadCoverAsync(ILargeTrackInfoView view, TrackKey key, CancellationToken ct)
+	{
+		try
+		{
+			await Task.Delay(CoverReloadDelayMs, ct);
+
+			Track track = await _trackCatalog.GetAsync(key);
+			int version = ++_coverVersion;
+			CoverArt? coverArt = await RenderCoverAsync(track, view.CoverSize);
+			ct.ThrowIfCancellationRequested();
+
+			if (version == _coverVersion)
+				view.SetCover(coverArt);
+		}
+		catch (OperationCanceledException)
+		{
+			// Окно закрыли или размер сменился ещё раз — этот рендер не нужен.
+		}
+		catch (Exception ex)
+		{
+			_errorHandler.Handle(ex);
+		}
+	}
+
+	private void CancelCoverReload()
+	{
+		// Поздний рендер прошлого окна не должен перезаписать обложку нового.
+		_coverVersion++;
+
+		_coverReloadCts?.Cancel();
+		_coverReloadCts?.Dispose();
+		_coverReloadCts = null;
 	}
 }

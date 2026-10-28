@@ -8,6 +8,10 @@ public interface ILargeTrackInfoView
 	Action? OnClose { get; set; }
 	Action<TrackKey>? OnTrackActivated { get; set; }
 	(int Width, int Height) CoverSize { get; }
+
+	/// <summary>Изменился доступный размер обложки — её нужно перерисовать.</summary>
+	event Action? CoverSizeChanged;
+
 	void SetTrack(Track track);
 	void SetListenCount(int count);
 	void SetCover(CoverArt? art);

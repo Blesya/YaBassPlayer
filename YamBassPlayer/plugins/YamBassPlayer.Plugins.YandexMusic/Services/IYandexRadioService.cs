@@ -9,6 +9,12 @@ public interface IYandexRadioService
 	/// <summary>Запускает персональную "Мою волну".</summary>
 	Task<bool> StartMyWaveAsync();
 
+	/// <summary>
+	/// Применяет настройки к персональной станции. API хранит их на своей стороне,
+	/// поэтому запрос нужно сделать до получения треков.
+	/// </summary>
+	Task<bool> ApplyMyWaveSettingsAsync(MyWaveSettings settings);
+
 	/// <summary>Запускает "Мою волну" с затравкой по треку. При неудаче — падает на персональную волну.</summary>
 	Task<bool> StartTrackWaveAsync(string seedTrackId);
 

@@ -103,4 +103,36 @@ public sealed class LargeTrackInfoPresenterTests
 
         _errorHandler.Verify(h => h.Handle(It.IsAny<InvalidOperationException>()), Times.Once);
     }
+
+    /// <summary>
+    /// После изменения размера окна обложка перерисовывается в новом размере:
+    /// старый ASCII-буфер не растягивается и не обрезается.
+    /// </summary>
+    [Test]
+    public async Task ShowLargeTrackInfo_WhenCoverAreaChanges_RendersCoverAtNewSize()
+    {
+        var size = (Width: 100, Height: 55);
+        _view.SetupGet(v => v.CoverSize).Returns(() => size);
+
+        var current = Track("a");
+        _queue.SetupGet(q => q.TrackKeys).Returns([K("a")]);
+        _queue.SetupGet(q => q.CurrentTrack).Returns(K("a"));
+        _trackCatalog.Setup(p => p.GetManyAsync(It.IsAny<IEnumerable<TrackKey>>())).ReturnsAsync([current]);
+        _trackCatalog.Setup(p => p.GetAsync(K("a"))).ReturnsAsync(current);
+        _coverProvider.Setup(p => p.DownloadCoverAsync(current)).ReturnsAsync("/covers/a.png");
+        _coverArtService
+            .Setup(s => s.RenderAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((CoverArt?)null);
+
+        _presenter.ShowLargeTrackInfo();
+
+        size = (Width: 80, Height: 44);
+        _view.Raise(v => v.CoverSizeChanged += null);
+
+        await Task.Delay(400);
+
+        _coverArtService.Verify(
+            s => s.RenderAsync("/covers/a.png", 80, 44, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
 }

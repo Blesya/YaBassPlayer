@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
@@ -14,6 +15,9 @@ public sealed class CoverProvider(
     IMusicSourceRegistry musicSourceRegistry) : ICoverProvider
 {
     private static readonly HttpClient HttpClient = new();
+
+    /// <summary>Идущие сейчас загрузки: одна на путь, остальные ждут её результат.</summary>
+    private readonly ConcurrentDictionary<string, Lazy<Task<string>>> _downloads = new();
 
     private sealed record TrackCoverMetadata(
         string? CoverUrl,
@@ -55,18 +59,37 @@ public sealed class CoverProvider(
 
         // Local tracks use an absolute file path as their ID — route them to the local handler.
         if (key.SourceId == LocalMusicSource.Id || !string.IsNullOrEmpty(track.LocalFilePath))
-            return await GetLocalCoverAsync(track.LocalFilePath ?? key.TrackId).ConfigureAwait(false);
+        {
+            string localPath = track.LocalFilePath ?? key.TrackId;
+
+            return await SingleFlight.RunAsync(
+                _downloads,
+                $"local:{localPath}",
+                () => GetLocalCoverAsync(localPath)).ConfigureAwait(false);
+        }
+
+        string filePath = GetCoverPath(key);
+        if (File.Exists(filePath))
+            return filePath;
+
+        string flatPath = GetFlatCoverPath(key);
+        if (File.Exists(flatPath))
+            return flatPath;
+
+        // Панель «Инфо» и окно «Моя волна» просят обложку одного трека одновременно.
+        // Без схлопывания оба видят «файла нет» и пишут один и тот же путь.
+        return await SingleFlight.RunAsync(
+            _downloads,
+            filePath,
+            () => DownloadRemoteCoverAsync(track, filePath)).ConfigureAwait(false);
+    }
+
+    private async Task<string> DownloadRemoteCoverAsync(Track track, string filePath)
+    {
+        TrackKey key = track.Key;
 
         try
         {
-            string filePath = GetCoverPath(key);
-            if (File.Exists(filePath))
-                return filePath;
-
-            string flatPath = GetFlatCoverPath(key);
-            if (File.Exists(flatPath))
-                return flatPath;
-
             string? coverUrl = ResolveRemoteCoverUrl(await GetTrackCoverMetadataAsync(key).ConfigureAwait(false));
 
             if (string.IsNullOrWhiteSpace(coverUrl))
@@ -80,8 +103,8 @@ public sealed class CoverProvider(
 
             Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
-            byte[] bytes = await HttpClient.GetByteArrayAsync(coverUrl);
-            await File.WriteAllBytesAsync(filePath, bytes);
+            byte[] bytes = await HttpClient.GetByteArrayAsync(coverUrl).ConfigureAwait(false);
+            await File.WriteAllBytesAsync(filePath, bytes).ConfigureAwait(false);
             return filePath;
         }
         catch (Exception ex)

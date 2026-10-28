@@ -24,6 +24,7 @@ public sealed class YandexMusicPlugin : IPlugin, IMenuContributor
     private IPluginSettings? _settings;
     private IErrorHandler? _errorHandler;
     private IMyWaveService? _myWaveService;
+    private IMyWaveSettingsPresenter? _myWaveSettingsPresenter;
     private ITrackInfoProvider? _trackInfoProvider;
     private IAuthService? _authService;
     private IYandexSearchPresenter? _searchPresenter;
@@ -59,6 +60,16 @@ public sealed class YandexMusicPlugin : IPlugin, IMenuContributor
             registrar.Host.CoversFolder,
             favorites,
             radio);
+
+        _myWaveSettingsPresenter = _ui is null || _myWaveService is null || _errorHandler is null
+            ? null
+            : new MyWaveSettingsPresenter(
+                radio,
+                _myWaveService,
+                _ui,
+                registrar.Settings,
+                _errorHandler,
+                () => new MyWaveSettingsView());
 
         _searchPresenter = _ui is null
             ? null
@@ -151,8 +162,8 @@ public sealed class YandexMusicPlugin : IPlugin, IMenuContributor
 
     private Task ShowMyWaveAsync()
     {
-        if (_myWaveService is not null)
-            _myWaveService.ShowAsync(_ => { }).Forget();
+        if (_myWaveSettingsPresenter is not null)
+            _myWaveSettingsPresenter.ShowAsync().Forget();
 
         return Task.CompletedTask;
     }
