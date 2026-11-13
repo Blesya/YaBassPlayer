@@ -16,7 +16,8 @@ public sealed class LocalMusicPlugin(
     LocalMusicSource source,
     ILocalSearchPresenter localSearchPresenter,
     ScanLibraryUseCase scanLibraryUseCase,
-    SearchAndLoadPlaylistUseCase searchAndLoadPlaylistUseCase) : IPlugin, IMenuContributor
+    SearchAndLoadPlaylistUseCase searchAndLoadPlaylistUseCase,
+    IUiDispatcher uiDispatcher) : IPlugin, IMenuContributor
 {
     private IPluginUi? _ui;
 
@@ -35,10 +36,7 @@ public sealed class LocalMusicPlugin(
     public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public Task ConfigureAsync(CancellationToken cancellationToken)
-    {
-        scanLibraryUseCase.ShowFolderManagerAsync().Forget();
-        return Task.CompletedTask;
-    }
+        => RunOnUiThreadAsync(() => scanLibraryUseCase.ShowFolderManagerAsync().Forget());
 
     public IReadOnlyList<PluginMenuEntry> GetEntries() =>
     [
@@ -50,7 +48,7 @@ public sealed class LocalMusicPlugin(
 
     private async Task ShowSearchAsync()
     {
-        localSearchPresenter.ShowLocalSearchDialog();
+        await RunOnUiThreadAsync(localSearchPresenter.ShowLocalSearchDialog);
         if (localSearchPresenter.WasCancelled())
             return;
 
@@ -60,30 +58,60 @@ public sealed class LocalMusicPlugin(
     }
 
     private Task ShowFoldersAsync()
-    {
-        scanLibraryUseCase.ShowFolderManagerAsync().Forget();
-        return Task.CompletedTask;
-    }
+        => RunOnUiThreadAsync(() => scanLibraryUseCase.ShowFolderManagerAsync().Forget());
 
-    private Task AddFolderAsync()
+    private async Task AddFolderAsync()
     {
-        var dialog = new OpenDialog("Добавить папку", "Выберите папку с музыкой")
+        string? path = null;
+
+        await RunOnUiThreadAsync(() =>
         {
-            CanChooseDirectories = true,
-            CanChooseFiles = false
-        };
-        Application.Run(dialog);
+            var dialog = new OpenDialog("Добавить папку", "Выберите папку с музыкой")
+            {
+                CanChooseDirectories = true,
+                CanChooseFiles = false
+            };
+            Application.Run(dialog);
 
-        if (!dialog.Canceled && dialog.FilePath is { } path)
-            _ = scanLibraryUseCase.AddFolderAsync(path.ToString()!);
+            if (!dialog.Canceled && dialog.FilePath is { } selectedPath)
+                path = selectedPath.ToString();
+        });
 
-        return Task.CompletedTask;
+        if (path is { } folder)
+            await scanLibraryUseCase.AddFolderAsync(folder);
     }
 
     private async Task ScanAsync()
     {
         int? count = await scanLibraryUseCase.ScanAllFoldersAsync();
         if (count is { } found)
-            _ui?.SetStatus($"Сканирование завершено: найдено треков {found}");
+            uiDispatcher.Invoke(() => _ui?.SetStatus($"Сканирование завершено: найдено треков {found}"));
+    }
+
+    /// <summary>
+    /// Пункт меню плагина выполняется в фоновой задаче (<c>MainWindow.RunPluginEntry</c>),
+    /// а модальное окно Terminal.Gui можно открывать только в UI-потоке: вложенный цикл
+    /// начинал крутить драйвер одновременно с основным, и отрисовка падала
+    /// (<c>IndexOutOfRangeException</c> в <c>View.Clear</c>). Поэтому окно показывается
+    /// через диспетчер, а его результат забирается после закрытия.
+    /// </summary>
+    private Task RunOnUiThreadAsync(Action action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        uiDispatcher.Invoke(() =>
+        {
+            try
+            {
+                action();
+                completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        });
+
+        return completion.Task;
     }
 }
