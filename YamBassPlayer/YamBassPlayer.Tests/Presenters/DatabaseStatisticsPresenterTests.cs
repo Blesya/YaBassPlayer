@@ -13,21 +13,29 @@ public sealed class DatabaseStatisticsPresenterTests
     public void ShowStatisticsDialog_CollectsAndDisplaysStatistics()
     {
         var stats = new DatabaseStatistics { TracksCount = 42, TotalListens = 7 };
+        var listening = new ListeningStatistics { TotalListens = 7, PeakHour = 22 };
+
         var service = new Mock<IDatabaseStatisticsService>();
         service.Setup(s => s.CollectStatistics()).Returns(stats);
+
+        var listeningService = new Mock<IListeningStatisticsService>();
+        listeningService.Setup(s => s.Collect()).Returns(listening);
 
         var viewFactory = new Mock<IViewFactory>();
         var view = new Mock<IDatabaseStatisticsView>();
         viewFactory.Setup(f => f.Create<IDatabaseStatisticsView>()).Returns(view.Object);
 
-        var presenter = new DatabaseStatisticsPresenter(service.Object, viewFactory.Object);
+        var presenter = new DatabaseStatisticsPresenter(
+            service.Object,
+            listeningService.Object,
+            viewFactory.Object);
 
         presenter.ShowStatisticsDialog();
 
         Assert.Multiple(() =>
         {
             viewFactory.Verify(f => f.Create<IDatabaseStatisticsView>(), Times.Once);
-            view.Verify(v => v.SetStatistics(stats), Times.Once);
+            view.Verify(v => v.SetStatistics(stats, listening), Times.Once);
             view.Verify(v => v.Show(), Times.Once);
         });
     }

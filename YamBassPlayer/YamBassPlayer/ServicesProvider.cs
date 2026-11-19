@@ -110,6 +110,7 @@ public static class ServicesProvider
 			c.Resolve<IDbConnectionFactory>(),
 			TracksFolder
 		)).As<IDatabaseStatisticsService>().SingleInstance();
+		builder.RegisterType<ListeningStatisticsService>().As<IListeningStatisticsService>().SingleInstance();
 
 		// Playlist load strategies
 		builder.RegisterType<Top10LoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
