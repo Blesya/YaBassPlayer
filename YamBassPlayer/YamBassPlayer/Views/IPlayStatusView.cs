@@ -22,6 +22,5 @@ public interface IPlayStatusView
 	event Action<string>? OnTrackActionClicked;
 	event Action? OnQueueClicked;
 	event Action? OnPlaybackModeToggled;
-	event Action? OnRestartClicked;
 	void SetPlaybackMode(PlaybackMode mode);
 }

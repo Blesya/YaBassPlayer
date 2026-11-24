@@ -34,13 +34,12 @@ public sealed class PlayStatusViewTests : ViewTestBase
         {
             Assert.That(text, Does.Contain("Играть"));
             Assert.That(text, Does.Contain("Стоп"));
-            Assert.That(text, Does.Contain("Заново"));
             Assert.That(text, Does.Contain("Назад"));
             Assert.That(text, Does.Contain("Вперёд"));
 
             Assert.That(text, Does.Not.Contain("Play/Pause"));
             Assert.That(text, Does.Not.Contain("Stop"));
-            Assert.That(text, Does.Not.Contain("Restart"));
+            Assert.That(text, Does.Not.Contain("Заново"));
             Assert.That(text, Does.Not.Contain("Prev"));
             Assert.That(text, Does.Not.Contain("Next"));
         });

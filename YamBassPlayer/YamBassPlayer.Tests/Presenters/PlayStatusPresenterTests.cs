@@ -82,23 +82,20 @@ public sealed class PlayStatusPresenterTests
     }
 
     [Test]
-    public void ViewQueueModeAndRestartEvents_AreBubbled()
+    public void ViewQueueAndModeEvents_AreBubbled()
     {
         var presenter = CreatePresenter();
-        bool queue = false, mode = false, restart = false;
+        bool queue = false, mode = false;
         presenter.OnQueueClicked += () => queue = true;
         presenter.OnPlaybackModeToggled += () => mode = true;
-        presenter.OnRestartClicked += () => restart = true;
 
         _view.Raise(v => v.OnQueueClicked += null);
         _view.Raise(v => v.OnPlaybackModeToggled += null);
-        _view.Raise(v => v.OnRestartClicked += null);
 
         Assert.Multiple(() =>
         {
             Assert.That(queue, Is.True);
             Assert.That(mode, Is.True);
-            Assert.That(restart, Is.True);
         });
     }
 

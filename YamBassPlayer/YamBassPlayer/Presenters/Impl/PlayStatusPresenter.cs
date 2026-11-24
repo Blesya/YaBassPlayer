@@ -33,7 +33,6 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 	public event Action? OnNextClicked;
 	public event Action? OnQueueClicked;
 	public event Action? OnPlaybackModeToggled;
-	public event Action? OnRestartClicked;
 
 	public PlayStatusPresenter(
 		IPlayStatusView view,
@@ -52,7 +51,6 @@ public class PlayStatusPresenter : IPlayStatusPresenter
 		_view.OnNextClicked += () => OnNextClicked?.Invoke();
 		_view.OnQueueClicked += () => OnQueueClicked?.Invoke();
 		_view.OnPlaybackModeToggled += () => OnPlaybackModeToggled?.Invoke();
-		_view.OnRestartClicked += () => OnRestartClicked?.Invoke();
 		_view.OnSeekRequested += _audioPlayer.SeekToPercent;
 		_view.OnVolumeChangeRequested += OnVolumeChangeRequested;
 		_view.OnTrackActionClicked += id => OnTrackActionClickedAsync(id).Forget();

@@ -20,6 +20,9 @@ namespace YamBassPlayer.Views.Impl;
 /// </summary>
 public sealed class MainWindowCoordinator : IDisposable
 {
+	/// <summary>Сколько трек должен проиграть, чтобы «Назад» перезапускал его, а не листал.</summary>
+	private static readonly TimeSpan PrevRestartThreshold = TimeSpan.FromSeconds(5);
+
 	private readonly IPlaylistsPresenter _playlistsPresenter;
 	private readonly ITracksPresenter _tracksPresenter;
 	private readonly IPlayStatusPresenter _playStatusPresenter;
@@ -129,7 +132,6 @@ public sealed class MainWindowCoordinator : IDisposable
 		_playStatusPresenter.OnPlayClicked += TogglePlayPause;
 		_playStatusPresenter.OnPrevClicked += PrevTrack;
 		_playStatusPresenter.OnNextClicked += NextTrack;
-		_playStatusPresenter.OnRestartClicked += RestartTrack;
 
 		_playlistsPresenter.PlaylistChosen += OnPlaylistChosen;
 
@@ -316,6 +318,15 @@ public sealed class MainWindowCoordinator : IDisposable
 
 	private void PrevTrack()
 	{
+		// Как в привычных плеерах: пока трек играет больше 5 секунд, «Назад»
+		// возвращает его в начало, и только потом уже переключает на предыдущий.
+		if (_audioPlayer.GetCurrentPosition() >= PrevRestartThreshold)
+		{
+			Logging.LogUserAction("предыдущий трек — рестарт текущего");
+			_audioPlayer.SeekToPercent(0);
+			return;
+		}
+
 		Logging.LogUserAction("предыдущий трек");
 		_playbackQueue.Previous();
 	}

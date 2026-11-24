@@ -90,11 +90,11 @@ public sealed class NextCommand(IEventBus eventBus) : ICommand
 	}
 }
 
-/// <summary>prev|b — предыдущий трек.</summary>
+/// <summary>prev|b — предыдущий трек; если текущий проиграл больше 5 секунд, начинается он же.</summary>
 public sealed class PreviousCommand(IEventBus eventBus) : ICommand
 {
 	public string Name => "prev";
-	public string Description => "prev|b — предыдущий трек.";
+	public string Description => "prev|b — предыдущий трек (после 5 секунд — текущий с начала).";
 	public IReadOnlyList<string> Aliases => ["b"];
 
 	public CommandResult Execute(string[] args)
