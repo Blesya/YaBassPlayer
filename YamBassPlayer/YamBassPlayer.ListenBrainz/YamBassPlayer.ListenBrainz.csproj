@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Клиент ListenBrainz: только DTO и HTTP. Ни Contracts, ни Terminal.Gui,
+       ни Core сюда не тянутся — сборку можно тестировать отдельно. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

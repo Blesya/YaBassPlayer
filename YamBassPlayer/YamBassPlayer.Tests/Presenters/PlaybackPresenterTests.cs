@@ -4,6 +4,8 @@ using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
 using YamBassPlayer.Presenters.Impl;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Events;
+using YamBassPlayer.Services.Impl;
 
 namespace YamBassPlayer.Tests.Presenters;
 
@@ -20,6 +22,7 @@ public sealed class PlaybackPresenterTests
     private Mock<IPlayStatusPresenter> _playStatusPresenter = null!;
     private Mock<IMyWavePresenter> _myWavePresenter = null!;
     private Mock<ITrackAboutPresenter> _trackAboutPresenter = null!;
+    private EventBus _eventBus = null!;
     private PlaybackPresenter _presenter = null!;
 
     [SetUp]
@@ -33,6 +36,7 @@ public sealed class PlaybackPresenterTests
         _playStatusPresenter = new Mock<IPlayStatusPresenter>();
         _myWavePresenter = new Mock<IMyWavePresenter>();
         _trackAboutPresenter = new Mock<ITrackAboutPresenter>();
+        _eventBus = new EventBus();
 
         _presenter = new PlaybackPresenter(
             _trackFileProvider.Object,
@@ -42,7 +46,8 @@ public sealed class PlaybackPresenterTests
             _audioPlayer.Object,
             _playStatusPresenter.Object,
             _myWavePresenter.Object,
-            _trackAboutPresenter.Object);
+            _trackAboutPresenter.Object,
+            _eventBus);
     }
 
     private void SetupTrack(string id)
@@ -67,6 +72,20 @@ public sealed class PlaybackPresenterTests
             _listenTimer.Verify(l => l.OnTrackStart(K("t1"), PlaylistContext.Regular), Times.Once);
             _playStatusPresenter.Verify(s => s.SetCurrentTrack(K("t1")), Times.Once);
         });
+    }
+
+    [Test]
+    public async Task PlaySelectedTrackAsync_PublishesTrackStarted()
+    {
+        SetupTrack("t1");
+        _trackFileProvider.Setup(p => p.DownloadTrackAsync(Matches("t1"), It.IsAny<IProgress<DownloadProgress>>())).ReturnsAsync("/tmp/t1.mp3");
+
+        TrackStartedEvent? started = null;
+        _eventBus.Subscribe<TrackStartedEvent>(e => started = e);
+
+        await _presenter.PlaySelectedTrackAsync(K("t1"));
+
+        Assert.That(started?.Key, Is.EqualTo(K("t1")));
     }
 
     [Test]

@@ -68,6 +68,10 @@ internal class Program
 			IAudioPlayer audioPlayer = ServicesProvider.Ioc.Resolve<IAudioPlayer>();
 			audioPlayer.Init();
 
+			// Подписка на прослушивания: без неё история в ListenBrainz не копится,
+			// а значит и персональные рекомендации не появятся.
+			ServicesProvider.Ioc.Resolve<IListenBrainzService>().Start();
+
 			View mainWindow = ServicesProvider.Ioc.Resolve<MainWindow>();
 			Application.Top.Add(mainWindow);
 			TrackWindowSizeChanges(consoleWindow);

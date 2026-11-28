@@ -1,6 +1,7 @@
 using Autofac;
 using YamBassPlayer.Commands;
 using YamBassPlayer.Configuration;
+using YamBassPlayer.ListenBrainz;
 using YamBassPlayer.Models;
 using YamBassPlayer.Presenters;
 using YamBassPlayer.Presenters.Impl;
@@ -111,6 +112,23 @@ public static class ServicesProvider
 			TracksFolder
 		)).As<IDatabaseStatisticsService>().SingleInstance();
 		builder.RegisterType<ListeningStatisticsService>().As<IListeningStatisticsService>().SingleInstance();
+
+		// ListenBrainz: клиент живёт в отдельной сборке, сервис и стратегия — в ядре.
+		// Без токена сервис просто ничего не отправляет, поэтому проверка на старте не нужна.
+		builder.Register(c => new ListenBrainzClient(
+			new ListenBrainzOptions
+			{
+				BaseUrl = AppConfiguration.GetListenBrainzBaseUrl() is { } baseUrl
+					? new Uri(baseUrl)
+					: new Uri(ListenBrainzOptions.DefaultBaseUrl),
+				Token = AppConfiguration.GetListenBrainzToken(),
+				UserName = AppConfiguration.GetListenBrainzUser()
+			},
+			new HttpClient { Timeout = TimeSpan.FromSeconds(20) }))
+			.As<IListenBrainzClient>().SingleInstance();
+		builder.RegisterType<ListenBrainzTrackResolver>().AsSelf().SingleInstance();
+		builder.RegisterType<ListenBrainzService>().As<IListenBrainzService>().SingleInstance();
+		builder.RegisterType<ListenBrainzLoadStrategy>().AsSelf().As<IPlaylistLoadStrategy>().SingleInstance();
 
 		// Playlist load strategies
 		builder.RegisterType<Top10LoadStrategy>().As<IPlaylistLoadStrategy>().SingleInstance();
@@ -261,6 +279,7 @@ public static class ServicesProvider
 		builder.RegisterType<ToggleFavoriteUseCase>().AsSelf().SingleInstance();
 		builder.RegisterType<ScanLibraryUseCase>().AsSelf().SingleInstance();
 		builder.RegisterType<ShowMyWaveUseCase>().AsSelf().As<IMyWaveService>().SingleInstance();
+		builder.RegisterType<ShowListenBrainzUseCase>().AsSelf().SingleInstance();
 
 		// Регистрация MainWindowCoordinator
 		builder.RegisterType<MainWindowCoordinator>().AsSelf().SingleInstance();

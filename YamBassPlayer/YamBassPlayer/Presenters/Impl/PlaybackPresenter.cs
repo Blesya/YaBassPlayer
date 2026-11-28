@@ -2,6 +2,7 @@ using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
 using YamBassPlayer.Services;
+using YamBassPlayer.Services.Events;
 
 namespace YamBassPlayer.Presenters.Impl;
 
@@ -17,7 +18,8 @@ public sealed class PlaybackPresenter(
 	IAudioPlayer audioPlayer,
 	IPlayStatusPresenter playStatusPresenter,
 	IMyWavePresenter myWavePresenter,
-	ITrackAboutPresenter trackAboutPresenter)
+	ITrackAboutPresenter trackAboutPresenter,
+	IEventBus eventBus)
 	: IPlaybackPresenter
 {
 	private PlaylistContext _currentContext = PlaylistContext.Regular;
@@ -117,6 +119,11 @@ public sealed class PlaybackPresenter(
 				_consecutiveUnavailable = 0;
 
 				listenTimer.OnTrackStart(track.Key, _currentContext);
+
+				// Начало воспроизведения — факт домена: на него подписываются внешние
+				// сервисы (ListenBrainz «сейчас играет»), не зная про таймер и очередь.
+				eventBus.Publish(new TrackStartedEvent(track.Key));
+
 				playStatusPresenter.SetCurrentTrack(track.Key);
 
 				if (_currentContext == PlaylistContext.Radio)

@@ -21,6 +21,13 @@ public sealed record TrackFinishedEvent(TrackKey Key, double PlayedSeconds);
 /// <summary>Трек пропущен пользователем.</summary>
 public sealed record TrackSkippedEvent(TrackKey Key, double PlayedSeconds);
 
+/// <summary>
+/// Прослушивание засчитано по нашим правилам (таймер прослушивания) — то,
+/// что стоит отправлять во внешний сервис. Отдельно от <see cref="TrackFinishedEvent"/>:
+/// засчитывается раньше, чем трек доиграл, и не зависит от его конца.
+/// </summary>
+public sealed record ListenRecordedEvent(TrackKey Key, double PlayedSeconds);
+
 /// <summary>Published when a playlist is selected/activated.</summary>
 public sealed record PlaylistSelectedEvent(YamBassPlayer.Models.Playlist Playlist);
 

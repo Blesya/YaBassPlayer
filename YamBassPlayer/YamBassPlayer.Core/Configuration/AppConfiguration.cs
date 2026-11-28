@@ -227,6 +227,43 @@ public class AppConfiguration
 		return [];
 	}
 
+	/// <summary>Токен ListenBrainz: отправка прослушиваний и LB Radio. <c>null</c> — не настроен.</summary>
+	public static string? GetListenBrainzToken() => GetListenBrainzSetting("Token");
+
+	/// <summary>Имя пользователя ListenBrainz: по нему считаются рекомендации.</summary>
+	public static string? GetListenBrainzUser() => GetListenBrainzSetting("User");
+
+	/// <summary>Базовый адрес API; <c>null</c> — берётся адрес по умолчанию.</summary>
+	public static string? GetListenBrainzBaseUrl() => GetListenBrainzSetting("BaseUrl");
+
+	public static void SaveListenBrainzToken(string? token) => SaveListenBrainzSetting("Token", token);
+
+	public static void SaveListenBrainzUser(string? userName) => SaveListenBrainzSetting("User", userName);
+
+	private static string? GetListenBrainzSetting(string key)
+	{
+		try
+		{
+			string? value = LoadJsonNode()["ListenBrainz"]?[key]?.GetValue<string>();
+			return string.IsNullOrWhiteSpace(value) ? null : value;
+		}
+		catch { return null; }
+	}
+
+	private static void SaveListenBrainzSetting(string key, string? value)
+	{
+		var root = LoadJsonNode();
+		var section = root["ListenBrainz"]?.AsObject() ?? new JsonObject();
+
+		if (string.IsNullOrWhiteSpace(value))
+			section.Remove(key);
+		else
+			section[key] = value;
+
+		root["ListenBrainz"] = section;
+		SaveJsonNode(root);
+	}
+
 	/// <summary>
 	/// Переносит старые ключи <c>YandexMusic:*</c> в <c>Plugins:yandex-music</c>.
 	/// Вызывается один раз при старте: после переезда в плагин токены должны остаться.

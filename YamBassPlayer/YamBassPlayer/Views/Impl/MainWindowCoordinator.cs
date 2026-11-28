@@ -1,6 +1,7 @@
 using System.Threading;
 using Serilog;
 using Terminal.Gui;
+using YamBassPlayer.Configuration;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Extensions;
 using YamBassPlayer.Models;
@@ -48,6 +49,8 @@ public sealed class MainWindowCoordinator : IDisposable
 	private readonly ToggleFavoriteUseCase _toggleFavoriteUseCase;
 	private readonly ScanLibraryUseCase _scanLibraryUseCase;
 	private readonly ShowMyWaveUseCase _showMyWaveUseCase;
+	private readonly ShowListenBrainzUseCase _showListenBrainzUseCase;
+	private readonly IListenBrainzService _listenBrainz;
 	private CancellationTokenSource? _startupCts;
 	private CancellationTokenSource? _playlistLoadCts;
 	private Window _window = null!; // Set later via SetWindow()
@@ -80,7 +83,9 @@ public sealed class MainWindowCoordinator : IDisposable
 		SearchAndLoadPlaylistUseCase searchAndLoadPlaylistUseCase,
 		ToggleFavoriteUseCase toggleFavoriteUseCase,
 		ScanLibraryUseCase scanLibraryUseCase,
-		ShowMyWaveUseCase showMyWaveUseCase)
+		ShowMyWaveUseCase showMyWaveUseCase,
+		ShowListenBrainzUseCase showListenBrainzUseCase,
+		IListenBrainzService listenBrainz)
 	{
 		_playlistsPresenter = playlistsPresenter;
 		_tracksPresenter = tracksPresenter;
@@ -106,6 +111,8 @@ public sealed class MainWindowCoordinator : IDisposable
 		_toggleFavoriteUseCase = toggleFavoriteUseCase;
 		_scanLibraryUseCase = scanLibraryUseCase;
 		_showMyWaveUseCase = showMyWaveUseCase;
+		_showListenBrainzUseCase = showListenBrainzUseCase;
+		_listenBrainz = listenBrainz;
 	}
 
 	/// <summary>
@@ -451,6 +458,69 @@ public sealed class MainWindowCoordinator : IDisposable
 		Logging.LogUserAction("«Моя волна» по текущему треку");
 		_showMyWaveUseCase.ShowByTrackAsync(SetWindowTitle).Forget();
 	}
+
+	// ── ListenBrainz ──────────────────────────────────────────────────────
+
+	public void ShowListenBrainzRecommendations()
+	{
+		Logging.LogUserAction("рекомендации ListenBrainz");
+		_showListenBrainzUseCase.ShowRecommendationsAsync(SetWindowTitle).Forget();
+	}
+
+	public void ShowListenBrainzRadio()
+	{
+		Logging.LogUserAction("радио ListenBrainz по жанру");
+		_showListenBrainzUseCase.ShowRadioAsync(SetWindowTitle).Forget();
+	}
+
+	public void ShowListenBrainzSettings()
+	{
+		Logging.LogUserAction("настройки ListenBrainz");
+
+		var saved = ListenBrainzSettingsDialog.Show(
+			AppConfiguration.GetListenBrainzUser(),
+			AppConfiguration.GetListenBrainzToken());
+
+		if (saved is not { } settings)
+			return;
+
+		string? userName = NullIfBlank(settings.UserName);
+		string? token = NullIfBlank(settings.Token);
+
+		AppConfiguration.SaveListenBrainzUser(userName);
+		AppConfiguration.SaveListenBrainzToken(token);
+
+		// Клиент держит настройки в памяти: без этого пришлось бы перезапускать плеер.
+		_listenBrainz.UpdateCredentials(userName, token);
+
+		_playStatusPresenter.SetPlayStatus("ListenBrainz: настройки сохранены");
+		_ = CheckListenBrainzTokenAsync();
+	}
+
+	private async Task CheckListenBrainzTokenAsync()
+	{
+		if (!_listenBrainz.HasToken)
+		{
+			_playStatusPresenter.SetPlayStatus("ListenBrainz: токен не задан, работает только чтение");
+			return;
+		}
+
+		try
+		{
+			string? user = await _listenBrainz.ValidateAsync();
+			_playStatusPresenter.SetPlayStatus(user is null
+				? "ListenBrainz: токен не принят"
+				: $"ListenBrainz: токен принят, пользователь {user}");
+		}
+		catch (Exception exception)
+		{
+			Log.Warning(exception, "ListenBrainz: не удалось проверить токен");
+			_playStatusPresenter.SetPlayStatus("ListenBrainz: не удалось проверить токен, подробности в логе");
+		}
+	}
+
+	private static string? NullIfBlank(string? value) =>
+		string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
 	// ── Local library ─────────────────────────────────────────────────────
 

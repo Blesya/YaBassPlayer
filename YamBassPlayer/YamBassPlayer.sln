@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.4.11620.152
@@ -18,6 +18,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Core", "YamBassPlayer.Core\YamBassPlayer.Core.csproj", "{64F21679-A52C-4D50-9117-4F2C46DB12A7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.Plugins.YandexMusic", "plugins\YamBassPlayer.Plugins.YandexMusic\YamBassPlayer.Plugins.YandexMusic.csproj", "{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YamBassPlayer.ListenBrainz", "YamBassPlayer.ListenBrainz\YamBassPlayer.ListenBrainz.csproj", "{5007DF23-2DD3-4645-B898-925D2B25AEB3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -125,6 +127,18 @@ Global
 		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x64.Build.0 = Release|Any CPU
 		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x86.ActiveCfg = Release|Any CPU
 		{6EDB189D-7FEE-4D8D-A69E-FA9B2E8C3FAB}.Release|x86.Build.0 = Release|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Debug|x64.Build.0 = Debug|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Debug|x86.Build.0 = Debug|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Release|x64.ActiveCfg = Release|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Release|x64.Build.0 = Release|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Release|x86.ActiveCfg = Release|Any CPU
+		{5007DF23-2DD3-4645-B898-925D2B25AEB3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -341,6 +341,13 @@ public sealed class MainWindow : Window
 			{
 				new MenuItem("Статистика БД", "", _coordinator.ShowDbStats)
 			}),
+			new MenuBarItem("ListenBrainz", new[]
+			{
+				new MenuItem("Рекомендации", "", _coordinator.ShowListenBrainzRecommendations),
+				new MenuItem("Радио по жанру текущего трека", "", _coordinator.ShowListenBrainzRadio),
+				null!,
+				new MenuItem("Настройки…", "", _coordinator.ShowListenBrainzSettings)
+			}),
 			_pluginsMenuBarItem,
 			new MenuBarItem("Вид", new[]
 			{

@@ -46,8 +46,18 @@ dotnet run --project YamBassPlayer
 - Native BASS DLLs live in `libs/` and are copied by the `CopyBass` MSBuild target for build and publish; no manual step.
 - `NextTrackPredictor` (Microsoft.ML) loads `next_model.zip` + `next_key_map.txt` next to the executable and degrades to "not ready" when they are absent.
 
+## ListenBrainz (ядро, не плагин)
+
+- Клиент API — отдельная сборка `YamBassPlayer.ListenBrainz` (DTO + `HttpClient`, не ссылается ни на `Contracts`, ни на `Terminal.Gui`). Сервис `ListenBrainzService` и `ListenBrainzLoadStrategy` — в `Core`, сценарий `ShowListenBrainzUseCase` и меню «ListenBrainz» (два пункта: рекомендации и радио по жанру) — в приложении. Это осознанно не плагин: сервис продуктовый, а сеть уже изолирована сборкой.
+- Настройки: `ListenBrainz:User` и `ListenBrainz:Token` в `appsettings.json`; их же можно править в меню «ListenBrainz → Настройки…» (`ListenBrainzSettingsDialog`) — значения сохраняются через `AppConfiguration` и применяются на ходу вызовом `IListenBrainzService.UpdateCredentials`, перезапуск не нужен. Без токена меню только сообщает, что сервис не настроен.
+- Прослушивания отправляются по событию `ListenRecordedEvent`, которое публикует `ListenTimer` после `IHistoryService.LogListen`. Порог — наш (`ListenThresholdSeconds = 30`): ListenBrainz пишет «половина трека или 4 минуты», но не проверяет это, поэтому отправляем то, что уже засчитали, и указываем фактическое `duration_played_ms`. Скипы не отправляются.
+- Рекомендации: CF-эндпоинт отдаёт только MBID (и `204`, пока модель не посчитала — она пересчитывается раз в неделю), названия добираются из `/1/metadata/recording` (до 100 MBID за запрос), после чего `ListenBrainzTrackResolver` ищет трек в кэше SQLite по нормализованным artist+title. Всё, что не нашлось, отбрасывается: очередь адресуется `TrackKey`, а не MBID.
+- LB Radio принимает только `tag:(…)` и `artist:(<mbid>)` (по имени артиста не ищет), требует токен и отдаёт 50 треков с названиями за один запрос — это единственный путь, который работает без истории прослушиваний.
+- Клиент сам соблюдает лимит «один запрос в секунду» и отправляет `User-Agent` с контактом: без него MetaBrainz режет запросы как ботов. Запись (`submit-listens`) дополнительно требует подтверждённый e-mail аккаунта MetaBrainz — иначе `401`.
+
 ## Tests
 
+- **Обращаться к сторонним API из тестов запрещено.** Сеть в тестах — только через stub-`HttpMessageHandler`; никаких живых `api.listenbrainz.org`, GitHub и прочего. У `ListenBrainzClient` поэтому нет конструктора, который сам создаёт `HttpClient` — транспорт передаётся явно, и это закреплено тестом `Client_HasNoConstructorThatCreatesItsOwnTransport`.
 - NUnit 3.14 + Moq; the test project references the app, `Contracts`, `Contracts.Ui`, `Core` and `Updater` projects. No network or external services are needed.
 - SQLite tests use `SharedMemoryDbConnectionFactory` (in-memory database), not the real `tracks_cache.db`.
 - View/presenter tests are headless Terminal.Gui: derive from `ViewTestBase` (`FakeDriver` 80x25, `[NonParallelizable]` because `Application` state is global). Call `Pump()` after actions that post to `Application.MainLoop`, and read output with `RenderText(rows, cols)`.

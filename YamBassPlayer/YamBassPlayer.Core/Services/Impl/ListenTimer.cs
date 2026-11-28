@@ -1,13 +1,21 @@
 ﻿using Serilog;
 using YamBassPlayer.Enums;
 using YamBassPlayer.Models;
+using YamBassPlayer.Services.Events;
 
 namespace YamBassPlayer.Services.Impl;
 
-public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
+public sealed class ListenTimer(IHistoryService historyService, IEventBus eventBus) : IListenTimer
 {
+	/// <summary>
+	/// Наш порог засчитанного прослушивания. ListenBrainz рекомендует «половину
+	/// трека или 4 минуты», но проверяет это только на своей стороне как совет:
+	/// отправляем то, что уже засчитали сами, и честно сообщаем <c>duration_played_ms</c>.
+	/// </summary>
+	private const double ListenThresholdSeconds = 30;
+
 	private CancellationTokenSource? _cts;
-	private TimeSpan _remaining = TimeSpan.FromSeconds(30);
+	private TimeSpan _remaining = TimeSpan.FromSeconds(ListenThresholdSeconds);
 	private DateTime _lastPlayUtc;
 	private TrackKey? _trackKey;
 	private PlaylistContext _context;
@@ -99,12 +107,16 @@ public sealed class ListenTimer(IHistoryService historyService) : IListenTimer
 	{
 		_cts?.Cancel();
 		_cts = null;
-		_remaining = TimeSpan.FromSeconds(30);
+		_remaining = TimeSpan.FromSeconds(ListenThresholdSeconds);
 		_trackKey = null;
 	}
 
 	private void LogListen(TrackKey key, PlaylistContext context)
 	{
 		historyService.LogListen(key, context);
+
+		// Одно событие — один владелец истории. Внешние сервисы (ListenBrainz)
+		// подписываются на него, а не на таймер: порог остаётся в одном месте.
+		eventBus.Publish(new ListenRecordedEvent(key, ListenThresholdSeconds));
 	}
 }
